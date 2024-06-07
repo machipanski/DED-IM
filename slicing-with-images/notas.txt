@@ -1,0 +1,4 @@
+sudo apt-get install libglm-dev
+tem que colocar aquela pasta do glm tambem
+make
+./run-single-model.sh stl_models/01.liver.stl 

@@ -1,13 +1,25 @@
 #! /bin/bash
 
-if [ $# -ne 1 ]; then
-        echo "EXEMPLOR DE USO: $0 stl_suporte/peca_suporte_2.stl";
-        exit 1;
-fi
+echo "First arg: $1"
+echo "Second arg: $2"
 
-rm *.svg *.png;
+# if [ $# -ne 1 ]; then
+#         echo "EXEMPLOR DE USO: $0 stl_suporte/peca_suporte_2.stl";
+#         exit 1;
+# fi
 
-make
+# make
+
+cd ..
+echo "Script executed from: ${PWD}"
+cd ./input/sliced
+echo "Script executed from: ${PWD}"
+rm *.svg *.png *.pgm;
+cd ..
+cd ..
+echo "Script executed from: ${PWD}"
+cd ./slicing-with-images
+echo "Script executed from: ${PWD}"
 
 #The options for the output are: [-2D, -3D, -video, -No]
 #The options for slicing are: [-Trivial, -Incremental]
@@ -37,5 +49,5 @@ make
     -rotate false \
     -orienting_contours true \
     -write_images true \
-    -dpi 300 \
+    -dpi $2 \
     -fill_triangles false 

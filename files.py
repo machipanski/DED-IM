@@ -19,7 +19,7 @@ class Paths:
 def load_layers_3d(arquivos: Paths, path_input, dpi, layer_height):
     """No caso de um arquivo 3D o programa chama o algoritmo SliceWithImages do Prof Minetto e cria um objeto Layer por camada"""
     os.chdir(arquivos.slicer)
-    subprocess.run(["./run-single-model.sh", path_input])
+    subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
     camadas: List[Layer] = []
     os.chdir(arquivos.home + "/input/sliced")
     camadas_imgs_names = sorted([x for x in os.listdir() if x.endswith(".pgm")])

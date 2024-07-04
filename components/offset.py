@@ -30,3 +30,11 @@ class Region:
         self.route = []
         self.trail = []
         self.next_prohibited_area = []
+
+class OffsetRegions:
+
+    def __init__(self):
+        self.all_valid_loops = []
+        self.regions = []
+        self.n_regions = []
+        self.next_prohibited_areas = []

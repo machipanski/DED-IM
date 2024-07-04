@@ -19,18 +19,28 @@ def find_failures(img, base):
     result[:, -2:] = 0
     return result
 
-def make_masks(layer: Layer):
-    layer.mask_full_ext = disk(layer.path_radius_external)
-    layer.mask_half_ext = disk(int(layer.path_radius_external * 0.5))
-    layer.mask_3_4_ext = disk(int(layer.path_radius_external * 0.75))
-    layer.mask_3_2_ext = disk(int(layer.path_radius_external * 1.5))
-    layer.mask_double_ext = disk(layer.path_radius_external * 2)
-    layer.mask_full_int = disk(layer.path_radius_internal)
-    layer.mask_half_int = disk(int(layer.path_radius_internal * 0.5))
-    layer.mask_3_4_int = disk(int(layer.path_radius_internal * 0.75))
-    layer.mask_3_2_int = disk(int(layer.path_radius_internal * 1.5))
-    layer.mask_double_int = disk(layer.path_radius_internal * 2)
-    return layer
+def make_mask(layer: Layer, size:str) -> np.ndarray:
+    if size=="full_ext":
+        mask = disk(layer.path_radius_external)
+    if size=="half_ext":
+        mask = disk(int(layer.path_radius_external * 0.5))
+    if size=="3_4_ext":
+        mask = disk(int(layer.path_radius_external * 0.75))
+    if size=="3_2_ext":
+        mask = disk(int(layer.path_radius_external * 1.5))
+    if size=="double_ext":
+        mask = disk(layer.path_radius_external * 2)
+    if size=="full_int":
+        mask = disk(layer.path_radius_internal)
+    if size=="half_int":
+        mask = disk(int(layer.path_radius_internal * 0.5))
+    if size=="3_4_int":
+        mask = disk(int(layer.path_radius_internal * 0.75))
+    if size=="3_2_int":
+        mask = disk(int(layer.path_radius_internal * 1.5))
+    if size=="double_int":
+        mask = disk(layer.path_radius_internal * 2)
+    return mask
 
 
 def dilation(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:

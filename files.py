@@ -1,44 +1,174 @@
-from components.layer import Layer
-import os
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from components.thin_walls import ThinWallRegions
+    # from components.offset import OffsetRegions
+    # from components.bridge import BridgeRegions
+    # from components.zigzag import ZigZagRegions
+    from typing import List
+# from components.layer import Layer
+from components.layer import Layer, Island
+import os, shutil
 import subprocess
 from typing import List
-
+import json
+import jsonpickle
+import scipy.sparse
+import copy
+import matplotlib.pyplot as plt
+import cv2
+import numpy as np
 
 class Paths:
     """Mantem a organizaçao dos caminhos dentro da pasta do programa para evitar carregar coisas que ele nao processa"""
 
-    def __init__(self):
-        self.home = os.getcwd()
+    def __init__(self, home):
+        self.home = home
         self.input = self.home + "/input"
         self.output = self.home + "/output"
         self.slicer = self.home + "/slicing-with-images"
+        self.sliced = self.home + "/input/sliced"
         self.layers = []
         self.selected = ""
 
 
-def load_layers_3d(arquivos: Paths, path_input, dpi, layer_height):
-    """No caso de um arquivo 3D o programa chama o algoritmo SliceWithImages do Prof Minetto e cria um objeto Layer por camada"""
-    os.chdir(arquivos.slicer)
-    subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
-    camadas: List[Layer] = []
-    os.chdir(arquivos.home + "/input/sliced")
-    camadas_imgs_names = sorted([x for x in os.listdir() if x.endswith(".pgm")])
-    n_camadas = len(camadas_imgs_names)
-    for i, file in enumerate(camadas_imgs_names):
-        print(file)
-        odd_layer = i % 2
+    def create_layers_3d(self, path_input, dpi, layer_height):
+        """No caso de um arquivo 3D o programa chama o algoritmo SliceWithImages do Prof Minetto e cria um objeto Layer por camada"""
+        os.chdir(self.slicer)
+        subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
+        camadas_imgs_names = self.list(origins = 1)
+        n_camadas = len(camadas_imgs_names)
+        for root, dirs, files in os.walk(self.output):
+                for f in files:
+                    if f.endswith(".json") or f.endswith(".png"):
+                        os.unlink(os.path.join(root, f))
+                for d in dirs:
+                    shutil.rmtree(os.path.join(root, d))
+        for i, name in enumerate(camadas_imgs_names):
+            odd_layer = i % 2
+            layer = Layer()
+            os.chdir(self.sliced)
+            img = layer.make_input_img(i, name, dpi, odd_layer, layer_height, n_camadas, self)
+            os.chdir(self.home)
+            img_name = (f"L{layer.name:03d}_original_img.png")
+            self.save_img(img_name, img)
+            layer.original_img = img_name
+            self.save_layer_json(layer)
+        os.chdir(self.home)
+        return
+
+
+    def create_layers_2d(self, path_input, dpi, layer_height):
+        """No caso de um arquivo 2D cria um objeto Layer apenas (usado mais para testes mesmo)"""
+        for root, dirs, files in os.walk(self.output):
+                for f in files:
+                    if f.endswith(".json") or f.endswith(".png"):
+                        os.unlink(os.path.join(root, f))
+                for d in dirs:
+                    shutil.rmtree(os.path.join(root, d))
         layer = Layer()
-        layer.make_input_img(file, dpi, odd_layer, layer_height, n_camadas, arquivos)
-        camadas.append(layer)
-    os.chdir(arquivos.home)
-    return camadas
+        img = layer.make_input_img(0, path_input, dpi, 0, layer_height, 1, self)
+        img_name = (f"L{layer.name:03d}_original_img.png")
+        self.save_img(img_name, img)
+        layer.original_img = img_name
+        self.save_layer_json(layer)
+        os.chdir(self.home)
+        return
+    
+    def list(self,origins=0, layers=0, isles=0):
+        list = []
+        if origins == 1:
+            os.chdir(self.sliced)
+            list = sorted([x for x in os.listdir() if x.endswith(".pgm")])
+        if layers == 1:
+            os.chdir(self.output)
+            list = sorted([x for x in os.listdir() if x.endswith(".json")])
+        if isles == 1:
+            os.chdir(self.output)
+            list = sorted([x for x in os.listdir() if x.endswith("I",5)])
+        os.chdir(self.home)
+        return list
+    
+    def load_layer_json(self, layer_name) -> Layer:
+        os.chdir(self.output)
+        f = open(layer_name)
+        layer = jsonpickle.decode(json.load(f))           
+        f.close()
+        os.chdir(self.home)
+        return layer
+    
+    def load_layer_orig_img(self, layer: Layer) -> np.ndarray:
+        os.chdir(self.output)
+        img = cv2.imread(layer.original_img, 0)
+        _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+        img_bin[img_bin > 0] = 1
+        return img_bin.astype(np.uint8)
+    
+    
+    def load_island_img(self, island: Island)-> np.ndarray:
+        os.chdir(self.output)
+        img = cv2.imread(island.img, 0)
+        _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+        img_bin[img_bin > 0] = 1
+        return img_bin.astype(np.uint8)
+    
+    def load_thin_wall_img(self, tw: ThinWallRegions)-> np.ndarray:
+        os.chdir(self.output)
+        img = cv2.imread(tw.img, 0)
+        _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+        img_bin[img_bin > 0] = 1
+        return img_bin.astype(np.uint8)
+    
 
+    def save_img(self, name, img):
+        os.chdir(self.output)
+        plt.imsave(name, img, cmap='gray')
+        os.chdir(self.home)
+        return
+        
 
-def load_layers_2D(arquivos: Paths, path_input, dpi, layer_height):
-    """No caso de um arquivo 2D cria um objeto Layer apenas (usado mais para testes mesmo)"""
-    camadas: List[Layer] = []
-    layer: Layer = Layer()
-    layer.make_input_img(path_input, dpi, 0, layer_height, 1, arquivos)
-    camadas.append(layer)
-    os.chdir(arquivos.home)
-    return camadas
+    def save_layer_json(self, layer: Layer) -> None:
+        os.chdir(self.output)
+        copied_layer = copy.deepcopy(layer)
+        layer_encoded = jsonpickle.encode(copied_layer)
+        with open((f"L{layer.name:03d}.json"), 'w') as f:
+            # for isl in layer.islands:
+            #     if len(isl.thin_walls) > 0:
+            #         self.prepare_tw_json(layer,isl.thin_walls)
+            json.dump(layer_encoded, f, indent=1)
+        os.chdir(self.home)
+        return
+    
+    
+    def prepare_tw_json(self, layer, tw: ThinWallRegions):
+        os.chdir(self.output)
+        copied_layer: Layer = copy.deepcopy(layer)
+        # plt.imsave(self.output + "original_img.png", cleared_layer.original_img)
+        # copied_layer.original_img = []
+        # plt.imsave(self.output + "rest_of_picture_f1.png", copied_layer.rest_of_picture_f1)
+        self.save_array_to_npz("thinwall_medial_axis.npz", copied_layer.thin_walls.medial_transform)
+        copied_layer.mask_3_2_int = []
+        copied_layer.mask_3_2_ext = []
+        copied_layer.mask_3_4_int = []
+        copied_layer.mask_3_4_ext = []
+        copied_layer.mask_full_int = []
+        copied_layer.mask_full_ext = []
+        copied_layer.mask_double_int = []
+        copied_layer.mask_double_ext = []
+        copied_layer.mask_half_int = []
+        copied_layer.mask_half_ext = []
+        copied_layer.rest_of_picture_f1 = []
+        copied_layer.thin_walls.medial_transform = []
+        for index, rt in enumerate(copied_layer.thin_walls.regions):
+            plt.imsave(self.output + "thinwall_" + str(index) + "_img.png", rt.img)
+            self.save_array_to_npz("thinwall_" + str(index) + "_origin.npz", rt.origin)
+            self.save_array_to_npz("thinwall_" + str(index) + "_trunk.npz", rt.trunk)
+            plt.imsave(self.output + "thinwall_" + str(index) + "_contorno.png", rt.contorno)
+            rt.img = rt.origin = rt.trunk = rt.contorno = []
+        copied_layer.thin_walls.all_thin_walls = []
+        copied_layer.thin_walls.all_thin_origins = []
+        layer_encoded = jsonpickle.encode(copied_layer)
+        with open('saved/' + name, 'w') as f:
+            json.dump(layer_encoded, f, indent=1)
+        f.close()
+        os.chdir(self.home)

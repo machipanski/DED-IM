@@ -157,3 +157,9 @@ def remove_repeated_contours(multiple_lines_lists, canvas_size):
     for i in sorted(remove_idx, reverse=True):
         del cleaned_multiple_lines[i]
     return cleaned_multiple_lines
+
+def make_a_chain_open_segment(im, ext_point) -> list:
+    [start, end] = ext_point
+    G = img_to_graph(im)
+    path = nx.shortest_path(G, source=tuple(np.flip(start)), target=tuple(np.flip(end)))
+    return path

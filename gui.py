@@ -6,7 +6,7 @@ from typing import List
 from components.layer import Layer
 
 
-def load_model(folders: Paths):
+def load_model(folders: Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
     os.chdir(folders.input)
     path_input = fileopenbox()

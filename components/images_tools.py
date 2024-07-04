@@ -1,16 +1,18 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
-import cv2
 if TYPE_CHECKING:
     from components.layer import Layer
     from typing import List
+import cv2
 import numpy as np
 from components import morphology_tools as mt
 from skimage.morphology import disk
 from skimage.measure import label
 from skimage.segmentation import flood_fill
+import os
 
-def divide_by_connected(img, connectivity=2):
+def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarray, int]:
+    """returns separated_imgs, labels, num"""
     separated_imgs = []
     labels, num = label(
         img, connectivity=connectivity, return_num=True
@@ -27,6 +29,7 @@ def draw_line(img, a, b):
 def read_img_add_border(img_name: str) -> np.ndarray:
     """Há momentos em que algumas operações morfológicas sofrem alterações quando os pixels estão no limite da imagem
     para evitar essas distorções, são adicionados alguns pixels no imagem"""
+    # print(os.chdir())
     img = cv2.imread(img_name, 0)
     img_w_border = np.zeros(np.add(img.shape, [int(20) * 4, int(20) * 4]))
     x_offset = y_offset = int(20) * 2

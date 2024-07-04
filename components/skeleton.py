@@ -44,7 +44,7 @@ def prune(skel_img: np.ndarray, size=0, mask=None):
     :return segment_objects: list
     """
     pruned_img = skel_img.copy()
-    cleaned_img = _iterative_prune(pruned_img,2)
+    cleaned_img = _iterative_prune(pruned_img, size)
     _, objects = segment_skeleton(cleaned_img)
     kept_segments = []
     removed_segments = []

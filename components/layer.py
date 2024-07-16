@@ -26,8 +26,6 @@ class Layer:
     """Cada uma das camadas geradas pelo processo de slicing no tratamento de modelos 3D"""
 
     def __init__(self):
-        # TODO: retirar todos os parametros que nao uso
-        # TODO: dar o Typing em todos
         self.name: int
         self.original_img: np.ndarray
         self.odd_layer: int = 0

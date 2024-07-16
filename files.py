@@ -125,50 +125,20 @@ class Paths:
         plt.imsave(name, img, cmap='gray')
         os.chdir(self.home)
         return
+    
+    def save_npz(self, name, array):
+        os.chdir(self.output)
+        img_zigzag_bridge_sparse = scipy.sparse.csr_matrix(array)
+        scipy.sparse.save_npz(name, img_zigzag_bridge_sparse)
+        os.chdir(self.home)
+        return
         
-
     def save_layer_json(self, layer: Layer) -> None:
         os.chdir(self.output)
         copied_layer = copy.deepcopy(layer)
         layer_encoded = jsonpickle.encode(copied_layer)
         with open((f"L{layer.name:03d}.json"), 'w') as f:
-            # for isl in layer.islands:
-            #     if len(isl.thin_walls) > 0:
-            #         self.prepare_tw_json(layer,isl.thin_walls)
             json.dump(layer_encoded, f, indent=1)
         os.chdir(self.home)
         return
     
-    
-    def prepare_tw_json(self, layer, tw: ThinWallRegions):
-        os.chdir(self.output)
-        copied_layer: Layer = copy.deepcopy(layer)
-        # plt.imsave(self.output + "original_img.png", cleared_layer.original_img)
-        # copied_layer.original_img = []
-        # plt.imsave(self.output + "rest_of_picture_f1.png", copied_layer.rest_of_picture_f1)
-        self.save_array_to_npz("thinwall_medial_axis.npz", copied_layer.thin_walls.medial_transform)
-        copied_layer.mask_3_2_int = []
-        copied_layer.mask_3_2_ext = []
-        copied_layer.mask_3_4_int = []
-        copied_layer.mask_3_4_ext = []
-        copied_layer.mask_full_int = []
-        copied_layer.mask_full_ext = []
-        copied_layer.mask_double_int = []
-        copied_layer.mask_double_ext = []
-        copied_layer.mask_half_int = []
-        copied_layer.mask_half_ext = []
-        copied_layer.rest_of_picture_f1 = []
-        copied_layer.thin_walls.medial_transform = []
-        for index, rt in enumerate(copied_layer.thin_walls.regions):
-            plt.imsave(self.output + "thinwall_" + str(index) + "_img.png", rt.img)
-            self.save_array_to_npz("thinwall_" + str(index) + "_origin.npz", rt.origin)
-            self.save_array_to_npz("thinwall_" + str(index) + "_trunk.npz", rt.trunk)
-            plt.imsave(self.output + "thinwall_" + str(index) + "_contorno.png", rt.contorno)
-            rt.img = rt.origin = rt.trunk = rt.contorno = []
-        copied_layer.thin_walls.all_thin_walls = []
-        copied_layer.thin_walls.all_thin_origins = []
-        layer_encoded = jsonpickle.encode(copied_layer)
-        with open('saved/' + name, 'w') as f:
-            json.dump(layer_encoded, f, indent=1)
-        f.close()
-        os.chdir(self.home)

@@ -40,7 +40,7 @@ class Paths:
         n_camadas = len(camadas_imgs_names)
         for root, dirs, files in os.walk(self.output):
                 for f in files:
-                    if f.endswith(".json") or f.endswith(".png"):
+                    if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
                         os.unlink(os.path.join(root, f))
                 for d in dirs:
                     shutil.rmtree(os.path.join(root, d))
@@ -62,7 +62,7 @@ class Paths:
         """No caso de um arquivo 2D cria um objeto Layer apenas (usado mais para testes mesmo)"""
         for root, dirs, files in os.walk(self.output):
                 for f in files:
-                    if f.endswith(".json") or f.endswith(".png"):
+                    if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
                         os.unlink(os.path.join(root, f))
                 for d in dirs:
                     shutil.rmtree(os.path.join(root, d))

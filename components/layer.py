@@ -8,6 +8,7 @@ from components.thin_walls import ThinWallRegions
 from components.offset import OffsetRegions
 from components import bottleneck
 from components import zigzag
+from components import offset
 from timer import Timer
 import numpy as np
 from typing import List
@@ -99,7 +100,7 @@ class Layer:
     ) -> None:
 
         def load_and_make_thinWalls(island:Island):
-            island_img = folders.load_island_img(island)
+            island_img = folders.load_img(island.img)
             island.thin_walls = ThinWallRegions()
             island.thin_walls.make_thin_walls(self.name, island.name, island_img, self.base_frame, self.path_radius_external, mt.make_mask(self,"full_ext"), folders)
             return island
@@ -128,7 +129,7 @@ class Layer:
             #     folders.prepare_tw_json(self, island.thin_walls)
             with Timer("Retirando Paredes finas da camada"):
                 for island in self.islands:
-                    island_img = folders.load_island_img(island)
+                    island_img = folders.load_img(island.img)
                     island_rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
                         folders, island_img, self.base_frame
                     )
@@ -137,12 +138,72 @@ class Layer:
                     island.rest_of_picture_f1 = img_f1_name
                 folders.save_layer_json(self)
         return
+    
+    def make_offsets(self, folders: Paths, void_max : float, external_max : int, internal_max : int) -> None:
+        
+        def load_and_make_levels(island:Island):
+            # rest_of_picture_f1 = folders.load_img(island.rest_of_picture_f1)
+            island.offsets = OffsetRegions()
+            island.offsets.create_levels(folders,
+                                        island.rest_of_picture_f1, 
+                                        mt.make_mask(self,"full_ext"), 
+                                        mt.make_mask(self,"double_ext"),
+                                        self.name,
+                                        island.name)
+            return island
+        
+        def create_loops_in_island(island:Island):
+            for level in island.offsets.levels:
+                level.create_loops(level.name, 
+                                   folders.load_img(level.img), 
+                                   mt.make_mask(self,"full_ext"), 
+                                   self.base_frame)
+            return island
+
+        self.void_max = void_max
+        self.max_external_walls = external_max
+        self.max_internal_walls = internal_max
+        self.offsets = offset.OffsetRegions()
+        with Timer("Criando Lvls"):
+            processed_isl = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = [executor.submit(load_and_make_levels, island) for island in self.islands]
+                for l in concurrent.futures.as_completed(results):
+                    processed_isl.append(l.result())
+            processed_isl.sort(key=lambda x: x.name)
+            self.islands = processed_isl
+        with Timer("Criendo os loops"):
+            processed_regions = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = [executor.submit(create_loops_in_island, island) for island in self.islands]
+                for l in concurrent.futures.as_completed(results):
+                    processed_regions.append(l.result())
+            processed_regions.sort(key=lambda x: x.name)
+            self.islands = processed_regions
+            # levels = self.offsets.create_loops(mask_full_ext, base_frame, levels)
+        with Timer("Criando regiões de influência"):
+            influence_regions = self.offsets.create_influence_regions(self, levels, n_levels)
+        with Timer("Criando as regiões de Offset"):
+            self.offsets.calculate_voids_V2(self.base_frame, self.rest_of_picture_f1, levels, n_levels, self.path_radius_external)
+        with Timer("Retirando regiões da camada"):
+            self.rest_of_picture_f2 = self.offsets.make_regions(self.original_img, 
+                                                                self.base_frame, 
+                                                                self.path_radius_external, 
+                                                                self.void_max, 
+                                                                self.max_external_walls, 
+                                                                self.max_internal_walls,
+                                                                influence_regions, 
+                                                                levels)
+        with Timer("Reunindo todos os loops em uma unica imagem"):
+            self.offsets.all_valid_loops = self.offsets.make_valid_loops(self)
+        # BBBBB = images_tools.sum_imgs_colored([x.img for x in self.offsets.regions])
+        return
 
 def divide_islands(folders: Paths):
     layer_names = folders.list(layers = 1)
     for ln in layer_names:
         layer = folders.load_layer_json(ln)
-        img = folders.load_layer_orig_img(layer)
+        img = folders.load_img(layer.original_img)
         separated_imgs, labels, num = it.divide_by_connected(img)
         islands = []
         for i, si in enumerate(separated_imgs):

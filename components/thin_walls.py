@@ -61,95 +61,7 @@ class ThinWallRegions:
         return
 
     def make_thin_walls(self, layer_name, island_name, island_img: np.ndarray, base_frame, path_radius, mask, folders: Paths):
-        # def close_contour(trunk, i):
-        #     t_ends = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
-        #     if len(t_ends) > 2 and len(pt.img_to_points(trunk)) > path_radius*2:
-        #         #continue
-        #     #elif len(pt.img_to_points(trunk)) < path_radius*2:
-        #         #continue 
-        #         trunk_chain = pt.invert_x_y(ptht.make_a_chain_open_segment(trunk.astype(bool), t_ends))
-        #         n_trilhas = trunk / (2*path_radius)
-        #         n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
-        #         bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
-        #         if np.sum(bridge_origin) > 0:
-        #             ends = pt.img_to_points(sk.find_tips(bridge_origin))
-        #             indices = [trunk_chain.index(x) for x in ends]
-        #             ends = [trunk_chain[np.min(indices)],trunk_chain[np.max(indices)]]
-        #             origin_chain = pt.invert_x_y(ptht.make_a_chain_open_segment(trunk.astype(bool), ends))
-        #             new_origin = origin_chain.copy()
-        #             count_up = 0
-        #             count_down = -1
-        #             start_flag = 0
-        #             end_flag = 0
-        #             while not(start_flag and end_flag):
-        #                 current_pt_1 = origin_chain[count_up]
-        #                 current_pt_2 = origin_chain[count_down]
-        #                 if current_pt_1 in ends: 
-        #                     start_flag = 1
-        #                 else:
-        #                     new_origin.remove(current_pt_1)
-        #                     count_up += 1
-        #                 if current_pt_2 in ends:
-        #                     end_flag = 1
-        #                 else:
-        #                     new_origin.remove(current_pt_2)
-        #                     count_down -= 1
-        #             bridge_origin = it.points_to_img(new_origin, np.zeros_like(island_img))
-        #             try:
-        #                 bridge_img, elementos_contorno, contorno, pontos_extremos = (
-        #                     bottleneck.close_bridge_contour_v2(
-        #                         bridge_origin,
-        #                         base_frame,
-        #                         max_width,
-        #                         island_img,
-        #                         mask,
-        #                         path_radius,
-        #                         sem_galhos
-        #                     )
-        #                 )
-        #                 if np.sum(bridge_img) > 0:
-        #                     all_thin_walls = np.logical_or(all_thin_walls, bridge_img)
-        #                     all_origins = np.logical_or(all_origins, bridge_origin)
-        #                     y_mark = np.where(bridge_origin)[1][
-        #                         np.round(len(np.where(bridge_origin)))]
-        #                     x_mark = np.where(bridge_origin)[0][
-        #                         np.round(len(np.where(bridge_origin)))]
-        #                     origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
-        #                     bridge_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}.png")
-        #                     folders.save_img(bridge_img_name, bridge_img)
-        #                     [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
-        #                     linha1_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linha1.npz")
-        #                     folders.save_npz(linha1_img_name, linha1)
-        #                     linha2_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linha2.npz")
-        #                     folders.save_npz(linha2_img_name, linha2)
-        #                     linhatopo_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linhatopo.npz")
-        #                     folders.save_npz(linhatopo_img_name, linhatopo)
-        #                     linhabaixo_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linhabaixo.npz")
-        #                     folders.save_npz(linhabaixo_img_name, linhabaixo)
-        #                     elementos_contorno = [linha1_img_name, linha2_img_name, linhatopo_img_name, linhabaixo_img_name]
-        #                     trunk_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_trunk.npz")
-        #                     folders.save_npz(trunk_img_name, trunk)
-        #                     trunk = trunk_img_name
-        #                     region = (
-        #                         ThinWall(
-        #                             i,
-        #                             bridge_img_name,
-        #                             trunk,
-        #                             trunk,
-        #                             n_trilhas_max,
-        #                             origin_mark,
-        #                             elementos_contorno,
-        #                             pontos_extremos,
-        #                         )
-        #                     )
-        #                     counter += 1
-        #                     print("OK: fechou contorno")
-        #             except Exception:
-        #                 print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
-        #                 region = ThinWall(0,0,0,0,0,0,0,0)
-        #     else:
-        #         region = ThinWall(0,0,0,0,0,0,0,0)
-        #     return region
+        
         def close_contour(trunk, i):
             t_ends = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
             if len(t_ends) < 2 or len(pt.img_to_points(trunk)) < path_radius*2: 
@@ -160,6 +72,7 @@ class ThinWallRegions:
                 n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
                 bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
                 if np.sum(bridge_origin) > 0:
+                    region = ThinWall(0,"",[],[],0,0,[],[])
                     ends = pt.img_to_points(sk.find_tips(bridge_origin))
                     indices = [trunk_chain.index(x) for x in ends]
                     ends = [trunk_chain[np.min(indices)],trunk_chain[np.max(indices)]]
@@ -271,97 +184,20 @@ class ThinWallRegions:
             results = [executor.submit(close_contour, trunk, i) for i,trunk in enumerate(trunks)]
             for l in concurrent.futures.as_completed(results):
                 processed_trunks.append(l.result())
+        processed_trunks = list(filter(lambda x: x != [], processed_trunks))
+        processed_trunks = list(filter(lambda x: x.img != [], processed_trunks))
         processed_trunks.sort(key=lambda x: x.name)
-        processed_trunks = list(filter(lambda x: x.img == [], processed_trunks))
         self.regions = processed_trunks
 
-        # for i, trunk in enumerate(trunks):
-        #     t_ends = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
-        #     if len(t_ends) < 2:
-        #         continue
-        #     elif len(pt.img_to_points(trunk)) < path_radius*2:
-        #         continue
-        #     trunk_chain = pt.invert_x_y(ptht.make_a_chain_open_segment(trunk.astype(bool), t_ends))
-        #     n_trilhas = trunk / (2*path_radius)
-        #     n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
-        #     bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
-        #     if np.sum(bridge_origin) > 0:
-        #         ends = pt.img_to_points(sk.find_tips(bridge_origin))
-        #         indices = [trunk_chain.index(x) for x in ends]
-        #         ends = [trunk_chain[np.min(indices)],trunk_chain[np.max(indices)]]
-        #         origin_chain = pt.invert_x_y(ptht.make_a_chain_open_segment(trunk.astype(bool), ends))
-        #         new_origin = origin_chain.copy()
-        #         count_up = 0
-        #         count_down = -1
-        #         start_flag = 0
-        #         end_flag = 0
-        #         while not(start_flag and end_flag):
-        #             current_pt_1 = origin_chain[count_up]
-        #             current_pt_2 = origin_chain[count_down]
-        #             if current_pt_1 in ends: 
-        #                 start_flag = 1
-        #             else:
-        #                 new_origin.remove(current_pt_1)
-        #                 count_up += 1
-        #             if current_pt_2 in ends:
-        #                 end_flag = 1
-        #             else:
-        #                 new_origin.remove(current_pt_2)
-        #                 count_down -= 1
-        #         bridge_origin = it.points_to_img(new_origin, np.zeros_like(island_img))
-        #         try:
-        #             bridge_img, elementos_contorno, contorno, pontos_extremos = (
-        #                 bottleneck.close_bridge_contour_v2(
-        #                     bridge_origin,
-        #                     base_frame,
-        #                     max_width,
-        #                     island_img,
-        #                     mask,
-        #                     path_radius,
-        #                     sem_galhos
-        #                 )
-        #             )
-        #             if np.sum(bridge_img) > 0:
-        #                 all_thin_walls = np.logical_or(all_thin_walls, bridge_img)
-        #                 all_origins = np.logical_or(all_origins, bridge_origin)
-        #                 y_mark = np.where(bridge_origin)[1][
-        #                     np.round(len(np.where(bridge_origin)))]
-        #                 x_mark = np.where(bridge_origin)[0][
-        #                     np.round(len(np.where(bridge_origin)))]
-        #                 origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
-        #                 bridge_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}.png")
-        #                 folders.save_img(bridge_img_name, bridge_img)
-        #                 [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
-        #                 linha1_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linha1.npz")
-        #                 folders.save_npz(linha1_img_name, linha1)
-        #                 linha2_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linha2.npz")
-        #                 folders.save_npz(linha2_img_name, linha2)
-        #                 linhatopo_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linhatopo.npz")
-        #                 folders.save_npz(linhatopo_img_name, linhatopo)
-        #                 linhabaixo_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_linhabaixo.npz")
-        #                 folders.save_npz(linhabaixo_img_name, linhabaixo)
-        #                 elementos_contorno = [linha1_img_name, linha2_img_name, linhatopo_img_name, linhabaixo_img_name]
-        #                 trunk_img_name = (f"L{layer_name:03d}_I{island_name:03d}_TW{i:03d}_trunk.npz")
-        #                 folders.save_npz(trunk_img_name, trunk)
-        #                 trunk = trunk_img_name
-        #                 self.regions.append(
-        #                     ThinWall(
-        #                         i,
-        #                         bridge_img_name,
-        #                         trunk,
-        #                         trunk,
-        #                         n_trilhas_max,
-        #                         origin_mark,
-        #                         elementos_contorno,
-        #                         pontos_extremos,
-        #                     )
-        #                 )
-        #                 counter += 1
-        #                 print("OK: fechou contorno")
-        #         except Exception:
-        #             print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
-        
+        all_thin_walls = np.zeros_like(island_img)
+        all_origins = np.zeros_like(island_img)
         #Produzindo as imagens de resumo
+        for reg in self.regions:
+            reg_img = folders.load_img(reg.img)
+            reg_origin_img = folders.load_npz(reg.origin)
+            all_thin_walls = np.logical_or(all_thin_walls, reg_img)
+            all_origins = np.logical_or(all_origins, reg_origin_img)
+
         self.all_thin_walls = (f"L{layer_name:03d}_I{island_name:03d}_all_tw.png")
         folders.save_img(self.all_thin_walls, all_thin_walls)
         self.all_origins = (f"L{layer_name:03d}_I{island_name:03d}_all_tw_origins.png")
@@ -372,7 +208,7 @@ class ThinWallRegions:
         rest_of_picture_f1 = np.zeros(base_frame)
         rest_of_picture_f1 = np.logical_or(original, rest_of_picture_f1)
         for region in self.regions:
-            region_img = folders.load_thin_wall_img(region)
+            region_img = folders.load_img(region.img)
             rest_of_picture_f1 = np.logical_and(
                 rest_of_picture_f1, np.logical_not(region_img)
             )

@@ -34,11 +34,11 @@ def mapping_thin_walls(layer: Layer, folders: Paths):
     thin_img = np.zeros(layer.base_frame, np.uint8)
     # thin_img = thin_img.astype(np.uint8)
     for isl in layer.islands:
-        isl_img = folders.load_island_img(isl)
+        isl_img = folders.load_img(isl.img)
         thin_img = np.add(thin_img, isl_img.astype(np.uint8))
         if len(isl.thin_walls.regions) > 0:
             for tw in isl.thin_walls.regions:
-                reg_img = folders.load_thin_wall_img(tw)
+                reg_img = folders.load_img(tw.img)
                 thin_img = np.add(thin_img, reg_img.astype(np.uint8))
     return thin_img
 

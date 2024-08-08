@@ -1,7 +1,7 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from components.thin_walls import ThinWallRegions
+    from components.thin_walls import ThinWallRegions, ThinWall
     # from components.offset import OffsetRegions
     # from components.bridge import BridgeRegions
     # from components.zigzag import ZigZagRegions
@@ -97,28 +97,39 @@ class Paths:
         os.chdir(self.home)
         return layer
     
-    def load_layer_orig_img(self, layer: Layer) -> np.ndarray:
+    def load_img(self, name:str) -> np.ndarray:
         os.chdir(self.output)
-        img = cv2.imread(layer.original_img, 0)
+        img = cv2.imread(name, 0)
         _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
         img_bin[img_bin > 0] = 1
         return img_bin.astype(np.uint8)
     
+    # def load_layer_orig_img(self, layer: Layer) -> np.ndarray:
+    #     os.chdir(self.output)
+    #     img = cv2.imread(layer.original_img, 0)
+    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+    #     img_bin[img_bin > 0] = 1
+    #     return img_bin.astype(np.uint8)
     
-    def load_island_img(self, island: Island)-> np.ndarray:
+    # def load_island_img(self, island: Island)-> np.ndarray:
+    #     os.chdir(self.output)
+    #     img = cv2.imread(island.img, 0)
+    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+    #     img_bin[img_bin > 0] = 1
+    #     return img_bin.astype(np.uint8)
+    
+    # def load_thin_wall_img(self, tw: ThinWallRegions)-> np.ndarray:
+    #     os.chdir(self.output)
+    #     img = cv2.imread(tw.img, 0)
+    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
+    #     img_bin[img_bin > 0] = 1
+    #     return img_bin.astype(np.uint8)
+    
+    def load_npz(self, name:str)-> np.ndarray:
         os.chdir(self.output)
-        img = cv2.imread(island.img, 0)
-        _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-        img_bin[img_bin > 0] = 1
-        return img_bin.astype(np.uint8)
-    
-    def load_thin_wall_img(self, tw: ThinWallRegions)-> np.ndarray:
-        os.chdir(self.output)
-        img = cv2.imread(tw.img, 0)
-        _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-        img_bin[img_bin > 0] = 1
-        return img_bin.astype(np.uint8)
-    
+        medial_sparse = scipy.sparse.load_npz(name)
+        array = medial_sparse.toarray()
+        return array
 
     def save_img(self, name, img):
         os.chdir(self.output)

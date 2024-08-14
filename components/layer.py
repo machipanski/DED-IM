@@ -37,47 +37,9 @@ class Layer:
         self.nozzle_diam_internal: float = 0
         self.path_radius_external: float = 0
         self.path_radius_internal: float = 0
-        # self.mask_full_ext: np.ndarray
-        # self.mask_half_ext: np.ndarray
-        # self.mask_3_4_ext: np.ndarray
-        # self.mask_3_2_ext: np.ndarray
-        # self.mask_double_ext: np.ndarray
-        # self.mask_full_int: np.ndarray
-        # self.mask_half_int: np.ndarray
-        # self.mask_3_4_int: np.ndarray 
-        # self.mask_3_2_int: np.ndarray
-        # self.mask_double_int: np.ndarray
         self.pxl_per_mm: float = 0
         self.mm_per_pxl: float = 0
         self.islands: List[Island]
-
-        # self.n_camadas = 0
-        # self.void_max = 0
-        # self.max_external_walls = 0
-        # self.max_internal_walls = 0
-        # 
-        # self.offsets = []
-        # self.zigzags = []
-        # self.bridges = []
-        # self.rest_of_picture_f1 = []
-        # self.rest_of_picture_f2 = []
-        # self.rest_of_picture_f3 = []
-        # self.offsets_graph = []
-        # self.offsets_mst = []
-        # self.zigzags_graph = []
-        # self.zigzags_mst = []
-        # self.all_zigzags = []
-        # self.macro_areas = []
-        # self.pos_zigzag_nodes = []
-        # self.external_tree_route = []
-        # self.internal_tree_route = []
-        # self.both_chains = []
-        # self.final_chain = []
-        # self.mudanca = []
-        # self.saltos = []
-        # self.final_route = []
-        # self.n_max = []
-        # self.prohibited_areas = []
 
     def make_input_img(
         self, name: int, img_path: str, dpi:int, odd_layer:bool, layer_height: float, n_camadas: int, arquivos: Paths
@@ -88,7 +50,6 @@ class Layer:
         if odd_layer:
             img = it.rotate_img_cw(img)
             self.odd_layer = 1
-        # self.original_img = img
         self.dpi = dpi
         self.base_frame = img.shape
         self.n_camadas = n_camadas
@@ -113,7 +74,6 @@ class Layer:
         self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
         self.nozzle_diam_external = nozzle_diam_external
         with Timer("Criando paredes finas"):
-
             processed_regions = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [executor.submit(load_and_make_thinWalls, island) for island in self.islands]
@@ -122,11 +82,6 @@ class Layer:
             processed_regions.sort(key=lambda x: x.name)
             self.islands = processed_regions
 
-            # for island in self.islands:
-            #     island_img = folders.load_island_img(island)
-            #     island.thin_walls = ThinWallRegions()
-            #     island.thin_walls.make_thin_walls(self.name, island.name, island_img, self.base_frame, self.path_radius_external, mt.make_mask(self,"full_ext"), folders)
-            #     folders.prepare_tw_json(self, island.thin_walls)
             with Timer("Retirando Paredes finas da camada"):
                 for island in self.islands:
                     island_img = folders.load_img(island.img)
@@ -139,31 +94,24 @@ class Layer:
                 folders.save_layer_json(self)
         return
     
-    def make_offsets(self, folders: Paths, void_max : float, external_max : int, internal_max : int) -> None:
+    def make_offsets(
+            self, folders: Paths, void_max : float, external_max : int, internal_max : int
+    ) -> None:
         
-        def load_and_make_levels(island:Island):
-            # rest_of_picture_f1 = folders.load_img(island.rest_of_picture_f1)
-            island.offsets = OffsetRegions()
-            island.offsets.create_levels(folders,
-                                        island.rest_of_picture_f1, 
-                                        mt.make_mask(self,"full_ext"), 
-                                        mt.make_mask(self,"double_ext"),
-                                        self.name,
-                                        island.name)
-            return island
-        
-        def create_loops_in_island(island:Island):
-            for level in island.offsets.levels:
-                level.create_loops(level.name, 
-                                   folders.load_img(level.img), 
-                                   mt.make_mask(self,"full_ext"), 
-                                   self.base_frame)
-            return island
-
         self.void_max = void_max
         self.max_external_walls = external_max
         self.max_internal_walls = internal_max
-        self.offsets = offset.OffsetRegions()
+        #self.offsets = offset.OffsetRegions()
+
+        def load_and_make_levels(island:Island) -> Island:
+            island.offsets = OffsetRegions()
+            island.offsets.create_levels(folders,
+                                    island.rest_of_picture_f1, 
+                                    mt.make_mask(self,"full_ext"), 
+                                    mt.make_mask(self,"double_ext"),
+                                    self.name,
+                                    island.name)
+            return island
         with Timer("Criando Lvls"):
             processed_isl = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
@@ -172,19 +120,61 @@ class Layer:
                     processed_isl.append(l.result())
             processed_isl.sort(key=lambda x: x.name)
             self.islands = processed_isl
-        with Timer("Criendo os loops"):
+
+        def create_loops_in_island(original_img, island:Island) -> Island:
+            for level in island.offsets.levels:
+                level.create_loops(level.name, 
+                                   folders.load_img(level.img), 
+                                   mt.make_mask(self,"full_ext"), 
+                                   self.base_frame,
+                                   original_img,
+                                   folders,
+                                   self.name,
+                                   island.name,
+                                   level.name)
+            return island
+        with Timer("Criando os loops"):
             processed_regions = []
+            original_img = folders.load_img(self.original_img)
             with concurrent.futures.ThreadPoolExecutor() as executor:
-                results = [executor.submit(create_loops_in_island, island) for island in self.islands]
+                results = [executor.submit(create_loops_in_island, original_img, island) for island in self.islands]
                 for l in concurrent.futures.as_completed(results):
                     processed_regions.append(l.result())
             processed_regions.sort(key=lambda x: x.name)
             self.islands = processed_regions
             # levels = self.offsets.create_loops(mask_full_ext, base_frame, levels)
+
+        def create_influence_regions_in_island(base_frame, island:Island) -> Island:
+            island.offsets.create_influence_regions(base_frame, folders)
+            return island
         with Timer("Criando regiões de influência"):
-            influence_regions = self.offsets.create_influence_regions(self, levels, n_levels)
+            processed_regions = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = [executor.submit(create_influence_regions_in_island, self.base_frame, island) for island in self.islands]
+                for l in concurrent.futures.as_completed(results):
+                    processed_regions.append(l.result())
+            processed_regions.sort(key=lambda x: x.name)
+            self.islands = processed_regions
+            # influence_regions = self.offsets.create_influence_regions(self, levels, n_levels)
+
+        def calculate_island_voids(base_frame, island:Island):
+            island.offsets.calculate_voids_V2(self.base_frame, 
+                                              island.rest_of_picture_f1, 
+                                              island.offsets.levels, 
+                                              island.offsets.n_levels, 
+                                              self.path_radius_external)
+            return island
         with Timer("Criando as regiões de Offset"):
-            self.offsets.calculate_voids_V2(self.base_frame, self.rest_of_picture_f1, levels, n_levels, self.path_radius_external)
+            processed_regions = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = [executor.submit(calculate_island_voids, self.base_frame, island) for island in self.islands]
+                for l in concurrent.futures.as_completed(results):
+                    processed_regions.append(l.result())
+            processed_regions.sort(key=lambda x: x.name)
+            self.islands = processed_regions
+            # self.offsets.calculate_voids_V2(self.base_frame, self.rest_of_picture_f1, levels, n_levels, self.path_radius_external)
+
+
         with Timer("Retirando regiões da camada"):
             self.rest_of_picture_f2 = self.offsets.make_regions(self.original_img, 
                                                                 self.base_frame, 
@@ -194,6 +184,7 @@ class Layer:
                                                                 self.max_internal_walls,
                                                                 influence_regions, 
                                                                 levels)
+            
         with Timer("Reunindo todos os loops em uma unica imagem"):
             self.offsets.all_valid_loops = self.offsets.make_valid_loops(self)
         # BBBBB = images_tools.sum_imgs_colored([x.img for x in self.offsets.regions])

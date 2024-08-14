@@ -26,6 +26,12 @@ def draw_line(img, a, b):
     bf = tuple(np.flip(b))
     return cv2.line(img.astype(np.uint8), af, bf, 1, 1)
 
+def esta_contido(a, b):
+    """Analisa se a área a tem todos os pixels dentro de b,
+    *está estabelecido um limite máximo de pixels para considerar
+     dentro, mas se possível quero voltar à forma anterior"""
+    return not (np.logical_and(a, np.logical_not(b)).any())
+
 def read_img_add_border(img_name: str) -> np.ndarray:
     """Há momentos em que algumas operações morfológicas sofrem alterações quando os pixels estão no limite da imagem
     para evitar essas distorções, são adicionados alguns pixels no imagem"""
@@ -103,12 +109,10 @@ def take_the_bigger_area(img: np.ndarray):
     area_sums = list(map(lambda x: np.sum(x), separated_areas))
     return separated_areas[np.argmax(area_sums)]
 
-def fill_internal_area(contour_img, original_img):
+def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:
     internal_area = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)
     internal_area = np.logical_or(internal_area, contour_img)  # OR reinsere a trilha
-    internal_area = np.logical_and(
-        internal_area, original_img
-    )  # AND para garantir os buracos
+    internal_area = np.logical_and(internal_area, original_img)  # AND para garantir os buracos
     return internal_area
 
 def restore_continuous(line_img):

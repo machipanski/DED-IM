@@ -104,27 +104,6 @@ class Paths:
         img_bin[img_bin > 0] = 1
         return img_bin.astype(np.uint8)
     
-    # def load_layer_orig_img(self, layer: Layer) -> np.ndarray:
-    #     os.chdir(self.output)
-    #     img = cv2.imread(layer.original_img, 0)
-    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-    #     img_bin[img_bin > 0] = 1
-    #     return img_bin.astype(np.uint8)
-    
-    # def load_island_img(self, island: Island)-> np.ndarray:
-    #     os.chdir(self.output)
-    #     img = cv2.imread(island.img, 0)
-    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-    #     img_bin[img_bin > 0] = 1
-    #     return img_bin.astype(np.uint8)
-    
-    # def load_thin_wall_img(self, tw: ThinWallRegions)-> np.ndarray:
-    #     os.chdir(self.output)
-    #     img = cv2.imread(tw.img, 0)
-    #     _ , img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-    #     img_bin[img_bin > 0] = 1
-    #     return img_bin.astype(np.uint8)
-    
     def load_npz(self, name:str)-> np.ndarray:
         os.chdir(self.output)
         medial_sparse = scipy.sparse.load_npz(name)

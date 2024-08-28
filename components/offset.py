@@ -31,12 +31,12 @@ class Area:
 class Loop:
     """Cada contorno fechado em um level gerado pelos Offsets"""
 
-    def __init__(self, nome, img_name, origem, trail_name):
+    def __init__(self, nome, img, origem, trail):
         self.name = nome
         self.offset_level = origem
         self.internal_area = []
-        self.trail = trail_name
-        self.route = img_name
+        self.trail = trail
+        self.route = img
         self.region = ""
         self.lost_area = []
         self.lost_area_sum = 0
@@ -47,95 +47,86 @@ class Loop:
 class Level:
     """Cada elemento sequencial gerado pela operação de Offset em uma imagem"""
 
-    def __init__(self, img: str, nome, pai, area):
+    def __init__(self, img: str, nome, pai, area, path):
         self.name = nome
         self.parent = pai
         self.img = img
         self.outer_loops: List[Loop] = []
         self.hole_loops: List[Loop] = []
         self.area = area
-        # self.filled_area = area
+        self.path = path
         self.outer_areas = []
         self.hole_areas = []
+        self.area_lost = []
 
     def create_level(
         self,
-        folders: Paths,
         mask_full: np.ndarray,
         mask_double: np.ndarray,
         nome_filho,
-        layer_name,
-        island_name,
+        path,
         first=False,
-    ):
+    ) -> Level:
         """Erode + Openning = New Offset Level"""
-        img = folders.load_img(self.img)
+        # img = folders.load_img(self.img)
         if first:
-            new_lvl_img = mt.erosion(img, kernel_img=mask_full)
+            new_lvl_img = mt.erosion(self.img, kernel_img=mask_full)
             new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_full)
             new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_full)
         else:
-            new_lvl_img = mt.erosion(img, kernel_img=mask_double)
+            new_lvl_img = mt.erosion(self.img, kernel_img=mask_double)
             new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_double)
             new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_full)
-
-        name_new_lvl = f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}.png"
-        folders.save_img(name_new_lvl, new_lvl_img)
-        new_lvl_img = name_new_lvl
-
-        name_new_lvl_area = (
-            f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}_Area.png"
-        )
-        folders.save_img(name_new_lvl_area, new_lvl_area)
-        new_lvl_area = name_new_lvl_area
-
-        return Level(new_lvl_img, nome_filho, self.name, new_lvl_area)
+        # name_new_lvl = f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}.png"
+        # folders.save_img(name_new_lvl, new_lvl_img)
+        # new_lvl_img = name_new_lvl
+        # name_new_lvl_area = (f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}_Area.png")
+        # folders.save_img(name_new_lvl_area, new_lvl_area)
+        # new_lvl_area = name_new_lvl_area
+        return Level(new_lvl_img, nome_filho, self.name, new_lvl_area, path)
 
     def create_loops(
         self,
-        name,
-        img,
         mask,
         base_frame,
-        orig_img,
-        folders: Paths,
+        rest_f1,
         layer_name,
         island_name,
         level_name,
     ):
         """Usa cv2.findContours() para separar cada loop dentro imagem do Offset Level"""
-        contours, hierarchy = mt.detect_contours(img, return_hierarchy=True)
+        contours, hierarchy = mt.detect_contours(self.img, return_hierarchy=True)
         in_counter = 0
         out_counter = 0
         for i in np.arange(0, len(contours)):
             loop = drawContours(np.zeros(base_frame), contours, i, 1)
             if hierarchy[0][i][3] == -1:
-                name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}.npz"
-                folders.save_npz(name_loop, loop)
-                trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_trail.npz"
+                # name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}.npz"
+                # folders.save_npz(name_loop, loop)
+                # trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_trail.npz"
+                # folders.save_npz(trail_name, trail_img)
+                # name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_Area.png"
+                # folders.save_img(name_loop_area, self.outer_loops[-1].internal_area)
                 trail_img = mt.dilation(loop, kernel_img=mask)
-                folders.save_npz(trail_name, trail_img)
-                self.outer_loops.append(Loop(out_counter, name_loop, name, trail_name))
+                self.outer_loops.append(Loop(out_counter, loop, self.name, trail_img))
                 self.outer_loops[-1].internal_area = it.fill_internal_area(
-                    folders.load_npz(self.outer_loops[-1].trail), orig_img
+                    self.outer_loops[-1].trail, rest_f1
                 )
-                name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_Area.png"
-                folders.save_img(name_loop_area, self.outer_loops[-1].internal_area)
-                self.outer_loops[-1].internal_area = name_loop_area
+                # self.outer_loops[-1].internal_area = name_loop_area
                 out_counter += 1
             else:
-                name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}.npz"
-                folders.save_npz(name_loop, loop)
-                trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_trail.npz"
+                # name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}.npz"
+                # folders.save_npz(name_loop, loop)
+                # trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_trail.npz"
+                # folders.save_npz(trail_name, trail_img)
+                # name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_Area.png"
+                # folders.save_img(name_loop_area, self.hole_loops[-1].internal_area)
                 trail_img = mt.dilation(loop, kernel_img=mask)
-                folders.save_npz(trail_name, trail_img)
-                self.hole_loops.append(Loop(in_counter, name_loop, name, trail_name))
+                self.hole_loops.append(Loop(in_counter, loop, self.name, trail_img))
                 self.hole_loops[-1].internal_area = it.fill_internal_area(
-                    folders.load_npz(self.hole_loops[-1].trail), orig_img
+                    self.hole_loops[-1].trail, rest_f1
                 )
-                name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_Area.png"
-                folders.save_img(name_loop_area, self.hole_loops[-1].internal_area)
-                self.hole_loops[-1].internal_area = name_loop_area
+                # self.hole_loops[-1].internal_area = name_loop_area
                 in_counter += 1
         return self
 
@@ -153,18 +144,18 @@ class Level:
             loop.lost_area_sum = np.sum(loop.lost_area)
         return
 
-    def divide_areas(self, base_frame, original_img, path_radius, folders:Paths):
+    def divide_areas(self, base_frame, path_radius):
         areas, A, B = it.divide_by_connected(self.area_lost)
         flags_areas_loops = [0 for x in areas]
         composed_areas = []
         for i, area in enumerate(areas):
             loops_inside = []
             for loop in self.outer_loops:
-                if np.logical_and(folders.load_npz(loop.route), area).any():
+                if np.logical_and(loop.route, area).any():
                     loops_inside.append((self.name, 0, loop.name))
                     flags_areas_loops[i] = 1
             for loop in self.hole_loops:
-                if np.logical_and(folders.load_npz(loop.route), area).any():
+                if np.logical_and(loop.route, area).any():
                     loops_inside.append((self.name, 1, loop.name))
                     flags_areas_loops[i] = 1
             final_area = Area(i, area, self.name, loops_inside)
@@ -173,7 +164,7 @@ class Level:
         for c_area in composed_areas:
             if len(c_area.loops_inside) >= 2:
                 separated_loops = separated_loops + self.divide_composed_areas(
-                    c_area, path_radius, folders
+                    c_area, path_radius
                 )
             else:
                 separated_loops.append(c_area)
@@ -192,14 +183,14 @@ class Level:
                 not_used_areas = np.logical_or(not_used_areas, area)
         return not_used_areas
 
-    def divide_composed_areas(self, area, path_radius, folders:Paths):
+    def divide_composed_areas(self, area, path_radius):
         """Quando uma area tem maus de um loop, qual é a área ideal de CADA LOOP?"""
         A = np.zeros_like(area.img)
         for loop in area.loops_inside:
             if loop[1] == 0:
-                A = np.add(A, folders.load_npz(self.outer_loops[loop[2]].route))
+                A = np.add(A, self.outer_loops[loop[2]].route)
             else:
-                A = np.add(A, folders.load_npz(self.hole_loops[loop[2]].route))
+                A = np.add(A, self.hole_loops[loop[2]].route)
         distance_map = distance_transform_edt(area.img)
         A = mt.dilation(A, kernel_size=path_radius)
         _, markers, _ = it.divide_by_connected(A)
@@ -213,12 +204,13 @@ class Level:
         for divided_area in new_areas:
             for loop in area.loops_inside:
                 if loop[1] == 0:
-                    loop_route = folders.load_npz(self.outer_loops[loop[2]].route)
+                    loop_route = self.outer_loops[loop[2]].route
                 else:
-                    loop_route = folders.load_npz(self.hole_loops[loop[2]].route)
+                    loop_route = self.hole_loops[loop[2]].route
                 if np.logical_and(loop_route, divided_area).any():
                     children_areas.append(Area("test", divided_area, self.name, [loop]))
         return children_areas
+
 
 class OffsetRegions:
 
@@ -234,51 +226,45 @@ class OffsetRegions:
     def calculate_voids(
         self,
         base_frame,
-        start_of_process_img_name,
+        start_of_process_img,
         levels: List[Level],
         n_levels,
         path_radius,
-        folders: Paths,
     ):
-        start_of_process_img = folders.load_img(start_of_process_img_name)
-        offset_result = self.calculate_covered_area(base_frame, levels, folders)
-        for l in np.arange(0, n_levels):
-            if l == 0:
-                levels[l].area_lost = np.logical_and(
-                    start_of_process_img,
-                    np.logical_not(folders.load_img(levels[l].area)),
-                )
-            else:
-                levels[l].area_lost = np.logical_and(
-                    folders.load_img(levels[l - 1].area),
-                    np.logical_not(folders.load_img(levels[l].area)),
-                )
-            not_used_area = levels[l].divide_areas(
-                base_frame, start_of_process_img, path_radius, folders
-            )
-            if np.sum(not_used_area) > 0:
-                levels[l - 1].area_lost = np.logical_or(
-                    levels[l - 1].area_lost, not_used_area
-                )
-                _ = levels[l - 1].divide_areas(
-                    base_frame, start_of_process_img, path_radius, folders
-                )
-                levels[l - 1].calculate_lost_area(offset_result)
-            levels[l].calculate_lost_area(offset_result)
-        # AAAAA = levels[0].area_lost
+        if np.sum(start_of_process_img) > 0:
+            offset_result = self.calculate_covered_area(base_frame, levels)
+            for l in np.arange(0, n_levels):
+                if l == 0:
+                    levels[l].area_lost = np.logical_and(
+                        start_of_process_img,
+                        np.logical_not(levels[l].area),
+                    )
+                else:
+                    levels[l].area_lost = np.logical_and(
+                        levels[l - 1].area,
+                        np.logical_not(levels[l].area),
+                    )
+                not_used_area = levels[l].divide_areas(base_frame, path_radius)
+                if (np.sum(not_used_area) > 0) and (l > 0):
+                    levels[l - 1].area_lost = np.logical_or(
+                        levels[l - 1].area_lost, not_used_area
+                    )
+                    _ = levels[l - 1].divide_areas(base_frame, path_radius)
+                    levels[l - 1].calculate_lost_area(offset_result)
+                levels[l].calculate_lost_area(offset_result)
+            # AAAAA = levels[0].area_lost
         return
 
-    def calculate_covered_area(self, base_frame, levels, folders: Paths):
+    def calculate_covered_area(self, base_frame, levels):
         offset_simulated = np.zeros(base_frame)
         for level in levels:
             for loop in level.outer_loops + level.hole_loops:
-                trail = folders.load_npz(loop.trail)
+                trail = loop.trail
                 offset_simulated = np.logical_or(offset_simulated, trail)
         return offset_simulated
 
     def create_levels(
         self,
-        folders,
         rest_of_picture_f1,
         mask_full,
         mask_double,
@@ -288,49 +274,68 @@ class OffsetRegions:
         """Vai de fora para dentro realizando erosões e organiza em níveis
         até não haver mais pixels a se processar"""
         levels = []
+        new_levels_imgs = []
+        new_areas_imgs = []
         n_levels = 0
-        atual = Level(rest_of_picture_f1, 0, "", rest_of_picture_f1)
+        atual = Level(
+            rest_of_picture_f1,
+            f"Lvl_{n_levels:03d}",
+            "",
+            rest_of_picture_f1,
+            f"/{layer_name}/{island_name}/offsets/levels",
+        )
         atual = atual.create_level(
-            folders,
             mask_full,
             mask_double,
-            n_levels,
-            layer_name,
-            island_name,
+            f"Lvl_{n_levels:03d}",
+            f"/{layer_name}/{island_name}/offsets/levels",
             first=True,
         )
+        # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
+        # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
         levels.append(atual)
         n_levels += 1
         atual = atual.create_level(
-            folders, mask_full, mask_double, n_levels, layer_name, island_name
+            mask_full,
+            mask_double,
+            f"Lvl_{n_levels:03d}",
+            f"/{layer_name}/{island_name}/offsets/levels",
         )
-        while (
-            np.sum(folders.load_img(atual.img)) > 0
-        ):  # Enquanto a imagem não estiver vazia1
+        # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
+        # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
+        while np.sum(atual.img) > 0:
             levels.append(atual)
             n_levels += 1
             atual = atual.create_level(
-                folders, mask_full, mask_double, n_levels, layer_name, island_name
+                mask_full,
+                mask_double,
+                f"Lvl_{n_levels:03d}",
+                f"/{layer_name}/{island_name}/offsets/levels",
             )
+            # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
+            # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
         print(f"Ilha: {island_name} Número de Níveis: {n_levels}")
         self.levels = levels
         self.n_levels = n_levels
+        # return {
+        #     "levels" : new_levels_imgs,
+        #     "areas" : new_areas_imgs,
+        #     }
         return
 
-    def create_influence_regions(self, base_frame, folders):
+    def create_influence_regions(self, base_frame):
         """Faz uma varredura de dentro para fora nos Levels da Layer, se o contorno externo está dentro do outro
         no level anterior são do mesmo grupo, se há dois ou nenhum, então é um novo grupo
         Depois disso, faz o mesmo de fora para dentro com os contornos internos dos buracos
         """
         influence_regions = []
+        # loops_internal_areas = {}
+        # for i, level in enumerate(self.levels):
+        #     loops_internal_areas[str(i)] = {"internal":[], "external":[]}
         seq_in_out = np.arange(self.n_levels - 1, -1, -1)
         seq_out_in = np.arange(0, self.n_levels)
-        region_counter = self.label_offset_regions(
-            self.levels, seq_in_out, 0, 1, folders
-        )
-        region_counter_holes = self.label_offset_regions(
-            self.levels, seq_out_in, region_counter, 0, folders
-        )
+        region_counter = self.label_offset_regions(seq_in_out, 0, 1)
+        region_counter_holes = self.label_offset_regions(seq_out_in, region_counter, 0)
         """Processo de eliminação de cada img. a região final é a img que contém completamente as outras"""
         influence_regions = self.sum_areas(
             self.levels,
@@ -338,7 +343,6 @@ class OffsetRegions:
             np.arange(1, region_counter + 1),
             0,
             base_frame,
-            folders,
         )  # agrupa todas as áreas de loops externos
         influence_regions = self.sum_areas(
             self.levels,
@@ -346,7 +350,6 @@ class OffsetRegions:
             np.arange(region_counter + 1, region_counter_holes + 1),
             1,
             base_frame,
-            folders,
         )  # agrupa todas as áreas de loops internos
         """No final retira as regiões mais internas das mais externas"""
         pare = 0
@@ -369,18 +372,16 @@ class OffsetRegions:
         self.influence_regions = influence_regions
         return
 
-    def label_offset_regions(
-        self, levels: List[Level], sequence, counter_start, order, folders: Paths
-    ):
+    def label_offset_regions(self, sequence, counter_start, order):
         """Separa uma região para cada loop ao percoreer as camadas"""
         region_counter = counter_start
         loop_group = []
         loop_group_2 = []
         for level_number in sequence:
             if order == 1:
-                loop_group = levels[level_number].outer_loops
+                loop_group = self.levels[level_number].outer_loops
             elif order == 0:
-                loop_group = levels[level_number].hole_loops
+                loop_group = self.levels[level_number].hole_loops
             for loop_cam_atual in loop_group:
                 contidos = 0
                 tag_grupo = 0
@@ -391,13 +392,13 @@ class OffsetRegions:
                     )
                 else:
                     if order == 1:
-                        loop_group_2 = levels[level_number + 1].outer_loops
+                        loop_group_2 = self.levels[level_number + 1].outer_loops
                     elif order == 0:
-                        loop_group_2 = levels[level_number - 1].hole_loops
+                        loop_group_2 = self.levels[level_number - 1].hole_loops
                     for loop_cam_anterior in loop_group_2:
                         if it.esta_contido(
-                            folders.load_img(loop_cam_anterior.internal_area),
-                            folders.load_img(loop_cam_atual.internal_area),
+                            loop_cam_anterior.internal_area,
+                            loop_cam_atual.internal_area,
                         ):
                             contidos += 1
                             tag_grupo = loop_cam_anterior.region
@@ -418,13 +419,12 @@ class OffsetRegions:
 
     def make_regions(
         self,
-        original_img,
+        rest_f1,
         base_frame,
         path_radius_external,
         void_max,
         max_external_walls,
         max_internal_walls,
-        folders:Paths
     ):
         acceptable = self.tag_loops_by_voids(
             base_frame,
@@ -434,7 +434,6 @@ class OffsetRegions:
             max_internal_walls,
             self.influence_regions,
             self.levels,
-            folders
         )
         counter = 0
         level_accepted = 0
@@ -443,26 +442,32 @@ class OffsetRegions:
             self.influence_regions, key=lambda x: min(sublist[0] for sublist in x.loops)
         )
         all_loops_descrition = sum([x.loops for x in influence_regions], [])
-        loops_accepted_desc = list(filter(lambda x: x[0] == 0, all_loops_descrition))
+        loops_accepted_desc = list(filter(lambda x: x[0] == "Lvl_000", all_loops_descrition))
         loops_accepted = []
         ideal_sum = np.sum(disk(path_radius_external))
         for loop in loops_accepted_desc:
             if loop[1] == 0:
-                loops_accepted.append(self.levels[loop[0]].outer_loops[loop[2]])
+                loop_level = int(loop[0].replace("Lvl_",""))
+                loops_accepted.append(
+                    self.levels[loop_level].outer_loops[loop[2]]
+                )
             elif loop[1] == 1:
-                loops_accepted.append(self.levels[loop[0]].hole_loops[loop[2]])
+                loops_accepted.append(
+                    self.levels[loop_level].hole_loops[loop[2]]
+                )
         for region in influence_regions:
             fil_region_img = np.zeros(base_frame)
             fil_region_loops = []
             reference_region_img = np.zeros(base_frame)
             for loop in region.loops:
                 candidate = {}
+                loop_level = int(loop[0].replace("Lvl_",""))
                 if loop[1] == 0:
-                    candidate = self.levels[loop[0]].outer_loops[loop[2]]
+                    candidate = self.levels[loop_level].outer_loops[loop[2]]
                 elif loop[1] == 1:
-                    candidate = self.levels[loop[0]].hole_loops[loop[2]]
+                    candidate = self.levels[loop_level].hole_loops[loop[2]]
                 reference_region_img = np.logical_or(
-                    reference_region_img, folders.load_npz(candidate.trail)
+                    reference_region_img, candidate.trail
                 )
                 candidate.lost_area_sum = np.sum(candidate.lost_area)
                 candidate_voides, A, B = it.divide_by_connected(candidate.lost_area)
@@ -482,7 +487,7 @@ class OffsetRegions:
                     )
                     if candidate in loops_accepted:
                         loops_accepted = loops_accepted + candidate.loops_filhos
-                        fil_region_img = np.logical_or(fil_region_img, folders.load_npz(candidate.trail))
+                        fil_region_img = np.logical_or(fil_region_img, candidate.trail)
                         fil_region_loops.append(candidate)
                 else:
                     print(
@@ -498,7 +503,7 @@ class OffsetRegions:
                 all_loops_img = np.logical_or(all_loops_img, fil_region_img)
                 counter += 1
         self.n_regions = counter
-        rest = np.logical_and(folders.load_img(original_img), np.logical_not(all_loops_img))
+        rest = np.logical_and(rest_f1, np.logical_not(all_loops_img))
         _, labels, n_labels = it.divide_by_connected(rest)
         size_label_bfr = 0
         index_main_body = 0
@@ -509,23 +514,15 @@ class OffsetRegions:
                 size_label_bfr = size_label_now
         return labels == index_main_body
 
-    def make_valid_loops(self, base_frame, folders:Paths):
+    def make_valid_loops(self, base_frame):
         """Cria uma matriz com todas as rotas em cada Level somadas para a Layer"""
         all_valid_loops = np.zeros(base_frame)
         for region in self.regions:
             for loop in region.loops:
-                all_valid_loops = np.logical_or(all_valid_loops, folders.load_npz(loop.route))
+                all_valid_loops = np.logical_or(all_valid_loops, loop.route)
         return all_valid_loops
 
-    def sum_areas(
-        self,
-        levels,
-        influence_regions,
-        interval,
-        outer_inner,
-        base_frame,
-        folders: Paths,
-    ):
+    def sum_areas(self, levels, influence_regions, interval, outer_inner, base_frame):
         """Para cada numero de região, percorre todas as layers em busca de loops
         com esse numero. Quando encontra, faz um OR para somar as áreas internas ao total da região
         """
@@ -540,9 +537,7 @@ class OffsetRegions:
                     loop_group = level.hole_loops
                 for loop in loop_group:
                     if loop.region == i:
-                        essa_reg = np.logical_or(
-                            essa_reg, folders.load_img(loop.internal_area)
-                        )
+                        essa_reg = np.logical_or(essa_reg, loop.internal_area)
                         loops_inside.append([level.name, outer_inner, loop.name])
             influence_regions.append(Region(i, essa_reg, loops_inside))
         return influence_regions
@@ -556,7 +551,6 @@ class OffsetRegions:
         max_internal_walls,
         influence_regions,
         levels,
-        folders:Paths
     ):
         offset_simulated = np.zeros(base_frame)
         ideal_sum = np.sum(disk(path_radius_external))
@@ -564,11 +558,14 @@ class OffsetRegions:
         for region in influence_regions:
             internal_counter = 0
             external_counter = 0
+            aaaaaaa = []
             for loop in region.loops:
+                loop_level = int(loop[0].replace("Lvl_",""))
                 if loop[1] == 1:
-                    thisloop = levels[loop[0]].hole_loops[loop[2]]
+                    thisloop = levels[loop_level].hole_loops[loop[2]]
                 elif loop[1] == 0:
-                    thisloop = levels[loop[0]].outer_loops[loop[2]]
+                    thisloop = levels[loop_level].outer_loops[loop[2]]
+                aaaaaaa.append(thisloop)
                 voids, _, _ = it.divide_by_connected(thisloop.lost_area)
                 voids_sums = np.divide([np.sum(x) for x in voids], ideal_sum)
                 # AAAA = np.add(thisloop.lost_area, thisloop.trail * 2)
@@ -576,7 +573,7 @@ class OffsetRegions:
                     thisloop.acceptable = 0
                 else:
                     thisloop.acceptable = 1
-                    offset_simulated = np.logical_or(offset_simulated, folders.load_npz(thisloop.trail))
+                    offset_simulated = np.logical_or(offset_simulated, thisloop.trail)
                     if loop[1] == 1:
                         internal_counter += 1
                     if loop[1] == 0:

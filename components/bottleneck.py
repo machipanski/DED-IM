@@ -1,3 +1,4 @@
+from unittest import skip
 from cv2 import getStructuringElement, MORPH_RECT
 import numpy as np
 from components import morphology_tools as mt
@@ -171,10 +172,14 @@ def close_bridge_contour_v2(
             opened = mt.opening(bridge_img, kernel_size=1)
             linha1b = np.logical_and(linha1, opened)
             linha2b = np.logical_and(linha2, opened)
-            linha1c = it.restore_continuous(linha1b)
-            linha2c = it.restore_continuous(linha2b)
-            bridge_img, linhatopo, linhabaixo, bridge_border, linha1, linha2 = close_area_from_lines(linha1c, linha2c, base_frame, new_base)
-            bridge_border_seq = path_tools.img_to_chain(bridge_border)
+            if linha1b.any() and linha2b.any():
+                linha1c = it.restore_continuous(linha1b)
+                linha2c = it.restore_continuous(linha2b)
+                bridge_img, linhatopo, linhabaixo, bridge_border, linha1, linha2 = close_area_from_lines(linha1c, linha2c, base_frame, new_base)
+                bridge_border_seq = path_tools.img_to_chain(bridge_border)
+            else:
+                extreme_external_points = [[],[],[],[]]
+                break
         bridge_border_seq = bridge_border_seq[0]
         ends_topo = pt.img_to_points(sk.find_tips(linhatopo))
         ends_baixo = pt.img_to_points(sk.find_tips(linhabaixo))

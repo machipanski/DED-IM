@@ -1,5 +1,6 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from components.layer import Layer
     from typing import List
@@ -11,6 +12,7 @@ from skimage.measure import label
 from skimage.segmentation import flood_fill
 import os
 
+
 def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarray, int]:
     """returns separated_imgs, labels, num"""
     separated_imgs = []
@@ -21,16 +23,19 @@ def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarra
         separated_imgs.append(labels == i + 1)  # cria a imagem da area
     return separated_imgs, labels, num
 
+
 def draw_line(img, a, b):
     af = tuple(np.flip(a))
     bf = tuple(np.flip(b))
     return cv2.line(img.astype(np.uint8), af, bf, 1, 1)
+
 
 def esta_contido(a, b):
     """Analisa se a área a tem todos os pixels dentro de b,
     *está estabelecido um limite máximo de pixels para considerar
      dentro, mas se possível quero voltar à forma anterior"""
     return not (np.logical_and(a, np.logical_not(b)).any())
+
 
 def read_img_add_border(img_name: str) -> np.ndarray:
     """Há momentos em que algumas operações morfológicas sofrem alterações quando os pixels estão no limite da imagem
@@ -93,12 +98,14 @@ def image_subtract(gray_img1: np.ndarray, gray_img2: np.ndarray) -> np.ndarray:
     new_img = new_img.astype(np.uint8)  # typecast image to 8-bit image
     return new_img
 
+
 def sum_imgs(imgs_list: List[np.ndarray]) -> np.ndarray:
     """recieves a list of images and add them up"""
     all = np.zeros_like(imgs_list[0], np.uint16)
     for img in imgs_list:
         all = np.add(img.astype(np.uint16), all)
     return all
+
 
 def take_the_bigger_area(img: np.ndarray):
     new_img, areas_n = label(img, return_num=True)
@@ -109,17 +116,22 @@ def take_the_bigger_area(img: np.ndarray):
     area_sums = list(map(lambda x: np.sum(x), separated_areas))
     return separated_areas[np.argmax(area_sums)]
 
+
 def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:
     internal_area = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)
     internal_area = np.logical_or(internal_area, contour_img)  # OR reinsere a trilha
-    internal_area = np.logical_and(internal_area, original_img)  # AND para garantir os buracos
+    internal_area = np.logical_and(
+        internal_area, original_img
+    )  # AND para garantir os buracos
     return internal_area
+
 
 def restore_continuous(line_img):
     newline = np.add(line_img, mt.find_failures(line_img, np.zeros_like(line_img)))
     newline = np.add(newline, mt.find_crosses(newline, np.zeros_like(newline)))
     newline = take_the_bigger_area(newline)
     return mt.thinning(newline)
+
 
 def points_to_img(pts_list, img):
     for p in pts_list:

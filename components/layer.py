@@ -7,10 +7,8 @@ from components import images_tools as it
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
 from components.offset import OffsetRegions
-from components import bottleneck
-from components import zigzag
-from components import offset
-from components.offset import Level
+from components.zigzag import ZigZagRegions
+from components.bottleneck import BridgeRegions
 from timer import Timer
 import numpy as np
 from typing import List
@@ -19,13 +17,25 @@ from functools import wraps
 
 
 class Island:
-    def __init__(self, name: int, img_name: str):
-        self.name = name
-        self.img = img_name
+    def __init__(self, *args, **kwargs):
+        self.name: str
+        self.img = []
         self.thin_walls: ThinWallRegions
         self.offsets: OffsetRegions
-        self.rest_of_picture_f1: np.ndarray = []
-        self.rest_of_picture_f2: np.ndarray = []
+        self.bridges: BridgeRegions
+        self.zigzags: ZigZagRegions
+        self.zigzags_graph = []
+        self.zigzags_mst = []
+        self.pos_zigzag_nodes = []
+        self.rest_of_picture_f1 = np.ndarray([])
+        self.rest_of_picture_f2 = np.ndarray([])
+        self.rest_of_picture_f3 = np.ndarray([])
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)            
+        if args:
+            self.name = args[0]
+            self.img = args[1]
 
 
 class Layer:
@@ -98,12 +108,12 @@ class Layer:
         self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
         self.nozzle_diam_external = nozzle_diam_external
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
-        self.islands = folders.load_islands_hdf5(self)
+        folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
 
         with Timer("Criando paredes finas"):
-            processed_regions = []
+            processed_regions: List[Island] = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
                     executor.submit(load_and_make_thinWalls, island)
@@ -147,7 +157,7 @@ class Layer:
                     )
                     folders.save_img_hdf5(
                         f"{self.name}/{island.name}",
-                        "rest_F1",
+                        "rest_of_picture_f1",
                         island_rest_of_picture_f1,
                     )
         return
@@ -180,75 +190,93 @@ class Layer:
         @paralelizando
         def load_and_make_levels(island: Island) -> Island:
             island.offsets = OffsetRegions()
-            island_rest_of_picture_f1 = folders.load_img_hdf5(
-                f"{self.name}/{island.name}", "rest_F1"
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            island.offsets.create_levels(
-                island_rest_of_picture_f1,
-                mt.make_mask(self, "full_ext"),
-                mt.make_mask(self, "double_ext"),
-                self.name,
-                island.name,
-            )
-            return island
-
-        @paralelizando
-        def create_loops_in_island(island: Island) -> Island:
-            for level in island.offsets.levels:
-                level.create_loops(
+            if np.sum(rest_of_picture_f1) > 0:
+                island.offsets.create_levels(
+                    rest_of_picture_f1,
                     mt.make_mask(self, "full_ext"),
-                    self.base_frame,
-                    island.rest_of_picture_f1,
+                    mt.make_mask(self, "double_ext"),
                     self.name,
                     island.name,
-                    level.name,
                 )
             return island
 
         @paralelizando
-        def create_influence_regions_in_island(island: Island) -> Island:
-            island.offsets.create_influence_regions(self.base_frame)
+        def create_loops_in_island(island: Island) -> Island:
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f1"
+            )
+            if np.sum(rest_of_picture_f1) > 0:
+                for level in island.offsets.levels:
+                    level.create_loops(
+                        mt.make_mask(self, "full_ext"),
+                        self.base_frame,
+                        rest_of_picture_f1,
+                        self.name,
+                        island.name,
+                        level.name,
+                    )
             return island
 
         @paralelizando
-        def calculate_island_voids(island: Island, folders: Paths):
-            # rest_of_picture_f1 = folders.load_img_hdf5(
-            #     f"/{self.name}/{island.name}", "rest_F1"
-            # )
-            island.offsets.calculate_voids(
-                self.base_frame,
-                island.rest_of_picture_f1,
-                island.offsets.levels,
-                island.offsets.n_levels,
-                self.path_radius_external,
+        def create_influence_regions_in_island(island: Island) -> Island:
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
+            if np.sum(rest_of_picture_f1) > 0:
+                island.offsets.create_influence_regions(self.base_frame)
+            return island
+
+        @paralelizando
+        def calculate_island_voids(island: Island):
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f1"
+            )
+            if np.sum(rest_of_picture_f1) > 0:
+                island.offsets.calculate_voids(
+                    self.base_frame,
+                    rest_of_picture_f1,
+                    island.offsets.levels,
+                    island.offsets.n_levels,
+                    self.path_radius_external,
+                )
             return island
 
         @paralelizando
         def make_regions_in_islands(island: Island) -> Island:
-            island.rest_of_picture_f2 = island.offsets.make_regions(
-                island.rest_of_picture_f1,
-                self.base_frame,
-                self.path_radius_external,
-                self.void_max,
-                self.max_external_walls,
-                self.max_internal_walls,
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
+            if np.sum(rest_of_picture_f1) > 0:
+                island.rest_of_picture_f2 = island.offsets.make_regions(
+                    rest_of_picture_f1,
+                    self.base_frame,
+                    self.path_radius_external,
+                    self.void_max,
+                    self.max_external_walls,
+                    self.max_internal_walls,
+                    np.sum(mt.make_mask(self, "full_int")),
+                )
             return island
 
         @paralelizando
         def make_island_valid_loops(island: Island) -> Island:
-            island.offsets.all_valid_loops = island.offsets.make_valid_loops(
-                self.base_frame
+            rest_of_picture_f1 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
+            if np.sum(rest_of_picture_f1) > 0:
+                island.offsets.all_valid_loops = island.offsets.make_valid_loops(
+                    self.base_frame
+                )
             return island
 
         self.void_max = void_max
         self.max_external_walls = external_max
         self.max_internal_walls = internal_max
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
-        self.islands = folders.load_islands_hdf5(self)
-        # original_img = folders.load_img_hdf5(f"/{self.name}", "original_img")
+        folders.load_islands_hdf5(self)
 
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/offsets")
@@ -263,7 +291,7 @@ class Layer:
             create_influence_regions_in_island()
 
         with Timer("Criando as regiões de Offset"):
-            calculate_island_voids(folders)
+            calculate_island_voids()
 
         with Timer("Retirando regiões da camada"):
             make_regions_in_islands()
@@ -273,35 +301,293 @@ class Layer:
 
         with Timer("salvando imagens das regiões"):
             for isl in self.islands:
-                folders.save_img_hdf5(
-                    f"/{self.name}/{isl.name}", "rest_F2", isl.rest_of_picture_f2
+                if np.sum(isl.rest_of_picture_f2) > 0:
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}", "rest_of_picture_f2", isl.rest_of_picture_f2
+                    )
+                    isl.rest_of_picture_f2 = f"/{self.name}/{isl.name}/rest_of_picture_f2"
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/offsets",
+                        "all_loops",
+                        isl.offsets.all_valid_loops.astype(bool),
+                    )
+                    isl.offsets.all_valid_loops = (
+                        f"/{self.name}/{isl.name}/offsets/all_loops"
+                    )
+                    for reg in isl.offsets.regions:
+                        folders.create_new_hdf5_group(
+                            f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}"
+                        )
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}",
+                            reg.__dict__,
+                        )
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}",
+                            "img",
+                            reg.img.astype(bool),
+                        )
+                        folders.create_new_hdf5_group(
+                            f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops"
+                        )
+                        for i, loop in enumerate(reg.loops):
+                            folders.save_img_hdf5(
+                                f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops",
+                                f"Lp_{i:03d}",
+                                loop.route.astype(bool),
+                            )
+                            folders.save_props_hdf5(
+                                f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops/Lp_{i:03d}",
+                                loop.__dict__,
+                            )
+        return
+
+    def make_bridges(self, n_max: float, nozzle_diam_internal: float, folders: Paths):
+
+        def paralelizando(func):
+            @wraps(func)
+            def wrapper(*args):
+                processed_isl = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    if [*args]:
+                        results = [
+                            executor.submit(func, island, *args)
+                            for island in self.islands
+                        ]
+                    else:
+                        results = [
+                            executor.submit(func, island) for island in self.islands
+                        ]
+                    for l in concurrent.futures.as_completed(results):
+                        processed_isl.append(l.result())
+                    processed_isl.sort(key=lambda x: x.name)
+                    self.islands = processed_isl
+
+            return wrapper
+
+        @paralelizando
+        def make_islands_offset_bridges(island: Island) -> Island:
+            folders.load_offsets_hdf5(self.name, isl)
+            try:
+                rest_of_picture_f2 = folders.load_img_hdf5(
+                    f"/{self.name}/{island.name}", "rest_of_picture_f2"
                 )
-                isl.rest_of_picture_f2 = f"/{self.name}/{isl.name}/rest_F2"
-                folders.save_img_hdf5(
-                    f"/{self.name}/{isl.name}/offsets",
-                    "all_loops",
-                    isl.offsets.all_valid_loops.astype(bool),
+                island.offsets_graph, island.offsets_mst, island.prohibited_areas = (
+                    island.bridges.make_offset_bridges(
+                        rest_of_picture_f2,
+                        isl.offsets,
+                        self.base_frame,
+                        self.path_radius_external,
+                        rest_of_picture_f2,
+                        # island.prohibited_areas,
+                    )
                 )
-                isl.offsets.all_valid_loops = (
-                    f"/{self.name}/{isl.name}/offsets/all_loops"
+            except:
+                pass
+            return island
+
+        @paralelizando
+        def make_islands_zigzag_bridges(island: Island) -> Island:
+            folders.load_offsets_hdf5(self.name, isl)
+            rest_of_picture_f2 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f2"
+            )
+            if np.sum(rest_of_picture_f2) > 0:
+                nozzle_diam_internal_pxl = nozzle_diam_internal * self.pxl_per_mm
+                self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
+                island.bridges.make_zigzag_bridges(
+                    rest_of_picture_f2,
+                    rest_of_picture_f2,
+                    self.base_frame,
+                    self.path_radius_internal,
+                    n_max,
+                    mt.make_mask(self, "full_int"),
+                    isl.offsets.all_valid_loops,
+                    isl.offsets.regions,
                 )
-                for reg in isl.offsets.regions:
-                    folders.create_new_hdf5_group(
-                        f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}"
+            return island
+
+        @paralelizando
+        def make_islands_cross_over_bridges(island: Island) -> Island:
+            try:
+                rest_of_picture_f2 = folders.load_img_hdf5(
+                    f"/{self.name}/{island.name}", "rest_of_picture_f2"
+                )
+                self.n_max = n_max
+                island.bridges.all_bridges = island.bridges.make_cross_over_bridges(
+                    island.prohibited_areas, island.offsets_mst
+                )
+            except:
+                pass
+            return island
+
+        self.n_max = n_max
+        self.nozzle_diam_internal = nozzle_diam_internal
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            isl.bridges = BridgeRegions()
+            folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/bridges")
+
+        with Timer("Criando pontes de Offset"):
+            make_islands_offset_bridges()
+
+        with Timer("Criando pontes de Zigzag"):
+            make_islands_zigzag_bridges()
+
+        with Timer("Criando pontes de Crossover"):
+            make_islands_cross_over_bridges()
+
+        with Timer("Retirando pontes da Camada"):
+            for island in self.islands:
+                rest_of_picture_f2 = folders.load_img_hdf5(
+                    f"/{self.name}/{island.name}", "rest_of_picture_f2"
+                )
+                island.rest_of_picture_f3 = island.bridges.apply_bridges(
+                    rest_of_picture_f2, self.base_frame
+                )
+
+        with Timer("salvando imagens das regiões"):
+            for island in self.islands:
+                if np.sum(isl.rest_of_picture_f3) > 0:
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}", "rest_of_picture_f3", isl.rest_of_picture_f3
                     )
                     folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}",
-                        "img",
-                        reg.img.astype(bool),
+                        f"/{self.name}/{isl.name}/bridges",
+                        "all_bridges",
+                        isl.bridges.all_bridges,
                     )
                     folders.create_new_hdf5_group(
-                        f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops"
+                        f"/{self.name}/{isl.name}/bridges/offset_bridges"
                     )
-                    for i, loop in enumerate(reg.loops):
+                    folders.create_new_hdf5_group(
+                        f"/{self.name}/{isl.name}/bridges/zigzag_bridges"
+                    )
+                    folders.create_new_hdf5_group(
+                        f"/{self.name}/{isl.name}/bridges/cross_over_bridges"
+                    )
+                    isl.rest_of_picture_f3 = f"/{self.name}/{isl.name}/rest_of_picture_f3"
+                    for reg in isl.bridges.offset_bridges:
                         folders.save_img_hdf5(
-                            f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops",
-                            f"Lp_{i:03d}",
-                            loop.route.astype(bool),
+                            f"/{self.name}/{isl.name}/bridges/offset_bridges",
+                            f"OB_{reg.name:03d}",
+                            reg.img,
+                        )
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/offset_bridges/OB_{reg.name:03d}",
+                            reg.__dict__,
+                        )
+                    for reg in isl.bridges.zigzag_bridges:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges",
+                            f"ZB_{reg.name:03d}",
+                            reg.img,
+                        )
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges/ZB_{reg.name:03d}",
+                            reg.__dict__,
+                        )
+                    for reg in isl.bridges.cross_over_bridges:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges",
+                            f"CB_{reg.name:03d}",
+                            reg.img,
+                        )
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges/CB_{reg.name:03d}",
+                            reg.__dict__,
+                        )
+        return
+
+    def make_zigzags(self, folders: Paths):
+
+        def paralelizando(func):
+            @wraps(func)
+            def wrapper(*args):
+                processed_isl = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    if [*args]:
+                        results = [
+                            executor.submit(func, island, *args)
+                            for island in self.islands
+                        ]
+                    else:
+                        results = [
+                            executor.submit(func, island) for island in self.islands
+                        ]
+                    for l in concurrent.futures.as_completed(results):
+                        processed_isl.append(l.result())
+                    processed_isl.sort(key=lambda x: x.name)
+                    self.islands = processed_isl
+
+            return wrapper
+
+        @paralelizando
+        def find_islands_monotonic(island: Island) -> Island:
+            island.rest_of_picture_f3 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f3"
+            )
+            if np.sum(island.rest_of_picture_f3) > 0:
+                island.zigzags.find_monotonic(
+                    island.rest_of_picture_f3,
+                    self.base_frame,
+                    self.path_radius_internal,
+                    self.void_max,
+                )
+            return island
+
+        @paralelizando
+        def make_island_graph(island: Island) -> Island:
+
+            # island.rest_of_picture_f3 = folders.load_img_hdf5(
+            #     f"/{self.name}/{island.name}", "rest_F3"
+            # )
+            if np.sum(island.rest_of_picture_f3) > 0:
+                island.zigzags_graph, island.zigzags_mst, island.pos_zigzag_nodes = (
+                    island.zigzags.make_graph(
+                        island.bridges.zigzag_bridges, self.base_frame
+                    )
+                )
+
+            return island
+
+        @paralelizando
+        def get_island_linked_zigzags(island: Island) -> Island:
+            # rest_of_picture_f3 = folders.load_img_hdf5(
+            #     f"/{self.name}/{island.name}", "rest_F3"
+            # )
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for zb in island.bridges.zigzag_bridges:
+                    zb.get_linked_zigzags(island.zigzags.regions)
+            return island
+
+        folders.load_islands_hdf5(self)
+        for island in self.islands:
+            folders.load_bridges_hdf5(self.name, island)
+        for isl in self.islands:
+            isl.zigzags = ZigZagRegions()
+            folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/zigzags")
+        with Timer("Encontrando areas monotonicas"):
+            find_islands_monotonic()
+        with Timer("Criando os grafos de regiões"):
+            make_island_graph()
+        with Timer("Conectando regiões de zigzag"):
+            get_island_linked_zigzags()
+
+        with Timer("salvando imagens das regiões"):
+            for isl in self.islands:
+                if np.sum(isl.rest_of_picture_f3) > 0:
+                    folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/zigzags")
+                    folders.save_props_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        isl.__dict__,
+                    )
+                    for reg in isl.zigzags.regions:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/zigzags",
+                            f"zz_{reg.name:03d}",
+                            reg.img,
                         )
         return
 

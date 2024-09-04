@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from components.layer import Layer
 from components import morphology_tools as mt
 from components import images_tools as it
+from components import points_tools as pt
 import numpy as np
 from cv2 import drawContours
 from skimage.morphology import disk
@@ -28,20 +29,38 @@ class Area:
         self.internal_area = []
 
 
+class ColecaoDeCoords:
+    def __init__(self, origin, destiny):
+        self.origin = origin
+        self.destiny = destiny
+        self.lista_a = []
+        self.dist_a = []
+        self.lista_b = []
+        self.dist_b = []
+        self.lista_c = []
+        self.dist_c = []
+        self.lista_d = []
+        self.dist_d = []
+
+
 class Loop:
     """Cada contorno fechado em um level gerado pelos Offsets"""
 
-    def __init__(self, nome, img, origem, trail):
-        self.name = nome
-        self.offset_level = origem
-        self.internal_area = []
-        self.trail = trail
-        self.route = img
-        self.region = ""
-        self.lost_area = []
-        self.lost_area_sum = 0
-        self.acceptable = 0
-        self.loops_filhos = []
+    def __init__(self, nome, img, origem, trail,**kwargs):
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+        else:
+            self.name = nome
+            self.offset_level = origem
+            self.internal_area = []
+            self.trail = trail
+            self.route = img
+            self.region = ""
+            self.lost_area = []
+            self.lost_area_sum = 0
+            self.acceptable = 0
+            self.loops_filhos = []
 
 
 class Level:
@@ -77,12 +96,6 @@ class Level:
             new_lvl_img = mt.erosion(self.img, kernel_img=mask_double)
             new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_double)
             new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_full)
-        # name_new_lvl = f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}.png"
-        # folders.save_img(name_new_lvl, new_lvl_img)
-        # new_lvl_img = name_new_lvl
-        # name_new_lvl_area = (f"L{layer_name:03d}_I{island_name:03d}_LVL{nome_filho:03d}_Area.png")
-        # folders.save_img(name_new_lvl_area, new_lvl_area)
-        # new_lvl_area = name_new_lvl_area
         return Level(new_lvl_img, nome_filho, self.name, new_lvl_area, path)
 
     def create_loops(
@@ -101,32 +114,18 @@ class Level:
         for i in np.arange(0, len(contours)):
             loop = drawContours(np.zeros(base_frame), contours, i, 1)
             if hierarchy[0][i][3] == -1:
-                # name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}.npz"
-                # folders.save_npz(name_loop, loop)
-                # trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_trail.npz"
-                # folders.save_npz(trail_name, trail_img)
-                # name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopOut{out_counter:03d}_Area.png"
-                # folders.save_img(name_loop_area, self.outer_loops[-1].internal_area)
                 trail_img = mt.dilation(loop, kernel_img=mask)
                 self.outer_loops.append(Loop(out_counter, loop, self.name, trail_img))
                 self.outer_loops[-1].internal_area = it.fill_internal_area(
                     self.outer_loops[-1].trail, rest_f1
                 )
-                # self.outer_loops[-1].internal_area = name_loop_area
                 out_counter += 1
             else:
-                # name_loop = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}.npz"
-                # folders.save_npz(name_loop, loop)
-                # trail_name = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_trail.npz"
-                # folders.save_npz(trail_name, trail_img)
-                # name_loop_area = f"L{layer_name:03d}_I{island_name:03d}_LVL{level_name:03d}_LoopInt{in_counter:03d}_Area.png"
-                # folders.save_img(name_loop_area, self.hole_loops[-1].internal_area)
                 trail_img = mt.dilation(loop, kernel_img=mask)
                 self.hole_loops.append(Loop(in_counter, loop, self.name, trail_img))
                 self.hole_loops[-1].internal_area = it.fill_internal_area(
                     self.hole_loops[-1].trail, rest_f1
                 )
-                # self.hole_loops[-1].internal_area = name_loop_area
                 in_counter += 1
         return self
 
@@ -274,8 +273,6 @@ class OffsetRegions:
         """Vai de fora para dentro realizando erosões e organiza em níveis
         até não haver mais pixels a se processar"""
         levels = []
-        new_levels_imgs = []
-        new_areas_imgs = []
         n_levels = 0
         atual = Level(
             rest_of_picture_f1,
@@ -291,8 +288,6 @@ class OffsetRegions:
             f"/{layer_name}/{island_name}/offsets/levels",
             first=True,
         )
-        # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
-        # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
         levels.append(atual)
         n_levels += 1
         atual = atual.create_level(
@@ -301,8 +296,6 @@ class OffsetRegions:
             f"Lvl_{n_levels:03d}",
             f"/{layer_name}/{island_name}/offsets/levels",
         )
-        # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
-        # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
         while np.sum(atual.img) > 0:
             levels.append(atual)
             n_levels += 1
@@ -312,15 +305,9 @@ class OffsetRegions:
                 f"Lvl_{n_levels:03d}",
                 f"/{layer_name}/{island_name}/offsets/levels",
             )
-            # new_levels_imgs.append([f"/{layer_name}/{island_name}/offsets/levels", f"Lvl_{atual.name:03d}", atual.img])
-            # new_areas_imgs.append([f"/{layer_name}/{island_name}/offsets/areas", f"Area_{atual.name:03d}", atual.area])
         print(f"Ilha: {island_name} Número de Níveis: {n_levels}")
         self.levels = levels
         self.n_levels = n_levels
-        # return {
-        #     "levels" : new_levels_imgs,
-        #     "areas" : new_areas_imgs,
-        #     }
         return
 
     def create_influence_regions(self, base_frame):
@@ -329,9 +316,6 @@ class OffsetRegions:
         Depois disso, faz o mesmo de fora para dentro com os contornos internos dos buracos
         """
         influence_regions = []
-        # loops_internal_areas = {}
-        # for i, level in enumerate(self.levels):
-        #     loops_internal_areas[str(i)] = {"internal":[], "external":[]}
         seq_in_out = np.arange(self.n_levels - 1, -1, -1)
         seq_out_in = np.arange(0, self.n_levels)
         region_counter = self.label_offset_regions(seq_in_out, 0, 1)
@@ -425,6 +409,7 @@ class OffsetRegions:
         void_max,
         max_external_walls,
         max_internal_walls,
+        bead_size
     ):
         acceptable = self.tag_loops_by_voids(
             base_frame,
@@ -507,12 +492,13 @@ class OffsetRegions:
         _, labels, n_labels = it.divide_by_connected(rest)
         size_label_bfr = 0
         index_main_body = 0
+        rest_f2 = np.zeros(base_frame)
         for i in np.arange(1, n_labels):
-            size_label_now = np.sum(labels == i)
-            if size_label_now > size_label_bfr:
-                index_main_body = i
-                size_label_bfr = size_label_now
-        return labels == index_main_body
+            label_img = labels == i
+            size_label_now = np.sum(label_img)
+            if size_label_now > bead_size:
+                rest_f2 = it.sum_imgs([rest_f2, label_img])
+        return rest_f2
 
     def make_valid_loops(self, base_frame):
         """Cria uma matriz com todas as rotas em cada Level somadas para a Layer"""
@@ -588,17 +574,117 @@ class Region:
         self.name = name
         self.img = img
         self.loops = loops
-        self.limmit_coords = (
-            []
-        )  # coordenadas dos pontos onde se separam as regiões monotônicas
+        self.limmit_coords = ([])  
+        # coordenadas dos pontos onde se separam as regiões monotônicas
         self.center_coords = []  # coordenadas do centro geométrico de cada contorno
         self.area_contour = []  # contorno de cada área
         self.area_contour_img = []
         self.internal_area = []  # resultante de se pintar o interior de cada contorno
-        self.hierarchy = (
-            0  # hierarquia de contornos, quais são internos e quais são externos
-        )
+        self.hierarchy = (0)
+        # hierarquia de contornos, quais são internos e quais são externos
         self.paralel_points = []
         self.route = []
         self.trail = []
         self.next_prohibited_area = []
+
+    def make_contour(self, base_frame):
+        self.area_contour, self.area_contour_img = mt.detect_contours(
+            self.img, return_img=True, only_external=True
+        )
+        return
+
+    def make_internal_area_and_center(self, original_img):
+        self.internal_area = it.fill_internal_area(
+            self.area_contour_img, original_img
+        )
+        self.center_coords = pt.points_center(
+            pt.contour_to_list(self.area_contour)
+        )
+
+    def make_limmit_coords(self, path_radius):
+        limmit_coords = pt.extreme_points(
+            self.area_contour_img, force_top=True
+        )
+        limmit_coords[0][0] = limmit_coords[0][0] + path_radius * 2
+        limmit_coords[1][0] = limmit_coords[1][0] + path_radius * -2
+        limmit_coords[2][0] = limmit_coords[2][0] + path_radius * -2
+        limmit_coords[3][0] = limmit_coords[3][0] + path_radius * 2
+        self.limmit_coords = limmit_coords
+        return
+
+    def out_area_inner_contour(self, base_frame):
+        this_contours, this_hierarchy = mt.detect_contours(
+            self.img, return_hierarchy=True
+        )
+        maior_soma = 0
+        index_maior_contorno_interno = 0
+        for i in np.arange(0, len(this_contours)):
+            soma = len(this_contours[i])
+            if soma > maior_soma and this_hierarchy[0][i][2] == -1:
+                maior_soma = soma
+                index_maior_contorno_interno = i
+        area_internal_contour = this_contours[index_maior_contorno_interno]
+        area_internal_contour_img = drawContours(
+            np.zeros(base_frame), this_contours, index_maior_contorno_interno, 1
+        )
+        return area_internal_contour, area_internal_contour_img
+
+    def make_paralel_points(self, regions, area_internal_contour_img):
+        ys_do_buraco = [point[0] for point in self.limmit_coords]
+        xs_do_buraco = [point[1] for point in self.limmit_coords]
+        for region in regions:
+            if region.name != self.name:
+                self.paralel_points.append(ColecaoDeCoords(self.name, region.name))
+                if region.hierarchy == 0:
+                    destiny_points = np.nonzero(area_internal_contour_img)
+                else:
+                    destiny_points = np.nonzero(region.area_contour_img)
+                destiny_points = pt.x_y_para_pontos(destiny_points)
+                destiny_points = list(
+                    filter(
+                        lambda x: (min(ys_do_buraco) <= x[0] <= max(ys_do_buraco)),
+                        destiny_points,
+                    )
+                )
+                for i in np.arange(0, len(destiny_points)):
+                    if (
+                        destiny_points[i][0] == ys_do_buraco[0]
+                        and destiny_points[i][1] <= xs_do_buraco[0]
+                    ):
+                        self.paralel_points[-1].lista_a.append(destiny_points[i])
+                        self.paralel_points[-1].dist_a.append(
+                            pt.distance_pts(
+                                self.limmit_coords[0], destiny_points[i]
+                            )
+                        )
+                    if (
+                        destiny_points[i][0] == ys_do_buraco[1]
+                        and destiny_points[i][1] <= xs_do_buraco[1]
+                    ):
+                        self.paralel_points[-1].lista_b.append(destiny_points[i])
+                        self.paralel_points[-1].dist_b.append(
+                            pt.distance_pts(
+                                self.limmit_coords[1], destiny_points[i]
+                            )
+                        )
+                    if (
+                        destiny_points[i][0] == ys_do_buraco[2]
+                        and destiny_points[i][1] >= xs_do_buraco[2]
+                    ):
+                        self.paralel_points[-1].lista_c.append(destiny_points[i])
+                        self.paralel_points[-1].dist_c.append(
+                            pt.distance_pts(
+                                self.limmit_coords[2], destiny_points[i]
+                            )
+                        )
+                    if (
+                        destiny_points[i][0] == ys_do_buraco[3]
+                        and destiny_points[i][1] >= xs_do_buraco[3]
+                    ):
+                        self.paralel_points[-1].lista_d.append(destiny_points[i])
+                        self.paralel_points[-1].dist_d.append(
+                            pt.distance_pts(
+                                self.limmit_coords[3], destiny_points[i]
+                            )
+                        )
+        return

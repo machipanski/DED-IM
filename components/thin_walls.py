@@ -14,52 +14,54 @@ from components import path_tools as ptht
 import concurrent.futures
 
 
-class ThinWall:
-    """Cada região que precisa ser feita com menos de duas trilhas antes de fazer os contornos"""
+class  ThinWall:
+    """Cada região que precisa ser feita com menos 
+    de duas trilhas antes de fazer os contornos"""
 
-    def __init__(
-        self,
-        name,
-        img,
-        origin,
-        trunk,
-        n_paths,
-        origin_marks,
-        elementos_contorno=None,
-        pontos_extremos=None,
-    ):
-        if elementos_contorno is None:
-            elementos_contorno = []
-        if pontos_extremos is None:
-            pontos_extremos = []
-        self.name = name
-        self.img = img
-        self.origin = origin
+    def __init__(self, *args, **kwargs):
+        # self,
+        # name,
+        # img,
+        # origin,
+        # trunk,
+        # n_paths,
+        # origin_marks,
+        # elementos_contorno=None,
+        # pontos_extremos=None,
+        self.name:str
+        self.img:np.ndarray
+        self.origin:str
         self.destiny = 0
-        self.n_paths = n_paths
-        self.origin_mark = origin_marks
-        self.trunk = trunk
-        self.contorno = elementos_contorno
-        self.pontos_extremos = pontos_extremos
-        # self.origin_coords = []
-        # self.destiny_coords = []
-        # self.route = []
-        # self.trail = []
-        # self.center = []
-        # self.interruption_points = []
-        # self.reference_points = []
+        self.n_paths = int
+        self.origin_mark = []
+        self.trunk = np.ndarray
+        self.contorno = np.ndarray
+        self.pontos_extremos = []
+        self.elementos_contorno = []
+        self.pontos_extremos = []
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)            
+        if args:
+            self.name = args[0]
+            self.img = args[1]
+            self.origin = args[2]
+            self.trunk = args[3]
+            self.n_paths = args[4]
+            self.origin_mark = args[5]
+            self.destiny = 0
         return
 
 
 class ThinWallRegions:
-    """O grupo de regiões chamadas de Thin Walls, gruarda também a configuração geral para essas regiões"""
+    """O grupo de regiões chamadas de Thin Walls, gruarda também a 
+    configuração geral para essas regiões"""
 
     def __init__(self):
         self.regions: List[ThinWall]
         self.medial_transform: str
         self.all_thin_walls: str
         self.all_thin_origins: str
-        # self.routes = []
         return
 
     def make_thin_walls(
@@ -69,7 +71,7 @@ class ThinWallRegions:
         island_img: np.ndarray,
         base_frame,
         path_radius,
-        mask
+        mask,
     ):
 
         def close_contour(trunk, i):
@@ -114,7 +116,7 @@ class ThinWallRegions:
                     )
                     try:
                         bridge_img, elementos_contorno, contorno, pontos_extremos = (
-                            bottleneck.close_bridge_contour_v2(
+                            bottleneck.close_bridge_contour(
                                 bridge_origin,
                                 base_frame,
                                 max_width,
@@ -124,6 +126,7 @@ class ThinWallRegions:
                                 sem_galhos,
                             )
                         )
+
                         if np.sum(bridge_img) > 0:
                             y_mark = np.where(bridge_origin)[1][
                                 np.round(len(np.where(bridge_origin)))
@@ -132,11 +135,11 @@ class ThinWallRegions:
                                 np.round(len(np.where(bridge_origin)))
                             ]
                             origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
-                            tw_group_path = f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}"
+                            tw_group_path = (
+                                f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}"
+                            )
                             new_groups.append([tw_group_path])
-                            # tw_group_path = folders.create_new_hdf5_group(f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}")
                             [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
-                            # trunk = f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}/trunk"
                             region = ThinWall(
                                 f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}",
                                 f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}/img",
@@ -148,17 +151,15 @@ class ThinWallRegions:
                                 pontos_extremos,
                             )
                             new_tw_imgs.append([tw_group_path, "img", bridge_img])
-                            # folders.save_img_hdf5(tw_group_path, "img", bridge_img)
                             new_linha1s.append([tw_group_path, "linha1", linha1])
-                            # folders.save_img_hdf5(tw_group_path, "linha1", linha1)
                             new_linha2s.append([tw_group_path, "linha2", linha2])
-                            # folders.save_img_hdf5(tw_group_path, "linha2", linha2)
-                            new_linhatopos.append([tw_group_path, "linhatopo", linhatopo])
-                            # folders.save_img_hdf5(tw_group_path, "linhatopo", linhatopo)
-                            new_linhabaixos.append([tw_group_path, "linhabaixo", linhabaixo])
-                            # folders.save_img_hdf5(tw_group_path, "linhabaixo", linhabaixo)
+                            new_linhatopos.append(
+                                [tw_group_path, "linhatopo", linhatopo]
+                            )
+                            new_linhabaixos.append(
+                                [tw_group_path, "linhabaixo", linhabaixo]
+                            )
                             new_origins.append([tw_group_path, "origin_img", trunk])
-                            # folders.save_img_hdf5(tw_group_path, "origin_img", trunk)
                             print("OK: fechou contorno")
                     except Exception:
                         print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
@@ -177,9 +178,13 @@ class ThinWallRegions:
             island_img.astype(np.uint8), path_radius
         )
         # TODO:Achar o melhor size para o serviço
-        new_medial_transforms.append([f"{layer_name}/{island_name}","medial_transform",sem_galhos * sem_galhos_dist])
-        # folders.save_img_hdf5(f"{layer_name}/{island_name}","medial_transform",sem_galhos * sem_galhos_dist,type="int8")
-
+        new_medial_transforms.append(
+            [
+                f"{layer_name}/{island_name}",
+                "medial_transform",
+                sem_galhos * sem_galhos_dist,
+            ]
+        )
         # Dividindo partes do esquelet que podem ser paredes finas
         trunks = [pt.contour_to_list([x]) for x in trunks]
         trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
@@ -218,31 +223,34 @@ class ThinWallRegions:
         processed_trunks = list(filter(lambda x: x.img != [], processed_trunks))
         processed_trunks.sort(key=lambda x: x.name)
         self.regions = processed_trunks
-        # Produzindo as imagens de resumoo
+        # Produzindo as imagens de resumo
         all_thin_walls = np.zeros_like(island_img)
         all_origins = np.zeros_like(island_img)
         for tw in new_tw_imgs:
-            # reg_img = folders.load_img_hdf5(reg.name, "img")
             reg_img = tw[2]
             all_thin_walls = np.logical_or(all_thin_walls, reg_img)
         for tw in new_origins:
-            # reg_origin_img = folders.load_img_hdf5(reg.name, "origin_img")
             reg_origin_img = tw[2]
             all_origins = np.logical_or(all_origins, reg_origin_img)
-        # group_tw_name = folders.create_new_hdf5_group(f"/{layer_name}/{island_name}/thin_walls")
-        # folders.save_img_hdf5(group_tw_name, "all_tw", all_thin_walls)
-        # folders.save_img_hdf5(group_tw_name, "all_tw_origins", all_origins)
         img_packs = {
-            "groups" : new_groups,
-            "tw_img" : new_tw_imgs,
-            "mat" : new_medial_transforms,
-            "l1" : new_linha1s,
-            "l2" : new_linha2s,
-            "lt" : new_linhatopos,
-            "lb" : new_linhabaixos,
-            "origins" : new_origins,
-            "all_tw": [f"/{layer_name}/{island_name}/thin_walls", "all_thin_walls", all_thin_walls],
-            "all_tw_origins": [f"/{layer_name}/{island_name}/thin_walls", "all_origins", all_origins]
+            "groups": new_groups,
+            "tw_img": new_tw_imgs,
+            "mat": new_medial_transforms,
+            "l1": new_linha1s,
+            "l2": new_linha2s,
+            "lt": new_linhatopos,
+            "lb": new_linhabaixos,
+            "origins": new_origins,
+            "all_tw": [
+                f"/{layer_name}/{island_name}/thin_walls",
+                "all_thin_walls",
+                all_thin_walls,
+            ],
+            "all_tw_origins": [
+                f"/{layer_name}/{island_name}/thin_walls",
+                "all_origins",
+                all_origins,
+            ],
         }
         return img_packs
 
@@ -251,7 +259,6 @@ class ThinWallRegions:
         rest_of_picture_f1 = np.logical_or(original, rest_of_picture_f1)
         for region in self.regions:
             region_img = folders.load_img_hdf5(region.name, "img")
-            # region_img = folders.load_img(region.img)
             rest_of_picture_f1 = np.logical_and(
                 rest_of_picture_f1, np.logical_not(region_img)
             )

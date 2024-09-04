@@ -8,9 +8,10 @@ from components.layer import Layer
 
 def ask_load_or_begin():
     msg = "Bem vindo! Começamos por onde?"
-    choices = ["Carregar Salvo","Novo Projeto","Cancelar"]
+    choices = ["Carregar Salvo", "Novo Projeto", "Cancelar"]
     reply = buttonbox(msg, choices=choices)
     return reply
+
 
 def load_model(folders: Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
@@ -20,6 +21,7 @@ def load_model(folders: Paths) -> List[str]:
     file_name = re.sub(folders.input, "", path_input)
     return path_input, file_name
 
+
 def find_saved_file(folders: Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
     os.chdir(folders.output)
@@ -27,7 +29,8 @@ def find_saved_file(folders: Paths) -> List[str]:
     os.chdir(folders.home)
     file_name = re.sub(folders.input, "", path_input)
     folders.save_file_name = file_name
-    return 
+    return file_name
+
 
 def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
     """Modelo basico para criar a caixa para pedir os parametros"""
@@ -46,6 +49,7 @@ def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
     fieldValues = [float(x) for x in fieldValues]
     return fieldValues
 
+
 def ask_parameters_input():
     """Pede todos os parametros de fatiamento, permitindo alterar o que ja esta padronizado"""
     msg = "Slicing parameters"
@@ -54,8 +58,9 @@ def ask_parameters_input():
         "DPI",
         "Layer Height",
     ]
-    fieldDefs = [300, 2]  
+    fieldDefs = [300, 2]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
 
 def ask_parameters_thin_walls():
     """Pede os parametros de thinwalls, permitindo alterar o que ja esta padronizado"""
@@ -65,10 +70,20 @@ def ask_parameters_thin_walls():
     fieldDefs = [3, 2.8]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
+
 def ask_parameters_offsets():
     """Pede os parametros de offsets, permitindo alterar o que ja esta padronizado"""
     msg = "Contour parameters"
     title = "Contour parameters"
     fieldNames = ["Vmax", "External max", "Internal max"]
     fieldDefs = [1, 99, 99]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+
+def ask_parameters_bridges():
+    """Pede os parametros de gargalos, permitindo alterar o que ja esta padronizado"""
+    msg = "Bridges parameters"
+    title = "Bridges parameters"
+    fieldNames = ["n_max", "nozzle_diam_internal"]
+    fieldDefs = [4, 2.8]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)

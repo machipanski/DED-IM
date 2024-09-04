@@ -1,8 +1,14 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
 
+from networkx import bridges
+
+from components.bottleneck import Bridge, BridgeRegions
+from components.offset import Loop, OffsetRegions, Region
+from components.thin_walls import ThinWallRegions, ThinWall
+from components.zigzag import ZigZag, ZigZagRegions
+
 if TYPE_CHECKING:
-    from components.thin_walls import ThinWallRegions, ThinWall
     from typing import List
 from components.layer import Layer, Island
 import os, shutil
@@ -122,13 +128,6 @@ class Paths:
         }
         folders.save_props_hdf5(layer_group_nome, props_layer)
         folders.save_img_hdf5(layer_group_nome, "original_img", img)
-        # layer_group.attrs["name"] = 0
-        # layer_group.attrs["dpi"] = dpi
-        # layer_group.attrs["base_frame"] = img.shape
-        # layer_group.attrs["n_camadas"] = 1
-        # layer_group.attrs["layer_height"] = layer_height
-        # save_file.close()
-        # os.chdir(self.home)
         return
 
     def list(self, origins=0, layers=0, isles=0):
@@ -149,44 +148,156 @@ class Paths:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         layers = []
-        for l in f:
-            layers.append(Layer(**dict(f[l].attrs)))
+        for key, item in f.items():
+            # isinstance(item, h5py.Group)
+            layers.append(Layer(**dict(f[key].attrs)))
+            layers[-1].original_img = np.array(f.get(f"/{key}/original_img"))
         f.close()
         os.chdir(self.home)
         return layers
 
-    def load_islands_hdf5(self, layer) -> List[Island]:
+    def load_islands_hdf5(self, layer: Layer) -> List[Island]:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
-        islands = []
-        group_entries = list(f[layer.name])
-        list_islands = list(filter(lambda x: x.startswith("I_"), group_entries))
-        for isl in list_islands:
-            attributes = dict(f[layer.name][isl].attrs)
-            islands.append(Island(**attributes))
+        layer_group = f.get(layer.name)
+        layer.islands = []
+        for l_key, l_item in layer_group.items():
+            if isinstance(l_item, h5py.Group):
+                island_group = layer_group.get(l_key)
+                layer.islands.append(Island(**island_group.attrs))
+                for i_key, i_item in island_group.items():
+                    if isinstance(i_item, h5py.Dataset):
+                        setattr(layer.islands[-1], i_key, np.array(i_item))
         f.close()
         os.chdir(self.home)
-        return islands
+        return
+
+    def load_thin_walls_hdf5(self, layer_name: str, island: Island) -> List[Island]:
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "r")
+        island_group = f.get(f"/{layer_name}/{island.name}")
+        twr_group = island_group.get("thin_walls")
+        if twr_group:
+            island.thin_walls = ThinWallRegions()
+            island.thin_walls.regions = []
+            for i_key, i_item in twr_group.items():
+                if isinstance(i_item, h5py.Group):
+                    tw_group = twr_group.get(i_key)
+                    island.thin_walls.regions.append(ThinWall(**tw_group.attrs))
+                    for i_key, i_item in tw_group.items():
+                        setattr(island.thin_walls.regions[-1], i_key, np.array(i_item))
+                if isinstance(i_item, h5py.Dataset):
+                    setattr(island.thin_walls, i_key, np.array(i_item))
+        f.close()
+        os.chdir(self.home)
+        return
+
+    def load_offsets_hdf5(self, layer_name, island: Island) -> OffsetRegions:
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "r")
+        group = f.get(f"/{layer_name}/{island.name}/offsets")
+        island.offsets = OffsetRegions()
+        try:
+            island.offsets.all_valid_loops = np.array(group["all_loops"])
+            for region_name in list(group.keys()):
+                if region_name.startswith("Reg"):
+                    island.offsets.regions.append(
+                        Region(region_name, np.array(group[region_name + "/img"]), [])
+                    )
+                    loops_group = group.get(f"{region_name}/loops")
+                    for loop_name in list(loops_group.keys()):
+                        island.offsets.regions[-1].loops.append(
+                            Loop(
+                                loops_group[loop_name].attrs["name"],
+                                np.array(loops_group[loop_name]),
+                                loops_group[loop_name].attrs["offset_level"],
+                                [],
+                                **loops_group[loop_name].attrs,
+                            )
+                        )
+        except:
+            pass
+        finally:
+            f.close()
+            os.chdir(self.home)
+        return
+
+    def load_bridges_hdf5(self, layer_name, island: Island):
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "r")
+        bridges_group = f.get(f"/{layer_name}/{island.name}/bridges")
+        if bridges_group:
+            island.bridges = BridgeRegions()
+            island.bridges.offset_bridges = []
+            island.bridges.zigzag_bridges = []
+            island.bridges.cross_over_bridges = []
+            for i_key, i_item in bridges_group.items():
+                if isinstance(i_item, h5py.Group):
+                    if i_key == "cross_over_bridges":
+                        b_group = bridges_group.get(i_key)
+                        for i_key, i_item in b_group.items():
+                            island.bridges.cross_over_bridges.append(
+                                Bridge(i_key, np.array(i_item), [], [], 0, [])
+                            )
+                    if i_key == "zigzag_bridges":
+                        b_group = bridges_group.get(i_key)
+                        for i_key, i_item in b_group.items():
+                            island.bridges.zigzag_bridges.append(
+                                Bridge(i_key, np.array(i_item), [], [], 0, [])
+                            )
+                    if i_key == "offset_bridges":
+                        b_group = bridges_group.get(i_key)
+                        for i_key, i_item in b_group.items():
+                            island.bridges.offset_bridges.append(
+                                Bridge(i_key, np.array(i_item), [], [], 0, [])
+                            )
+                if isinstance(i_item, h5py.Dataset):
+                    setattr(island.bridges, i_key, np.array(i_item))
+        f.close()
+        os.chdir(self.home)
+        return
+
+    def load_zigzags_hdf5(self, layer_name: str, island: Island) -> List[Island]:
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "r")
+        island_group = f.get(f"/{layer_name}/{island.name}")
+        twr_group = island_group.get("zigzags")
+        if twr_group:
+            island.zigzags = ZigZagRegions()
+            island.zigzags.regions = []
+            for i_key, i_item in twr_group.items():
+                island.zigzags.regions.append(ZigZag(i_key, np.array(i_item)))
+        f.close()
+        os.chdir(self.home)
+        return
 
     def load_img_hdf5(self, path, name) -> np.array:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
-        local = f.get(path)
-        img = np.array(local[name])
-        f.close()
-        os.chdir(self.home)
+        try:
+            local = f.get(path)
+            img = np.array(local[name])
+        except:
+            img = []
+        finally:
+            f.close()
+            os.chdir(self.home)
         return img
 
     def save_img_hdf5(self, path, name, img, type="bool"):
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
-        local = f.get(path)
-        if local.get(name):
-            local[name][...] = img.astype(bool)
-        else:
-            local.create_dataset(name, compression="gzip", data=img, dtype=type)
-        f.close()
-        os.chdir(self.home)
+        try:
+            local = f.get(path)
+            if local.get(name):
+                local[name][...] = img.astype(bool)
+            else:
+                local.create_dataset(name, compression="gzip", data=img, dtype=type)
+        except:
+            pass
+        finally:
+            f.close()
+            os.chdir(self.home)
         return
 
     def save_props_hdf5(self, path, dict):
@@ -194,50 +305,10 @@ class Paths:
         f = h5py.File(self.save_file_name, "a")
         local = f.get(path)
         for key, value in dict.items():
-            local.attrs[key] = value
+            try:
+                local.attrs[key] = value
+            except:
+                pass
         f.close()
         os.chdir(self.home)
         return
-
-    # def save_npz(self, name, array):
-    #     os.chdir(self.output)
-    #     img_zigzag_bridge_sparse = scipy.sparse.csr_matrix(array)
-    #     scipy.sparse.save_npz(name, img_zigzag_bridge_sparse)
-    #     os.chdir(self.home)
-    #     return
-
-    # def load_layer_json(self, layer_name) -> Layer:
-    #     os.chdir(self.output)
-    #     f = open(layer_name)
-    #     layer = jsonpickle.decode(json.load(f))
-    #     f.close()
-    #     os.chdir(self.home)
-    #     return layer
-
-    # def load_img(self, name: str) -> np.ndarray:
-    #     os.chdir(self.output)
-    #     img = cv2.imread(name, 0)
-    #     _, img_bin = cv2.threshold(img, 100, 255, cv2.THRESH_BINARY)
-    #     img_bin[img_bin > 0] = 1
-    #     return img_bin.astype(np.uint8)
-
-    # def load_npz(self, name: str) -> np.ndarray:
-    #     os.chdir(self.output)
-    #     medial_sparse = scipy.sparse.load_npz(name)
-    #     array = medial_sparse.toarray()
-    #     return array
-
-    # def save_img(self, name, img):
-    #     os.chdir(self.output)
-    #     plt.imsave(name, img, cmap="gray")
-    #     os.chdir(self.home)
-    #     return
-
-    # def save_layer_json(self, layer: Layer) -> None:
-    #     os.chdir(self.output)
-    #     copied_layer = copy.deepcopy(layer)
-    #     layer_encoded = jsonpickle.encode(copied_layer)
-    #     with open((f"{layer.name}.json"), "w") as f:
-    #         json.dump(layer_encoded, f, indent=1)
-    #     os.chdir(self.home)
-    #     return

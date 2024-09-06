@@ -67,12 +67,12 @@ class Paths:
         subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
         camadas_imgs_names = self.list(origins=1)
         n_camadas = len(camadas_imgs_names)
-        for root, dirs, files in os.walk(self.output):
-            for f in files:
-                if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
-                    os.unlink(os.path.join(root, f))
-            for d in dirs:
-                shutil.rmtree(os.path.join(root, d))
+        # for root, dirs, files in os.walk(self.output):
+        #     for f in files:
+        #         if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
+        #             os.unlink(os.path.join(root, f))
+        #     for d in dirs:
+        #         shutil.rmtree(os.path.join(root, d))
         save_name = file_name.replace(".stl", "")
         save_name = save_name.replace(".STL", "")
         save_name = save_name.replace("stl_models", "")
@@ -105,12 +105,12 @@ class Paths:
         self, path_input, dpi, layer_height, file_name: str, folders: Paths
     ):
         """No caso de um arquivo 2D cria um objeto Layer apenas (usado mais para testes mesmo)"""
-        for root, dirs, files in os.walk(self.output):
-            for f in files:
-                if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
-                    os.unlink(os.path.join(root, f))
-            for d in dirs:
-                shutil.rmtree(os.path.join(root, d))
+        # for root, dirs, files in os.walk(self.output):
+        #     for f in files:
+        #         if f.endswith(".json") or f.endswith(".png") or f.endswith(".npz"):
+        #             os.unlink(os.path.join(root, f))
+        #     for d in dirs:
+        #         shutil.rmtree(os.path.join(root, d))
         layer = Layer()
         img = layer.make_input_img(0, path_input, dpi, 0, layer_height, 1, self)
         save_name = file_name.replace(".pgm", "")
@@ -171,6 +171,26 @@ class Paths:
         f.close()
         os.chdir(self.home)
         return
+    
+    # def load_loops_hdf5(self, layer_name: str, island: Island) -> List[Island]:
+    #     os.chdir(self.output)
+    #     f = h5py.File(self.save_file_name, "r")
+    #     island_group = f.get(f"/{layer_name}/{island.name}")
+    #     twr_group = island_group.get("thin_walls")
+    #     if twr_group:
+    #         island.thin_walls = ThinWallRegions()
+    #         island.thin_walls.regions = []
+    #         for i_key, i_item in twr_group.items():
+    #             if isinstance(i_item, h5py.Group):
+    #                 tw_group = twr_group.get(i_key)
+    #                 island.thin_walls.regions.append(ThinWall(**tw_group.attrs))
+    #                 for i_key, i_item in tw_group.items():
+    #                     setattr(island.thin_walls.regions[-1], i_key, np.array(i_item))
+    #             if isinstance(i_item, h5py.Dataset):
+    #                 setattr(island.thin_walls, i_key, np.array(i_item))
+    #     f.close()
+    #     os.chdir(self.home)
+    #     return
 
     def load_thin_walls_hdf5(self, layer_name: str, island: Island) -> List[Island]:
         os.chdir(self.output)
@@ -235,22 +255,52 @@ class Paths:
                 if isinstance(i_item, h5py.Group):
                     if i_key == "cross_over_bridges":
                         b_group = bridges_group.get(i_key)
-                        for i_key, i_item in b_group.items():
-                            island.bridges.cross_over_bridges.append(
-                                Bridge(i_key, np.array(i_item), [], [], 0, [])
-                            )
+                        for j_key, j_item in b_group.items():
+                            if not j_key[0:6] in [x.name for x in island.bridges.cross_over_bridges]:
+                                island.bridges.cross_over_bridges.append(
+                                    Bridge(j_key, [], [], [], 0, [])
+                                )
+                                for att, value in dict(j_item.attrs).items():
+                                    setattr(island.bridges.cross_over_bridges[-1], att, value)
+                                setattr(island.bridges.cross_over_bridges[-1], "name", j_key[0:6])
+                            if (j_key.endswith("origin")):
+                                setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
+                            elif (j_key.endswith("contorno")):
+                                setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            else:
+                                setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                     if i_key == "zigzag_bridges":
                         b_group = bridges_group.get(i_key)
-                        for i_key, i_item in b_group.items():
-                            island.bridges.zigzag_bridges.append(
-                                Bridge(i_key, np.array(i_item), [], [], 0, [])
-                            )
+                        for j_key, j_item in b_group.items():
+                            if not j_key[0:6] in [x.name for x in island.bridges.zigzag_bridges]:
+                                island.bridges.zigzag_bridges.append(
+                                    Bridge(j_key, [], [], [], 0, [])
+                                )
+                                for att, value in dict(j_item.attrs).items():
+                                    setattr(island.bridges.zigzag_bridges[-1], att, value)
+                                setattr(island.bridges.zigzag_bridges[-1], "name", j_key[0:6])
+                            if (j_key.endswith("origin")):
+                                setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
+                            elif (j_key.endswith("contorno")):
+                                setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            else:
+                                setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                     if i_key == "offset_bridges":
                         b_group = bridges_group.get(i_key)
-                        for i_key, i_item in b_group.items():
-                            island.bridges.offset_bridges.append(
-                                Bridge(i_key, np.array(i_item), [], [], 0, [])
-                            )
+                        for j_key, j_item in b_group.items():
+                            if not j_key[0:6] in [x.name for x in island.bridges.offset_bridges]:
+                                island.bridges.offset_bridges.append(
+                                    Bridge(j_key, [], [], [], 0, [])
+                                )
+                                for att, value in dict(j_item.attrs).items():
+                                    setattr(island.bridges.offset_bridges[-1], att, value)
+                                setattr(island.bridges.offset_bridges[-1], "name", j_key[0:6])
+                            if (j_key.endswith("origin")):
+                                setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
+                            elif (j_key.endswith("contorno")):
+                                setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            else:
+                                setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                 if isinstance(i_item, h5py.Dataset):
                     setattr(island.bridges, i_key, np.array(i_item))
         f.close()

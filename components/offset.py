@@ -7,7 +7,7 @@ if TYPE_CHECKING:
     from files import Paths
     from typing import List
     from components.layer import Layer
-from components import morphology_tools as mt
+from components import morphology_tools as mt, path_tools
 from components import images_tools as it
 from components import points_tools as pt
 import numpy as np
@@ -16,6 +16,8 @@ from skimage.morphology import disk
 from scipy.ndimage import distance_transform_edt
 from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
+import concurrent.futures
+from components import skeleton as sk
 
 
 class Area:
@@ -46,21 +48,20 @@ class ColecaoDeCoords:
 class Loop:
     """Cada contorno fechado em um level gerado pelos Offsets"""
 
-    def __init__(self, nome, img, origem, trail,**kwargs):
+    def __init__(self, nome, img, origem, trail, **kwargs):
+        self.name = nome
+        self.offset_level = origem
+        self.internal_area = []
+        self.trail = trail
+        self.route = img
+        self.region = ""
+        self.lost_area = []
+        self.lost_area_sum = 0
+        self.acceptable = 0
+        self.loops_filhos = []
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
-        else:
-            self.name = nome
-            self.offset_level = origem
-            self.internal_area = []
-            self.trail = trail
-            self.route = img
-            self.region = ""
-            self.lost_area = []
-            self.lost_area_sum = 0
-            self.acceptable = 0
-            self.loops_filhos = []
 
 
 class Level:
@@ -401,6 +402,64 @@ class OffsetRegions:
                         )
         return region_counter
 
+    def make_routes_o(
+        self,
+        base_frame,
+        mask_full,
+        mask_double,
+        prohibited_areas,
+        path_radius,
+        amendment_size,
+        folders: Paths,
+    ):
+        prohibited_areas = np.zeros_like(prohibited_areas)
+
+        def make_offset_route(region):
+            route = np.zeros(base_frame)
+            next_prohibited_area = np.zeros(base_frame)
+            for loop in region.loops:
+                route = np.logical_or(route, loop.route)
+            n_loops = len(region.loops)
+            if n_loops == 2:
+                amendment = disk(path_radius * amendment_size)
+                route, next_prohibited_area = link_spirals(
+                    route, n_loops, amendment, region, base_frame, prohibited_areas
+                )
+            if n_loops > 2:
+                amendment = disk(2 * path_radius * amendment_size)
+                route, next_prohibited_area = link_spirals(
+                    route, n_loops, amendment, region, base_frame, prohibited_areas
+                )
+            reparos = mt.find_failures(route, np.zeros_like(route))
+            route = np.logical_or(reparos, route)
+            route = mt.closing(
+                route, kernel_size=1
+            )  # cv2.morphologyEx(route.astype(np.uint8), cv2.MORPH_CLOSE, disk(1))
+            region.route, _, _ = sk.create_prune_divide_skel(
+                route, path_radius
+            )  # pcv.morphology.skeletonize(route.astype(np.uint8))
+            region.trail = mt.dilation(
+                route, kernel_img=mask_full
+            )  # cv2.dilate(route.astype(np.uint8), mask_full)
+            region.next_prohibited_area = next_prohibited_area
+            return region
+
+        processed_regions = []
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = [
+                executor.submit(make_offset_route, region) for region in self.regions
+            ]
+            for l in concurrent.futures.as_completed(results):
+                processed_regions.append(l.result())
+        processed_regions.sort(key=lambda x: x.name)
+        self.regions = processed_regions
+        self.next_prohibited_areas = np.zeros(base_frame)
+        for r in self.regions:
+            self.next_prohibited_areas = np.logical_or(
+                self.next_prohibited_areas, r.next_prohibited_area
+            )
+        return
+
     def make_regions(
         self,
         rest_f1,
@@ -409,7 +468,7 @@ class OffsetRegions:
         void_max,
         max_external_walls,
         max_internal_walls,
-        bead_size
+        bead_size,
     ):
         acceptable = self.tag_loops_by_voids(
             base_frame,
@@ -427,26 +486,24 @@ class OffsetRegions:
             self.influence_regions, key=lambda x: min(sublist[0] for sublist in x.loops)
         )
         all_loops_descrition = sum([x.loops for x in influence_regions], [])
-        loops_accepted_desc = list(filter(lambda x: x[0] == "Lvl_000", all_loops_descrition))
+        loops_accepted_desc = list(
+            filter(lambda x: x[0] == "Lvl_000", all_loops_descrition)
+        )
         loops_accepted = []
         ideal_sum = np.sum(disk(path_radius_external))
         for loop in loops_accepted_desc:
             if loop[1] == 0:
-                loop_level = int(loop[0].replace("Lvl_",""))
-                loops_accepted.append(
-                    self.levels[loop_level].outer_loops[loop[2]]
-                )
+                loop_level = int(loop[0].replace("Lvl_", ""))
+                loops_accepted.append(self.levels[loop_level].outer_loops[loop[2]])
             elif loop[1] == 1:
-                loops_accepted.append(
-                    self.levels[loop_level].hole_loops[loop[2]]
-                )
+                loops_accepted.append(self.levels[loop_level].hole_loops[loop[2]])
         for region in influence_regions:
             fil_region_img = np.zeros(base_frame)
             fil_region_loops = []
             reference_region_img = np.zeros(base_frame)
             for loop in region.loops:
                 candidate = {}
-                loop_level = int(loop[0].replace("Lvl_",""))
+                loop_level = int(loop[0].replace("Lvl_", ""))
                 if loop[1] == 0:
                     candidate = self.levels[loop_level].outer_loops[loop[2]]
                 elif loop[1] == 1:
@@ -546,7 +603,7 @@ class OffsetRegions:
             external_counter = 0
             aaaaaaa = []
             for loop in region.loops:
-                loop_level = int(loop[0].replace("Lvl_",""))
+                loop_level = int(loop[0].replace("Lvl_", ""))
                 if loop[1] == 1:
                     thisloop = levels[loop_level].hole_loops[loop[2]]
                 elif loop[1] == 0:
@@ -574,13 +631,13 @@ class Region:
         self.name = name
         self.img = img
         self.loops = loops
-        self.limmit_coords = ([])  
+        self.limmit_coords = []
         # coordenadas dos pontos onde se separam as regiões monotônicas
         self.center_coords = []  # coordenadas do centro geométrico de cada contorno
         self.area_contour = []  # contorno de cada área
         self.area_contour_img = []
         self.internal_area = []  # resultante de se pintar o interior de cada contorno
-        self.hierarchy = (0)
+        self.hierarchy = 0
         # hierarquia de contornos, quais são internos e quais são externos
         self.paralel_points = []
         self.route = []
@@ -594,17 +651,11 @@ class Region:
         return
 
     def make_internal_area_and_center(self, original_img):
-        self.internal_area = it.fill_internal_area(
-            self.area_contour_img, original_img
-        )
-        self.center_coords = pt.points_center(
-            pt.contour_to_list(self.area_contour)
-        )
+        self.internal_area = it.fill_internal_area(self.area_contour_img, original_img)
+        self.center_coords = pt.points_center(pt.contour_to_list(self.area_contour))
 
     def make_limmit_coords(self, path_radius):
-        limmit_coords = pt.extreme_points(
-            self.area_contour_img, force_top=True
-        )
+        limmit_coords = pt.extreme_points(self.area_contour_img, force_top=True)
         limmit_coords[0][0] = limmit_coords[0][0] + path_radius * 2
         limmit_coords[1][0] = limmit_coords[1][0] + path_radius * -2
         limmit_coords[2][0] = limmit_coords[2][0] + path_radius * -2
@@ -653,9 +704,7 @@ class Region:
                     ):
                         self.paralel_points[-1].lista_a.append(destiny_points[i])
                         self.paralel_points[-1].dist_a.append(
-                            pt.distance_pts(
-                                self.limmit_coords[0], destiny_points[i]
-                            )
+                            pt.distance_pts(self.limmit_coords[0], destiny_points[i])
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[1]
@@ -663,9 +712,7 @@ class Region:
                     ):
                         self.paralel_points[-1].lista_b.append(destiny_points[i])
                         self.paralel_points[-1].dist_b.append(
-                            pt.distance_pts(
-                                self.limmit_coords[1], destiny_points[i]
-                            )
+                            pt.distance_pts(self.limmit_coords[1], destiny_points[i])
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[2]
@@ -673,9 +720,7 @@ class Region:
                     ):
                         self.paralel_points[-1].lista_c.append(destiny_points[i])
                         self.paralel_points[-1].dist_c.append(
-                            pt.distance_pts(
-                                self.limmit_coords[2], destiny_points[i]
-                            )
+                            pt.distance_pts(self.limmit_coords[2], destiny_points[i])
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[3]
@@ -683,8 +728,39 @@ class Region:
                     ):
                         self.paralel_points[-1].lista_d.append(destiny_points[i])
                         self.paralel_points[-1].dist_d.append(
-                            pt.distance_pts(
-                                self.limmit_coords[3], destiny_points[i]
-                            )
+                            pt.distance_pts(self.limmit_coords[3], destiny_points[i])
                         )
         return
+
+
+def link_spirals(route, n_loops, mask, region, base_frame, prohibited_areas):
+    guide_line, idx = path_tools.generate_guide_line(
+        region, base_frame, prohibited_areas
+    )
+    work_area = mt.dilation(guide_line, kernel_img=mask)
+    _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+    # work_area_contour = points_tools.contour_to_list(work_area_contour)
+    points = path_tools.intersection_points_w_rectangle(
+        work_area_contour_img, route, idx
+    )
+    work_area_contour = path_tools.line_img_to_freeman_chain(
+        work_area_contour_img, points[0]
+    )
+    borda_cortada = path_tools.spiral_cut(
+        work_area_contour, route, points, n_loops, base_frame, idx
+    )
+    route = np.logical_and(route, np.logical_not(work_area))
+    route = np.logical_or(route, borda_cortada)
+    if n_loops > 2:
+        intersection_pol = it.draw_polyline(np.zeros(base_frame), points, True)
+        intersection_pol = it.fill_internal_area(intersection_pol, np.ones(base_frame))
+        guide_line = np.logical_and(guide_line, intersection_pol)
+        rectangle_contour = mt.detect_contours(intersection_pol)
+        rectangle_contour = pt.contour_to_list(rectangle_contour)
+        cut_rectangle = path_tools.rectangle_cut(
+            rectangle_contour, guide_line, points, n_loops, base_frame, 0, idx
+        )
+        route = np.logical_or(route, guide_line)
+        route = np.logical_or(route, cut_rectangle)
+    next_prohibited_areas = work_area
+    return route, next_prohibited_areas

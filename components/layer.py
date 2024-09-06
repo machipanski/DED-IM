@@ -32,7 +32,7 @@ class Island:
         self.rest_of_picture_f3 = np.ndarray([])
         if kwargs:
             for key, value in kwargs.items():
-                setattr(self, key, value)            
+                setattr(self, key, value)
         if args:
             self.name = args[0]
             self.img = args[1]
@@ -107,8 +107,6 @@ class Layer:
         nozzle_diam_internal_pxl = nozzle_diam_internal * self.pxl_per_mm
         self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
         self.nozzle_diam_external = nozzle_diam_external
-        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
-        folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
 
@@ -160,6 +158,7 @@ class Layer:
                         "rest_of_picture_f1",
                         island_rest_of_picture_f1,
                     )
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
     def make_offsets(
@@ -275,9 +274,6 @@ class Layer:
         self.void_max = void_max
         self.max_external_walls = external_max
         self.max_internal_walls = internal_max
-        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
-        folders.load_islands_hdf5(self)
-
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/offsets")
 
@@ -303,9 +299,13 @@ class Layer:
             for isl in self.islands:
                 if np.sum(isl.rest_of_picture_f2) > 0:
                     folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}", "rest_of_picture_f2", isl.rest_of_picture_f2
+                        f"/{self.name}/{isl.name}",
+                        "rest_of_picture_f2",
+                        isl.rest_of_picture_f2,
                     )
-                    isl.rest_of_picture_f2 = f"/{self.name}/{isl.name}/rest_of_picture_f2"
+                    isl.rest_of_picture_f2 = (
+                        f"/{self.name}/{isl.name}/rest_of_picture_f2"
+                    )
                     folders.save_img_hdf5(
                         f"/{self.name}/{isl.name}/offsets",
                         "all_loops",
@@ -340,7 +340,22 @@ class Layer:
                                 f"/{self.name}/{isl.name}/offsets/Reg_{reg.name:03d}/loops/Lp_{i:03d}",
                                 loop.__dict__,
                             )
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
+
+    def make_offset_routes(self, amendment_size, folders: Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_offsets_hdf5(self.name, isl)
+            isl.offsets.make_routes_o(
+                self.base_frame,
+                mt.make_mask(self, "full_ext"),
+                mt.make_mask(self, "double_ext"),
+                [],
+                self.path_radius_external,
+                amendment_size,
+                folders,
+            )
 
     def make_bridges(self, n_max: float, nozzle_diam_internal: float, folders: Paths):
 
@@ -451,7 +466,9 @@ class Layer:
             for island in self.islands:
                 if np.sum(isl.rest_of_picture_f3) > 0:
                     folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}", "rest_of_picture_f3", isl.rest_of_picture_f3
+                        f"/{self.name}/{isl.name}",
+                        "rest_of_picture_f3",
+                        isl.rest_of_picture_f3,
                     )
                     folders.save_img_hdf5(
                         f"/{self.name}/{isl.name}/bridges",
@@ -467,7 +484,9 @@ class Layer:
                     folders.create_new_hdf5_group(
                         f"/{self.name}/{isl.name}/bridges/cross_over_bridges"
                     )
-                    isl.rest_of_picture_f3 = f"/{self.name}/{isl.name}/rest_of_picture_f3"
+                    isl.rest_of_picture_f3 = (
+                        f"/{self.name}/{isl.name}/rest_of_picture_f3"
+                    )
                     for reg in isl.bridges.offset_bridges:
                         folders.save_img_hdf5(
                             f"/{self.name}/{isl.name}/bridges/offset_bridges",
@@ -488,6 +507,16 @@ class Layer:
                             f"/{self.name}/{isl.name}/bridges/zigzag_bridges/ZB_{reg.name:03d}",
                             reg.__dict__,
                         )
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges",
+                            f"ZB_{reg.name:03d}_origin",
+                            reg.origin,
+                        )
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges",
+                            f"ZB_{reg.name:03d}_contorno",
+                            reg.contorno,
+                        )
                     for reg in isl.bridges.cross_over_bridges:
                         folders.save_img_hdf5(
                             f"/{self.name}/{isl.name}/bridges/cross_over_bridges",
@@ -498,7 +527,33 @@ class Layer:
                             f"/{self.name}/{isl.name}/bridges/cross_over_bridges/CB_{reg.name:03d}",
                             reg.__dict__,
                         )
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges",
+                            f"CB_{reg.name:03d}_origin",
+                            reg.origin,
+                        )
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges",
+                            f"CB_{reg.name:03d}_contorno",
+                            reg.contorno,
+                        )
+                        
         return
+    
+    def make_bridges_routes(self, folders: Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_bridges_hdf5(self.name, isl)
+            folders.load_offsets_hdf5(self.name, isl)
+            isl.bridges.make_routes_b(
+                isl.offsets.regions,
+                self.path_radius_external,
+                self.path_radius_internal,
+                self.base_frame,
+                isl.rest_of_picture_f2,
+                self.odd_layer,
+                isl.offsets.all_valid_loops,
+            )
 
     def make_zigzags(self, folders: Paths):
 

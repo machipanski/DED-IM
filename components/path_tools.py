@@ -6,6 +6,9 @@ from components import images_tools as it
 import numpy as np
 import networkx as nx
 from cv2 import boundingRect, arcLength, approxPolyDP
+from scipy.spatial import distance_matrix
+import math
+import random
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
 
@@ -116,12 +119,78 @@ def img_to_graph(im):
     return G
 
 
+def intersection_points_w_rectangle(border, spiral, idx=0):
+    # intersection = np.add(border, spiral)
+    intersection = np.logical_and(border, spiral)
+    considered = pt.img_to_points(intersection)
+    pts = [[], [], [], []]
+    sums = [x[0] + x[1] for x in considered]
+    pts[0] = considered[np.argmin(sums)]
+    pts[2] = considered[np.argmax(sums)]
+    rest = list(filter(lambda x: not (x in pts), considered))
+    difs_x_a = [abs(pts[0][1] - x[1]) for x in rest]
+    pts[1] = rest[np.argmin(difs_x_a)]
+    pts[3] = rest[np.argmax(difs_x_a)]
+    return pts
+
+
 def line_img_to_freeman_chain(img, origin_point):
     pontos_ctr = mt.detect_contours(img, only_external=True)
     pontos = pt.contour_to_list(pontos_ctr)
     pontos_org = set_first_pt_in_seq(pontos, origin_point)
     pontos_org = cut_repetition(pontos_org)
     return pontos_org
+
+
+def generate_guide_line(region, base_frame, prohibited_areas):
+    """
+    lembrando dos indices:
+        _______1______
+        |            |
+        0            2
+        |______3_____|
+    """
+    region.make_contour(base_frame)
+    bound_box = boundingRect(region.area_contour[0])
+    # bound_box = boundingRect([0])
+    region.center_coords = pt.points_center(
+    pt.contour_to_list(region.area_contour)
+    )
+    end_of_lines = [
+        [bound_box[0], region.center_coords[0]],
+        [region.center_coords[1], bound_box[1]],
+        [bound_box[0] + bound_box[2], region.center_coords[0]],
+        [region.center_coords[1], bound_box[1] + bound_box[3]],
+    ]
+    end_of_lines = pt.invert_x_y(end_of_lines)
+    candidates = end_of_lines.copy()
+    master_line = []
+    while np.sum(master_line) == 0:
+        if candidates:
+            closest_point_indx = np.argmin(
+                distance_matrix([list(region.center_coords)], candidates, 2)
+            )
+            closest_point = random.choice(candidates)
+            # point_a = np.flip(tuple(region.center_coords))
+            # point_b = np.flip(tuple(closest_point))
+            line = it.draw_line(
+                np.zeros(base_frame), region.center_coords, closest_point
+            )
+            dilated_line = mt.dilation(line, kernel_size=16)
+            # if np.logical_and(dilated_line, prohibited_areas).any():
+            #     candidates.remove(closest_point)
+            # else:
+            master_line = line
+        else:
+            candidates = end_of_lines.copy()
+            closest_point_indx = np.argmin(
+                distance_matrix([list(region.center_coords)], candidates, 2)
+            )
+            closest_point = candidates[closest_point_indx]
+            master_line = it.draw_line(
+                np.zeros(base_frame), region.center_coords, closest_point
+            )
+    return master_line, end_of_lines.index(closest_point)
 
 
 def make_offset_graph(filtered_regions):
@@ -320,6 +389,52 @@ def organize_points_cw(pts, origin=[]):
     return organized
 
 
+def rectangle_cut(contours, linha, points, n_loops, base_frame, mode=0, idx=0):
+    fila = contours
+    rotations = fila.index(points[0])
+    fila = fila[rotations:] + fila[:rotations]  # garante que a fila começa pelo ponto A
+    borda_cortada = np.zeros(base_frame)
+    borda_normal = np.zeros(base_frame)
+    counter = 0
+    counter_pixels = 0
+    for i in np.arange(0, len(fila)):
+        borda_normal[fila[i][0]][fila[i][1]] = 1
+        counter_pixels += 1
+        y = fila[i][0]
+        x = fila[i][1]
+        pixel_linhas = linha[y][x]
+        ca = [y, x] == points[0]
+        cb = [y, x] == points[1]
+        cc = [y, x] == points[2]
+        cd = [y, x] == points[3]
+        ce = pixel_linhas == 1
+        # cf = n_loops == 2
+        cg = n_loops % 2
+        ch = idx == 3 or idx == 1
+        if mode:  # versão zigzag
+            if ca or cb or cc or cd:
+                counter += 1
+                borda_cortada[fila[i][0]][fila[i][1]] = 1
+        else:  # versão espiral
+            if ch:
+                if (not cg) and (ce or cc or cd):  # par
+                    counter += 1
+                    borda_cortada[fila[i][0]][fila[i][1]] = 1
+                elif cg and (ce or cc):  # impar
+                    counter += 1
+                    borda_cortada[fila[i][0]][fila[i][1]] = 1
+            else:
+                if (not cg) and (ce or ca or cd):  # par
+                    counter += 1
+                    borda_cortada[fila[i][0]][fila[i][1]] = 1
+                elif cg and (ce or ca or cc):  # impar
+                    counter += 1
+                    borda_cortada[fila[i][0]][fila[i][1]] = 1
+        if counter % 2 != 0:
+            borda_cortada[fila[i][0]][fila[i][1]] = 1
+    return borda_cortada
+
+
 def regions_mst(regions_graph):
     inner_way = nx.algorithms.tree.minimum_spanning_tree(
         regions_graph, algorithm="prim"
@@ -377,3 +492,60 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
             approx_seq += approx_seg.tolist()
             approx_seq += [[["a", "a"]]]
     return approx_seq
+
+
+def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
+
+    fila = contours.copy()
+    fila = set_first_pt_in_seq(fila, points[0])
+    ordem_na_fila_pontos = []
+    for p in fila:
+        if p in points:
+            ordem_na_fila_pontos.append(p)
+    ordem_na_fila_pontos_idx = [ordem_na_fila_pontos.index(x) for x in points]
+    if ordem_na_fila_pontos_idx[1] == 3:
+        fila.reverse()
+        fila = set_first_pt_in_seq(fila, points[0])
+    fila = contours.copy()
+    rotations = fila.index(points[0])
+    fila = fila[rotations:] + fila[:rotations]  # garante que a fila começa pelo ponto A
+    borda_cortada = np.zeros(base_frame)
+    borda_normal = np.zeros(base_frame)
+    counter = 0
+    counter_pixels = 0
+    for i in np.arange(0, len(fila)):
+        # borda_normal[fila[0][i][0][1]][fila[0][i][0][0]] = 1
+        borda_normal[fila[i][0]][fila[i][1]] = 1
+        counter_pixels += 1
+        y = fila[i][0]
+        x = fila[i][1]
+        pixel_linhas = spiral[y][x]
+        ca = [y, x] == points[0]
+        cb = [y, x] == points[1]
+        cc = [y, x] == points[2]
+        cd = [y, x] == points[3]
+        ce = pixel_linhas == 1
+        cf = n_loops == 2
+        cg = n_loops % 2
+        if cf and ce:
+            counter += 1
+            borda_cortada[fila[i][0]][fila[i][1]] = 1
+        elif idx % 2:  # idx indica que o corte é no topo ou em baixo
+            if (not cg) and (ce and not (cd or cc)):  # par
+                counter += 1
+                borda_cortada[fila[i][0]][fila[i][1]] = 1
+            elif cg and (ce and not (cc or ca)):  # impar
+                counter += 1
+                borda_cortada[fila[i][0]][fila[i][1]] = 1
+        else:  # idx indica que o corte é nas laterais da figura
+            if (not cg) and (ce and not (cd or ca)):  # par
+                counter += 1
+                borda_cortada[fila[i][0]][fila[i][1]] = 1
+            elif cg and (ce and not (cc or ca)):  # impar
+                counter += 1
+                borda_cortada[fila[i][0]][fila[i][1]] = 1
+        if counter % 2 != 0:
+            borda_cortada[fila[i][0]][fila[i][1]] = 1
+    if (idx % 2 == 0) and n_loops == 2:
+        borda_cortada = np.logical_and(borda_normal, np.logical_not(borda_cortada))
+    return borda_cortada

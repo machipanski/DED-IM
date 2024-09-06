@@ -840,24 +840,34 @@ class BridgeRegions:
         """Chama a função make_route() para cada região"""
         self.routes = np.zeros(base_frame)
         for i in self.zigzag_bridges:
-            i.make_zigzag_bridge_route(
-                path_radius_internal, rest_of_picture, all_offsets
-            )
-            i.find_center(base_frame)
-            self.routes = np.logical_or(i.route, self.routes)
+            try:
+                i.make_zigzag_bridge_route(
+                    path_radius_internal, rest_of_picture, all_offsets
+                )
+                # i.route
+                i.find_center(base_frame)
+                self.routes = np.logical_or(i.route, self.routes)
+            except:
+                pass
         for i in self.offset_bridges:
-            i.make_offset_bridge_route(
-                offsets_regions, path_radius_external, base_frame, rest_of_picture
-            )
-            i.find_center(base_frame)
-            # i.img
-            self.routes = np.logical_or(i.route, self.routes)
+            try:
+                i.make_offset_bridge_route(
+                    offsets_regions, path_radius_external, base_frame, rest_of_picture
+                )
+                i.find_center(base_frame)
+                # i.img
+                self.routes = np.logical_or(i.route, self.routes)
+            except:
+                pass
         for i in self.cross_over_bridges:
-            i.make_cross_over_route_v3(
-                path_radius_internal, rest_of_picture, all_offsets
-            )
-            i.find_center(base_frame)
-            self.routes = np.logical_or(i.route, self.routes)
+            try:
+                i.make_cross_over_route_v3(
+                    path_radius_internal, rest_of_picture, all_offsets
+                )
+                i.find_center(base_frame)
+                self.routes = np.logical_or(i.route, self.routes)
+            except:
+                pass
         return
 
     def apply_bridges(self, rest_of_picture, base_frame):

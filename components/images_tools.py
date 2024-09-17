@@ -8,7 +8,7 @@ if TYPE_CHECKING:
     from files import Paths
 import cv2
 import numpy as np
-from components import morphology_tools as mt
+from components import morphology_tools as mt, offset
 
 # from skimage.morphology import disk
 from skimage.measure import label
@@ -61,58 +61,77 @@ def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.
     )  # AND para garantir os buracos
     return internal_area
 
+
 def final_mapping(layer: Layer, folders: Paths):
     isl_final_map = np.zeros(layer.base_frame)
+    regions_imgs = []
     for isl in layer.islands:
         folders.load_thin_walls_hdf5(layer.name, isl)
-        if isl.thin_walls.regions:
-            T = (sum_imgs([reg.img for reg in isl.thin_walls.regions])).astype(
-                np.uint16
-            ) * 501
-        else:
-            T = np.zeros_like(layer.original_img)
+        if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+            regions_imgs.append(
+                sum_imgs([reg.img for reg in isl.thin_walls.regions]).astype(np.uint16)
+                * 501
+            )
+        # else:
+        #     T = np.zeros_like(layer.original_img)
         folders.load_zigzags_hdf5(layer.name, isl)
-        if isl.zigzags.regions:
-            Z = (sum_imgs_colored([reg.img for reg in isl.zigzags.regions])).astype(
-                np.uint16
-            ) * 101
-        else:
-            Z = np.zeros_like(layer.original_img)
+        if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
+            regions_imgs.append(
+                sum_imgs_colored([reg.img for reg in isl.zigzags.regions]).astype(
+                    np.uint16
+                )
+                * 101
+            )
+        # else:
+        #     Z = np.zeros_like(layer.original_img)
         folders.load_offsets_hdf5(layer.name, isl)
-        if isl.offsets.regions:
-            O = (sum_imgs([reg.img for reg in isl.offsets.regions])).astype(
-                np.uint16
-            ) * 601
-        else:
-            O = np.zeros_like(layer.original_img)
+        if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+            regions_imgs.append(
+                sum_imgs([reg.img for reg in isl.offsets.regions]).astype(np.uint16)
+                * 601
+            )
+        # else:
+        #     O = np.zeros_like(layer.original_img)
         folders.load_bridges_hdf5(layer.name, isl)
-        if isl.bridges.zigzag_bridges:
-            ZB = (sum_imgs([reg.img for reg in isl.bridges.zigzag_bridges])).astype(
-                np.uint16
-            ) * 701
-        else:
-            ZB = np.zeros_like(layer.original_img)
-        if isl.bridges.offset_bridges:
-            OB = (sum_imgs([reg.img for reg in isl.bridges.offset_bridges])).astype(
-                np.uint16
-            ) * 801
-        else:
-            OB = np.zeros_like(layer.original_img)
-        if isl.bridges.cross_over_bridges:
-            CB = (sum_imgs([reg.img for reg in isl.bridges.cross_over_bridges])).astype(
-                np.uint16
-            ) * 901
-        else:
-            CB = np.zeros_like(layer.original_img)
-        isl_final_map =  sum_imgs([isl_final_map, T, Z, O, ZB, OB, CB])
+        if hasattr(isl.bridges, "zigzag_bridges"):
+            if len(isl.bridges.zigzag_bridges) > 0:
+                regions_imgs.append(
+                    sum_imgs([reg.img for reg in isl.bridges.zigzag_bridges]).astype(
+                        np.uint16
+                    )
+                    * 701
+                )
+        # else:
+        #     ZB = np.zeros_like(layer.original_img)
+        if hasattr(isl.bridges, "offset_bridges"):
+            if len(isl.bridges.offset_bridges) > 0:
+                regions_imgs.append(
+                    sum_imgs([reg.img for reg in isl.bridges.offset_bridges]).astype(
+                        np.uint16
+                    )
+                    * 801
+                )
+        # else:
+        #     OB = np.zeros_like(layer.original_img)
+        if hasattr(isl.bridges, "cross_over_bridges"):
+            if len(isl.bridges.cross_over_bridges) > 0:
+                regions_imgs.append(
+                    sum_imgs(
+                        [reg.img for reg in isl.bridges.cross_over_bridges]
+                    ).astype(np.uint16)
+                    * 901
+                )
+        # else:
+        #     CB = np.zeros_like(layer.original_img)
+        isl_final_map = sum_imgs(regions_imgs)
     return isl_final_map
 
 
 def image_subtract(gray_img1: np.ndarray, gray_img2: np.ndarray) -> np.ndarray:
     """
-    This is a function used to subtract values of one 
+    This is a function used to subtract values of one
     gray-scale image array from another gray-scale image array. The
-    resulting gray-scale image array has a minimum element value of zero. 
+    resulting gray-scale image array has a minimum element value of zero.
     That is all negative values resulting from the
     subtraction are forced to zero.
     Inputs:
@@ -183,7 +202,7 @@ def neighborhood_imgs(areas):
 
 
 def read_img_add_border(img_name: str) -> np.ndarray:
-    """Há momentos em que algumas operações morfológicas sofrem alterações 
+    """Há momentos em que algumas operações morfológicas sofrem alterações
     quando os pixels estão no limite da imagem
     para evitar essas distorções, são adicionados alguns pixels no imagem"""
     # print(os.chdir())

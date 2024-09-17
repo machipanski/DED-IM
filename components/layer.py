@@ -88,7 +88,7 @@ class Layer:
     ) -> None:
 
         def load_and_make_thinWalls(island: Island) -> List[Island, dict]:
-            island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "Isl_img")
+            island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
             island.thin_walls = ThinWallRegions()
             imgs_pack = island.thin_walls.make_thin_walls(
                 self.name,
@@ -148,11 +148,14 @@ class Layer:
             with Timer("Retirando Paredes finas da camada"):
                 for island in self.islands:
                     island_img = folders.load_img_hdf5(
-                        f"/{self.name}/{island.name}", "Isl_img"
+                        f"/{self.name}/{island.name}", "img"
                     )
-                    island_rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
-                        folders, island_img, self.base_frame
-                    )
+                    if hasattr(island, 'bridges'):
+                        island_rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
+                            folders, island_img, self.base_frame
+                        )
+                    else:
+                        island_rest_of_picture_f1 = island.img
                     folders.save_img_hdf5(
                         f"{self.name}/{island.name}",
                         "rest_of_picture_f1",
@@ -537,9 +540,9 @@ class Layer:
                             f"CB_{reg.name:03d}_contorno",
                             reg.contorno,
                         )
-                        
+
         return
-    
+
     def make_bridges_routes(self, folders: Paths):
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -659,10 +662,10 @@ def divide_islands(folders: Paths):
         for i, si in enumerate(separated_imgs):
             if not (f"I_{i:03d}" in layer_group.keys()):
                 island_group = layer_group.create_group(f"I_{i:03d}")
-                folders.save_img_hdf5(island_group.name, "Isl_img", si)
+                folders.save_img_hdf5(island_group.name, "img", si)
                 island_group.attrs["name"] = f"I_{i:03d}"
-                island_group.attrs["img_name"] = "Isl_img"
-                islands.append(Island(f"I_{i:03d}", "Isl_img"))
+                island_group.attrs["img_name"] = "img"
+                islands.append(Island(f"I_{i:03d}", "img"))
         layer_group.attrs["islands"] = [x.name for x in islands]
     save_file.attrs["Fase 0"] = "OK"
     save_file.close()

@@ -118,8 +118,9 @@ def close_bridge_contour(
             linha2 = labeled == 2
         elif labeled_n == 1:
             print("teste: caso de uma unica linha no entorno da origem")
-            linha1 = labeled == 1
-            linha2 = labeled == 1
+            # linha1 = labeled == 1
+            # linha2 = labeled == 1
+            return [], []
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
             return [], []

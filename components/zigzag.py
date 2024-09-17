@@ -93,52 +93,58 @@ class Subregion:
             labeled_divs, _, _ = it.divide_by_connected(d)
             areas = areas + labeled_divs
         final_areas = []
-        counter_areas = 0
-        for a in areas:
-            square_mask = getStructuringElement(
-                MORPH_RECT, (int(path_radius), int(path_radius))
-            )
-            faixa_apertada_a = np.logical_and(
-                a, np.logical_not(mp.opening(a, kernel_img=square_mask))
-            )
-            parts, _, num = it.divide_by_connected(faixa_apertada_a)
-            largos = list(map(lambda x: largura_ok(x, path_radius), parts))
-            for j, b in enumerate(parts):
-                if largos[j] == True:
-                    alturas_da_faixa_apertada = pt.img_to_points(b)
-                    alturas_da_faixa_apertada = [
-                        x[0] for x in alturas_da_faixa_apertada
-                    ]
-                    alturas_da_faixa_apertada = [
-                        min(alturas_da_faixa_apertada),
-                        max(alturas_da_faixa_apertada),
-                    ]
-                    faixa_apertada_b = copy.deepcopy(a)
-                    faixa_apertada_b[: (alturas_da_faixa_apertada[0] - 1)] = 0
-                    faixa_apertada_b[(alturas_da_faixa_apertada[1] + 1) :] = 0
-                    composto = np.add(
-                        faixa_apertada_b.astype(np.uint8), a.astype(np.uint8)
-                    )
-                    faixa_a_ser_mantida = composto == 1
-                    if np.sum(faixa_a_ser_mantida) > 4:
-                        largura_a_ser_mantida = pt.img_to_points(faixa_a_ser_mantida)
-                        largura_a_ser_mantida = [x[1] for x in largura_a_ser_mantida]
-                        largura_a_ser_mantida = [
-                            min(largura_a_ser_mantida),
-                            max(largura_a_ser_mantida),
-                        ]
-                        faixa_a_ser_mantida_b = copy.deepcopy(a)
-                        faixa_a_ser_mantida_b[:, : (largura_a_ser_mantida[0] - 1)] = 0
-                        faixa_a_ser_mantida_b[:, (largura_a_ser_mantida[1] + 1) :] = 0
-                        nova_div = np.logical_and(
-                            a, np.logical_not(faixa_a_ser_mantida_b)
-                        )
-                        a = np.logical_and(a, np.logical_not(nova_div))
-                        final_areas.append(ShadowArea(counter_areas, nova_div))
-                        counter_areas += 1
-            final_areas.append(ShadowArea(counter_areas, a))
-            counter_areas += 1
+        for i,area in enumerate(areas):
+            final_areas.append(ShadowArea(i, area))
             shadow_img = it.sum_imgs_colored([x.img for x in final_areas])
+        # final_areas = []
+        # counter_areas = 0
+        # for a in areas:
+        #     square_mask = getStructuringElement(
+        #         MORPH_RECT, (int(path_radius), int(path_radius))
+        #     )
+        #     faixa_apertada_a = np.logical_and(
+        #         a, np.logical_not(mp.opening(a, kernel_img=square_mask))
+        #     )
+        #     parts, _, num = it.divide_by_connected(faixa_apertada_a)
+        #     largos = list(map(lambda x: largura_ok(x, path_radius), parts))
+        #     parts[2]
+        #     for j, b in enumerate(parts):
+        #         if largos[j] == True:
+        #             alturas_da_faixa_apertada = pt.img_to_points(b)
+        #             alturas_da_faixa_apertada = [
+        #                 x[0] for x in alturas_da_faixa_apertada
+        #             ]
+        #             alturas_da_faixa_apertada = [
+        #                 min(alturas_da_faixa_apertada),
+        #                 max(alturas_da_faixa_apertada),
+        #             ]
+        #             faixa_apertada_b = copy.deepcopy(a)
+        #             faixa_apertada_b[: (alturas_da_faixa_apertada[0] - 1)] = 0
+        #             faixa_apertada_b[(alturas_da_faixa_apertada[1] + 1) :] = 0
+        #             composto = np.add(
+        #                 faixa_apertada_b.astype(np.uint8), a.astype(np.uint8)
+        #             )
+        #             faixa_a_ser_mantida = composto == 1
+        #             if np.sum(faixa_a_ser_mantida) > 4:
+        #                 largura_a_ser_mantida = pt.img_to_points(faixa_a_ser_mantida)
+        #                 largura_a_ser_mantida = [x[1] for x in largura_a_ser_mantida]
+        #                 largura_a_ser_mantida = [
+        #                     min(largura_a_ser_mantida),
+        #                     max(largura_a_ser_mantida),
+        #                 ]
+        #                 faixa_a_ser_mantida_b = copy.deepcopy(a)
+        #                 faixa_a_ser_mantida_b[:, : (largura_a_ser_mantida[0] - 1)] = 0
+        #                 faixa_a_ser_mantida_b[:, (largura_a_ser_mantida[1] + 1) :] = 0
+        #                 nova_div = np.logical_and(
+        #                     a, np.logical_not(faixa_a_ser_mantida_b)
+        #                 )
+        #                 a = np.logical_and(a, np.logical_not(nova_div))
+        #                 final_areas.append(ShadowArea(counter_areas, nova_div))
+        #                 counter_areas += 1
+            # final_areas.append(ShadowArea(counter_areas, a))
+            # counter_areas += 1
+            # shadow_img = it.sum_imgs_colored([x.img for x in final_areas])
+        
         return shadow_img, final_areas
 
     def unite_monotonic_shadow_areas(self, areas):

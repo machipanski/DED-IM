@@ -267,6 +267,8 @@ class Paths:
                                 setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
                             elif (j_key.endswith("contorno")):
                                 setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            elif (j_key.endswith("route")):
+                                setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"route",np.array(j_item))
                             else:
                                 setattr([x for x in island.bridges.cross_over_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                     if i_key == "zigzag_bridges":
@@ -283,6 +285,8 @@ class Paths:
                                 setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
                             elif (j_key.endswith("contorno")):
                                 setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            elif (j_key.endswith("route")):
+                                setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"route",np.array(j_item))
                             else:
                                 setattr([x for x in island.bridges.zigzag_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                     if i_key == "offset_bridges":
@@ -299,6 +303,8 @@ class Paths:
                                 setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"origin",np.array(j_item))
                             elif (j_key.endswith("contorno")):
                                 setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"contorno",np.array(j_item))
+                            elif (j_key.endswith("route")):
+                                setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"route",np.array(j_item))
                             else:
                                 setattr([x for x in island.bridges.offset_bridges if x.name == j_key[0:6] ][0],"img",np.array(j_item))
                 if isinstance(i_item, h5py.Dataset):

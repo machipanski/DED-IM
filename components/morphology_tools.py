@@ -1,5 +1,12 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from components.layer import Layer
+import cv2
+import numpy as np
+from components import skeleton as sk
+from skimage.morphology import disk, thin
 from elements import (
     MEIO_DO_CAMINHO,
     PONTAS_SOLTAS,
@@ -9,14 +16,72 @@ from elements import (
     EXCESSIVE_DIAGONALS,
     CROSSES,
 )
-from skimage.morphology import disk
-import numpy as np
-import cv2
-from skimage.morphology import thin
-from components import skeleton as sk
 
-if TYPE_CHECKING:
-    from components.layer import Layer
+
+
+def closing(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
+    if kernel_img is None:
+        closed = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_CLOSE, disk(kernel_size)
+        )
+    if kernel_size is None:
+        closed = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_CLOSE, kernel_img.astype(np.uint8)
+        )
+    return closed
+
+
+def detect_contours(
+    img: np.ndarray, return_img=False, return_hierarchy=False, only_external=False
+) -> np.ndarray:
+    """Retorna o contorno e, se pedir com jeitinho, a imagem e a hierarquia"""
+    retrieve = cv2.RETR_TREE
+    if only_external:
+        retrieve = cv2.RETR_EXTERNAL
+    area_contour, hierarchy = cv2.findContours(
+        img.astype(np.uint8), retrieve, cv2.CHAIN_APPROX_NONE
+    )
+    if return_img:
+        area_contour_img = cv2.drawContours(
+            np.zeros_like(img).astype(np.uint8), area_contour, -1, 1
+        )
+        if return_hierarchy:
+            return area_contour, area_contour_img, hierarchy
+        return area_contour, area_contour_img
+    else:
+        if return_hierarchy:
+            return area_contour, hierarchy
+        return area_contour
+
+
+def dilation(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
+    if kernel_img is None:
+        kernel_img = []
+        dilated = cv2.dilate(img.astype(np.uint8), disk(kernel_size))
+    if kernel_size is None:
+        kernel_size = []
+        dilated = cv2.dilate(img.astype(np.uint8), kernel_img.astype(np.uint8))
+    return dilated
+
+
+def erosion(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
+    if kernel_img is None:
+        kernel_img = []
+        dilated = cv2.erode(img.astype(np.uint8), disk(kernel_size))
+    if kernel_size is None:
+        kernel_size = []
+        dilated = cv2.erode(img.astype(np.uint8), kernel_img.astype(np.uint8))
+    return dilated
+
+
+def find_crosses(img: np.ndarray, base) -> np.ndarray:
+    result = base
+    for c in CROSSES:
+        result = np.logical_or(
+            result.astype(np.uint8),
+            cv2.morphologyEx(img.astype(np.uint8), cv2.MORPH_HITMISS, c),
+        )
+    return result
 
 
 def find_failures(img, base):
@@ -31,6 +96,18 @@ def find_failures(img, base):
     result[:, :2] = 0
     result[:, -2:] = 0
     return result
+
+
+def gradient(img, kernel_img=None, kernel_size=None):
+    if kernel_img is None:
+        grad = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_GRADIENT, disk(kernel_size)
+        )
+    if kernel_size is None:
+        grad = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_GRADIENT, kernel_img.astype(np.uint8)
+        )
+    return grad
 
 
 def hitmiss_ends_v2(img):
@@ -62,26 +139,6 @@ def make_mask(layer: Layer, size: str) -> np.ndarray:
     return mask
 
 
-def dilation(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
-    if kernel_img is None:
-        kernel_img = []
-        dilated = cv2.dilate(img.astype(np.uint8), disk(kernel_size))
-    if kernel_size is None:
-        kernel_size = []
-        dilated = cv2.dilate(img.astype(np.uint8), kernel_img.astype(np.uint8))
-    return dilated
-
-
-def erosion(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
-    if kernel_img is None:
-        kernel_img = []
-        dilated = cv2.erode(img.astype(np.uint8), disk(kernel_size))
-    if kernel_size is None:
-        kernel_size = []
-        dilated = cv2.erode(img.astype(np.uint8), kernel_img.astype(np.uint8))
-    return dilated
-
-
 def opening(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         opened = cv2.morphologyEx(
@@ -92,51 +149,6 @@ def opening(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
             img.astype(np.uint8), cv2.MORPH_OPEN, kernel_img.astype(np.uint8)
         )
     return opened
-
-
-def closing(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
-    if kernel_img is None:
-        closed = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_CLOSE, disk(kernel_size)
-        )
-    if kernel_size is None:
-        closed = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_CLOSE, kernel_img.astype(np.uint8)
-        )
-    return closed
-
-
-def find_crosses(img: np.ndarray, base) -> np.ndarray:
-    result = base
-    for c in CROSSES:
-        result = np.logical_or(
-            result.astype(np.uint8),
-            cv2.morphologyEx(img.astype(np.uint8), cv2.MORPH_HITMISS, c),
-        )
-    return result
-
-
-def detect_contours(
-    img: np.ndarray, return_img=False, return_hierarchy=False, only_external=False
-) -> np.ndarray:
-    """Retorna o contorno e, se pedir com jeitinho, a imagem e a hierarquia"""
-    retrieve = cv2.RETR_TREE
-    if only_external:
-        retrieve = cv2.RETR_EXTERNAL
-    area_contour, hierarchy = cv2.findContours(
-        img.astype(np.uint8), retrieve, cv2.CHAIN_APPROX_NONE
-    )
-    if return_img:
-        area_contour_img = cv2.drawContours(
-            np.zeros_like(img).astype(np.uint8), area_contour, -1, 1
-        )
-        if return_hierarchy:
-            return area_contour, area_contour_img, hierarchy
-        return area_contour, area_contour_img
-    else:
-        if return_hierarchy:
-            return area_contour, hierarchy
-        return area_contour
 
 
 def thinning(img):

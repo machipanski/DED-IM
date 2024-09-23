@@ -1,19 +1,38 @@
 from __future__ import annotations
-import itertools
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from components.layer import Layer
     from typing import List
     from files import Paths
+import itertools
 import cv2
 import numpy as np
-from components import morphology_tools as mt, offset
-
-# from skimage.morphology import disk
+from components import morphology_tools as mt
 from skimage.measure import label
 from skimage.segmentation import flood_fill
 import copy
+
+
+def chain_to_lines(final_chain, canvas):
+    """recieves a sequence of points (y,x) and draws it line by line on the canvas"""
+    color = 1
+    count = 0
+    chain = final_chain.copy()
+    first = chain[0]
+    last = chain[-1]
+    end_p = chain.pop()
+    while len(chain) > 0:
+        start_p = end_p
+        if chain:
+            end_p = chain.pop()
+            cv2.line(canvas, tuple(start_p), tuple(end_p), color, 1)
+        else:
+            end_p = last
+            cv2.line(canvas, tuple(start_p), tuple(end_p), color, 1)
+        count += 1
+        color = count % 5 + 1
+    return canvas
 
 
 def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarray, int]:
@@ -56,9 +75,8 @@ def esta_contido(a, b):
 def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:
     internal_area = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)
     internal_area = np.logical_or(internal_area, contour_img)  # OR reinsere a trilha
-    internal_area = np.logical_and(
-        internal_area, original_img
-    )  # AND para garantir os buracos
+    internal_area = np.logical_and(internal_area, original_img)
+    # AND para garantir os buracos
     return internal_area
 
 
@@ -72,8 +90,6 @@ def final_mapping(layer: Layer, folders: Paths):
                 sum_imgs([reg.img for reg in isl.thin_walls.regions]).astype(np.uint16)
                 * 501
             )
-        # else:
-        #     T = np.zeros_like(layer.original_img)
         folders.load_zigzags_hdf5(layer.name, isl)
         if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
             regions_imgs.append(
@@ -82,16 +98,12 @@ def final_mapping(layer: Layer, folders: Paths):
                 )
                 * 101
             )
-        # else:
-        #     Z = np.zeros_like(layer.original_img)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
             regions_imgs.append(
                 sum_imgs([reg.img for reg in isl.offsets.regions]).astype(np.uint16)
                 * 601
             )
-        # else:
-        #     O = np.zeros_like(layer.original_img)
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl.bridges, "zigzag_bridges"):
             if len(isl.bridges.zigzag_bridges) > 0:
@@ -101,8 +113,6 @@ def final_mapping(layer: Layer, folders: Paths):
                     )
                     * 701
                 )
-        # else:
-        #     ZB = np.zeros_like(layer.original_img)
         if hasattr(isl.bridges, "offset_bridges"):
             if len(isl.bridges.offset_bridges) > 0:
                 regions_imgs.append(
@@ -111,8 +121,6 @@ def final_mapping(layer: Layer, folders: Paths):
                     )
                     * 801
                 )
-        # else:
-        #     OB = np.zeros_like(layer.original_img)
         if hasattr(isl.bridges, "cross_over_bridges"):
             if len(isl.bridges.cross_over_bridges) > 0:
                 regions_imgs.append(
@@ -121,8 +129,6 @@ def final_mapping(layer: Layer, folders: Paths):
                     ).astype(np.uint16)
                     * 901
                 )
-        # else:
-        #     CB = np.zeros_like(layer.original_img)
         isl_final_map = sum_imgs(regions_imgs)
     return isl_final_map
 

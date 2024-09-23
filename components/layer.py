@@ -24,9 +24,6 @@ class Island:
         self.offsets: OffsetRegions
         self.bridges: BridgeRegions
         self.zigzags: ZigZagRegions
-        self.zigzags_graph = []
-        self.zigzags_mst = []
-        self.pos_zigzag_nodes = []
         self.rest_of_picture_f1 = np.ndarray([])
         self.rest_of_picture_f2 = np.ndarray([])
         self.rest_of_picture_f3 = np.ndarray([])
@@ -87,7 +84,7 @@ class Layer:
         self, folders: Paths, nozzle_diam_external: float, nozzle_diam_internal: float
     ) -> None:
 
-        def load_and_make_thinWalls(island: Island) -> List[Island, dict]:
+        def make_islands_thinWalls(island: Island) -> List[Island, dict]:
             island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
             island.thin_walls = ThinWallRegions()
             imgs_pack = island.thin_walls.make_thin_walls(
@@ -114,7 +111,7 @@ class Layer:
             processed_regions: List[Island] = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
-                    executor.submit(load_and_make_thinWalls, island)
+                    executor.submit(make_islands_thinWalls, island)
                     for island in self.islands  # self.islands
                 ]
                 for l in concurrent.futures.as_completed(results):
@@ -150,7 +147,7 @@ class Layer:
                     island_img = folders.load_img_hdf5(
                         f"/{self.name}/{island.name}", "img"
                     )
-                    if hasattr(island, 'bridges'):
+                    if hasattr(island, "thin_walls"):
                         island_rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
                             folders, island_img, self.base_frame
                         )
@@ -359,6 +356,16 @@ class Layer:
                 amendment_size,
                 folders,
             )
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                if np.sum(isl.rest_of_picture_f2) > 0:
+                    for reg in isl.offsets.regions:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/offsets/{reg.name}",
+                            "route",
+                            reg.route.astype(bool),
+                        )
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_bridges(self, n_max: float, nozzle_diam_internal: float, folders: Paths):
 
@@ -397,7 +404,6 @@ class Layer:
                         self.base_frame,
                         self.path_radius_external,
                         rest_of_picture_f2,
-                        # island.prohibited_areas,
                     )
                 )
             except:
@@ -557,6 +563,28 @@ class Layer:
                 self.odd_layer,
                 isl.offsets.all_valid_loops,
             )
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                if np.sum(isl.rest_of_picture_f3) > 0:
+                    for reg in isl.bridges.offset_bridges:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/offset_bridges",
+                            f"{reg.name}_route",
+                            reg.route.astype(bool),
+                        )
+                    for reg in isl.bridges.zigzag_bridges:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges",
+                            f"{reg.name}_route",
+                            reg.route.astype(bool),
+                        )
+                    for reg in isl.bridges.cross_over_bridges:
+                        folders.save_img_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges",
+                            f"{reg.name}_route",
+                            reg.route.astype(bool),
+                        )
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_zigzags(self, folders: Paths):
 
@@ -586,38 +614,14 @@ class Layer:
             island.rest_of_picture_f3 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f3"
             )
+            ideal_sum = np.sum(mt.make_mask(self, "full_int"))
             if np.sum(island.rest_of_picture_f3) > 0:
                 island.zigzags.find_monotonic(
                     island.rest_of_picture_f3,
                     self.base_frame,
                     self.path_radius_internal,
-                    self.void_max,
+                    ideal_sum,
                 )
-            return island
-
-        @paralelizando
-        def make_island_graph(island: Island) -> Island:
-
-            # island.rest_of_picture_f3 = folders.load_img_hdf5(
-            #     f"/{self.name}/{island.name}", "rest_F3"
-            # )
-            if np.sum(island.rest_of_picture_f3) > 0:
-                island.zigzags_graph, island.zigzags_mst, island.pos_zigzag_nodes = (
-                    island.zigzags.make_graph(
-                        island.bridges.zigzag_bridges, self.base_frame
-                    )
-                )
-
-            return island
-
-        @paralelizando
-        def get_island_linked_zigzags(island: Island) -> Island:
-            # rest_of_picture_f3 = folders.load_img_hdf5(
-            #     f"/{self.name}/{island.name}", "rest_F3"
-            # )
-            if np.sum(island.rest_of_picture_f3) > 0:
-                for zb in island.bridges.zigzag_bridges:
-                    zb.get_linked_zigzags(island.zigzags.regions)
             return island
 
         folders.load_islands_hdf5(self)
@@ -628,11 +632,6 @@ class Layer:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/zigzags")
         with Timer("Encontrando areas monotonicas"):
             find_islands_monotonic()
-        with Timer("Criando os grafos de regiões"):
-            make_island_graph()
-        with Timer("Conectando regiões de zigzag"):
-            get_island_linked_zigzags()
-
         with Timer("salvando imagens das regiões"):
             for isl in self.islands:
                 if np.sum(isl.rest_of_picture_f3) > 0:
@@ -647,6 +646,74 @@ class Layer:
                             f"zz_{reg.name:03d}",
                             reg.img,
                         )
+        return
+
+    def make_zigzag_routes(self, folders: Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_zigzags_hdf5(self.name, isl)
+            isl.zigzags.make_routes_z(self.base_frame, self.path_radius_internal)
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                for reg in isl.zigzags.regions:
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        f"{reg.name}_route",
+                        reg.route.astype(bool),
+                    )
+        return
+
+    def connect_zigzags(self, folders: Paths):
+
+        def paralelizando(func):
+            @wraps(func)
+            def wrapper(*args):
+                processed_isl = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    if [*args]:
+                        results = [
+                            executor.submit(func, island, *args)
+                            for island in self.islands
+                        ]
+                    else:
+                        results = [
+                            executor.submit(func, island) for island in self.islands
+                        ]
+                    for l in concurrent.futures.as_completed(results):
+                        processed_isl.append(l.result())
+                    processed_isl.sort(key=lambda x: x.name)
+                    self.islands = processed_isl
+
+            return wrapper
+
+        @paralelizando
+        def make_island_graph(island: Island) -> Island:
+            if np.sum(island.rest_of_picture_f3) > 0:
+                island.zigzags.make_graph(
+                    island.bridges.zigzag_bridges, self.base_frame
+                )
+            return island
+
+        @paralelizando
+        def get_island_linked_zigzags(island: Island) -> Island:
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for zb in island.bridges.zigzag_bridges:
+                    zb.get_linked_zigzags(island.zigzags.regions)
+            return island
+
+        for isl in self.islands:
+            folders.load_bridges_hdf5(self.name, isl)
+        with Timer("Criando os grafos de regiões"):
+            make_island_graph()
+        with Timer("Conectando regiões de zigzag"):
+            get_island_linked_zigzags()
+
+        for isl in self.islands:
+            isl.zigzags.connect_island_zigzags(
+                self.path_radius_internal,
+                mt.make_mask(self, "full_int"),
+                self.base_frame,
+            )
         return
 
 

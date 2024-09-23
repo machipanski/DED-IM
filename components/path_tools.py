@@ -1,14 +1,21 @@
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from components.zigzag import ZigZag
+    from typing import List
 import itertools
 import math
+import random
+import numpy as np
+import networkx as nx
 from components import points_tools as pt
 from components import morphology_tools as mt
 from components import images_tools as it
-import numpy as np
-import networkx as nx
+from components import skeleton as sk
 from cv2 import boundingRect, arcLength, approxPolyDP
 from scipy.spatial import distance_matrix
-import math
-import random
+
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
 
@@ -45,6 +52,205 @@ def draw_interface(composed_img, base_frame, jump):
                 if 2 in all_pixels:
                     interface_img[y][x] = 1
     return interface_img
+
+
+def draw_the_links(
+    zigzags, zigzags_mst, base_frame, interfaces, centers, path_radius_internal
+):
+
+    def perpendicular_on_point(line_img, center, base_frame, path_radius):
+        n_contatos = 0
+        img_points = mt.hitmiss_ends_v2(line_img)
+        if np.sum(img_points) < 2:
+            line_img, _, _ = sk.create_prune_divide_skel(line_img, path_radius)
+            img_points = mt.hitmiss_ends_v2(line_img)
+        [p1, p2] = pt.x_y_para_pontos(np.nonzero(img_points))
+        p3 = [0, 0]
+        p4 = [0, 0]
+        overshoot = path_radius
+        while n_contatos < 2:
+            if p1[0] == p2[0]:
+                p3 = [center[0] + overshoot, center[1]]
+                p4 = [center[0] - overshoot, center[1]]
+            elif p1[1] == p2[1]:
+                p3 = [center[0], center[1] + overshoot]
+                p4 = [center[0], center[1] - overshoot]
+            else:
+                slope = (p2[0] - p1[0]) / (p2[1] - p1[1])
+                dy = math.sqrt(overshoot**2 / (slope**2 + 1))
+                dx = -slope * dy
+                p3[0] = int(center[0] + dy)
+                p3[1] = int(center[1] + dx)
+                p4[0] = int(center[0] - dy)
+                p4[1] = int(center[1] - dx)
+            link = it.draw_line(np.zeros(base_frame), p3, p4)
+            contatos = np.logical_and(link, all_zigzags)
+            n_contatos = np.sum(contatos)
+            overshoot += int(path_radius / 2)
+        return link
+
+    all_zigzags = np.zeros(base_frame)
+    for i in zigzags.regions:
+        all_zigzags = np.add(all_zigzags, i.route)
+    for i, line in enumerate(interfaces):
+        edge_list = list(zigzags_mst.edges)
+        occurence_edges = []
+        for j in edge_list:
+            occurence_edges = occurence_edges + list(j)
+        bridges_present = list(
+            filter(lambda x: x[0] == "b", np.unique(occurence_edges))
+        )
+        bridges_on_end = []
+        for bridge in bridges_present:
+            if occurence_edges.count(bridge) == 1:
+                bridges_on_end.append(bridge)
+        link = perpendicular_on_point(
+            line, centers[i], base_frame, path_radius_internal
+        )
+        mask_line = np.zeros((path_radius_internal * 2, path_radius_internal * 2))
+        mask_line[int(path_radius_internal) - 1] = 1
+        mask_line[int(path_radius_internal)] = 1
+        mask_line[int(path_radius_internal) + 1] = 1
+        work_area = mt.dilation(link, mask_line)
+        _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+        a, b, n_points = it.divide_by_connected(
+            np.logical_and(work_area_contour_img, all_zigzags)
+        )
+        while n_points > 4:
+            y = np.min(np.nonzero(work_area)[0])
+            work_area[y] = 0
+            _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+            _, _, n_points = it.divide_by_connected(
+                np.logical_and(work_area_contour_img, all_zigzags)
+            )
+        interface_points = intersection_points_w_rectangle(
+            work_area_contour_img, all_zigzags
+        )
+        if np.size(interface_points) < 8:
+            idx_list = list(zigzags_mst.edges)[i]
+            zigzag_1 = zigzags.regions[int(idx_list[0][1])].route
+            zigzag_2 = zigzags.regions[int(idx_list[1][1])].route
+            a = pt.img_to_points(zigzag_1)
+            origin_pt = pt.closest_point(centers[i], a)
+            b = pt.img_to_points(zigzag_2)
+            destiny_pt = pt.closest_point(centers[i], b)
+            link = it.draw_line(np.zeros(base_frame), origin_pt[0], destiny_pt[0])
+            work_area = mt.dilation(link, kernel_img=mask_line)
+            _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+            interface_points = intersection_points_w_rectangle(
+                work_area_contour_img, all_zigzags
+            )
+        intersection_pol = it.draw_polyline(
+            np.zeros(base_frame), interface_points, True
+        )
+        intersection_pol = it.fill_internal_area(intersection_pol, np.ones(base_frame))
+        rectangle_contour = mt.detect_contours(intersection_pol)
+        rectangle_contour = pt.contour_to_list(rectangle_contour)
+        cut_rectangle = rectangle_cut(
+            rectangle_contour,
+            np.zeros(base_frame),
+            interface_points,
+            2,
+            base_frame,
+            mode=1,
+        )
+        all_zigzags = np.logical_and(all_zigzags, np.logical_not(work_area))
+        all_zigzags = np.add(all_zigzags, cut_rectangle)
+    return all_zigzags
+
+
+def find_points_of_contact(
+    edges, path_radius_internal, mask_full_int, zigzags: List[ZigZag]
+):
+
+    def dilate_and_search(a1, a2, grow):
+        mask_line = np.zeros(np.add(mask_full_int.shape, [grow, grow]))
+        mask_line[:, int(mask_full_int.shape[0] / 2)] = 1
+        a1 = zigzags[int(edge[0][1])]
+        a1_vertical_trail = mt.dilation(a1.route, kernel_img=mask_line)
+        a2 = zigzags[int(edge[1][1])]
+        a2_vertical_trail = mt.dilation(a2.route, kernel_img=mask_line)
+        interface = np.add(a1_vertical_trail, a2_vertical_trail) == 2
+        return interface
+
+    def vert_connection(a1, a2):
+        a1 = zigzags[int(edge[0][1])]
+        a1_trail = mt.dilation(a1.trail, kernel_size=1)
+        a2 = zigzags[int(edge[1][1])]
+        a2_trail = mt.dilation(a2.trail, kernel_size=1)
+        interface = np.add(a1_trail, a2_trail) == 2
+        return interface
+
+    interfaces = []
+    centers = []
+    interface_types = []
+    for edge in edges:
+        has_bridge = False
+        type_a1 = edge[0][0]
+        type_a2 = edge[1][0]
+        if type_a1 == "z" and type_a2 == "z":
+            a1 = zigzags[int(edge[0][1])]
+            a2 = zigzags[int(edge[1][1])]
+            grow = 1
+            interface = dilate_and_search(a1, a2, 1)
+            while np.sum(interface) == 0:
+                grow += 1
+                interface = dilate_and_search(a1, a2, grow)
+                if grow > path_radius_internal:
+                    interface = vert_connection(a1, a2)
+            separated, _, num = it.divide_by_connected(interface)
+            if num > 1:
+                sums = [np.sum(x) for x in separated]
+                interface = separated[np.argmax(sums)]
+            interface_pts = pt.x_y_para_pontos(np.nonzero(interface))
+            center = pt.points_center(interface_pts)
+            interfaces.append(interface)
+            centers.append(center)
+            interface_types.append(has_bridge)
+    return interfaces, centers, interface_types
+
+
+def generate_guide_line(region, base_frame, prohibited_areas):
+    """
+    lembrando dos indices:
+        _______1______
+        |            |
+        0            2
+        |______3_____|
+    """
+    region.make_contour(base_frame)
+    bound_box = boundingRect(region.area_contour[0])
+    region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
+    end_of_lines = [
+        [bound_box[0], region.center_coords[0]],
+        [region.center_coords[1], bound_box[1]],
+        [bound_box[0] + bound_box[2], region.center_coords[0]],
+        [region.center_coords[1], bound_box[1] + bound_box[3]],
+    ]
+    end_of_lines = pt.invert_x_y(end_of_lines)
+    candidates = end_of_lines.copy()
+    master_line = []
+    while np.sum(master_line) == 0:
+        if candidates:
+            closest_point_indx = np.argmin(
+                distance_matrix([list(region.center_coords)], candidates, 2)
+            )
+            closest_point = random.choice(candidates)
+            line = it.draw_line(
+                np.zeros(base_frame), region.center_coords, closest_point
+            )
+            dilated_line = mt.dilation(line, kernel_size=16)
+            master_line = line
+        else:
+            candidates = end_of_lines.copy()
+            closest_point_indx = np.argmin(
+                distance_matrix([list(region.center_coords)], candidates, 2)
+            )
+            closest_point = candidates[closest_point_indx]
+            master_line = it.draw_line(
+                np.zeros(base_frame), region.center_coords, closest_point
+            )
+    return master_line, end_of_lines.index(closest_point)
 
 
 def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
@@ -142,57 +348,6 @@ def line_img_to_freeman_chain(img, origin_point):
     return pontos_org
 
 
-def generate_guide_line(region, base_frame, prohibited_areas):
-    """
-    lembrando dos indices:
-        _______1______
-        |            |
-        0            2
-        |______3_____|
-    """
-    region.make_contour(base_frame)
-    bound_box = boundingRect(region.area_contour[0])
-    # bound_box = boundingRect([0])
-    region.center_coords = pt.points_center(
-    pt.contour_to_list(region.area_contour)
-    )
-    end_of_lines = [
-        [bound_box[0], region.center_coords[0]],
-        [region.center_coords[1], bound_box[1]],
-        [bound_box[0] + bound_box[2], region.center_coords[0]],
-        [region.center_coords[1], bound_box[1] + bound_box[3]],
-    ]
-    end_of_lines = pt.invert_x_y(end_of_lines)
-    candidates = end_of_lines.copy()
-    master_line = []
-    while np.sum(master_line) == 0:
-        if candidates:
-            closest_point_indx = np.argmin(
-                distance_matrix([list(region.center_coords)], candidates, 2)
-            )
-            closest_point = random.choice(candidates)
-            # point_a = np.flip(tuple(region.center_coords))
-            # point_b = np.flip(tuple(closest_point))
-            line = it.draw_line(
-                np.zeros(base_frame), region.center_coords, closest_point
-            )
-            dilated_line = mt.dilation(line, kernel_size=16)
-            # if np.logical_and(dilated_line, prohibited_areas).any():
-            #     candidates.remove(closest_point)
-            # else:
-            master_line = line
-        else:
-            candidates = end_of_lines.copy()
-            closest_point_indx = np.argmin(
-                distance_matrix([list(region.center_coords)], candidates, 2)
-            )
-            closest_point = candidates[closest_point_indx]
-            master_line = it.draw_line(
-                np.zeros(base_frame), region.center_coords, closest_point
-            )
-    return master_line, end_of_lines.index(closest_point)
-
-
 def make_offset_graph(filtered_regions):
     graph = nx.MultiGraph()
     for i in np.arange(0, len(filtered_regions)):
@@ -258,10 +413,10 @@ def make_zigzag_graph(zigzag_regions, zigzags_bridges, base_frame):
         reg_neig = it.neighborhood(zigzag_regions)
     else:
         reg_neig, _, comb_neig = it.neighborhood(zigzag_regions, zigzags_bridges)
-        for i in zigzags_bridges:
-            new_center = i.center
-            graph.add_node("b" + str(i.name))
-            pos_zigzag_nodes.update({"b" + str(i.name): new_center})
+        for j in zigzags_bridges:
+            new_center = j.center
+            graph.add_node("b" + str(j.name))
+            pos_zigzag_nodes.update({"b" + str(j.name): new_center})
         for ligacao in comb_neig:
             graph.add_edge("z" + str(ligacao[0]), "b" + str(ligacao[1]), weight=2)
     for ligacao in reg_neig:

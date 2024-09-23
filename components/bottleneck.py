@@ -520,7 +520,7 @@ class Bridge:
     def find_center(self, base_frame):
         contour = mt.detect_contours(self.img)
         contour = pt.contour_to_list(contour)
-        self.center = pt.points_center(contour)
+        pt.points_center(contour)
 
     def get_linked_offsets(self, offset_regions):
         linked_offsets = []
@@ -845,7 +845,6 @@ class BridgeRegions:
                 i.make_zigzag_bridge_route(
                     path_radius_internal, rest_of_picture, all_offsets
                 )
-                # i.route
                 i.find_center(base_frame)
                 self.routes = np.logical_or(i.route, self.routes)
             except:
@@ -856,7 +855,6 @@ class BridgeRegions:
                     offsets_regions, path_radius_external, base_frame, rest_of_picture
                 )
                 i.find_center(base_frame)
-                # i.img
                 self.routes = np.logical_or(i.route, self.routes)
             except:
                 pass

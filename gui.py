@@ -71,6 +71,15 @@ def ask_parameters_thin_walls():
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 
+def ask_parameters_weaving():
+    """Pergunta se será aplicado o weaving de preenchimento """
+    msg = "Internal Weaving parameters"
+    title = "Internal Weaving parameters"
+    fieldNames = ["Internal Weaving"]
+    fieldDefs = [1]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+
 def ask_parameters_offsets():
     """Pede os parametros de offsets, permitindo alterar o que ja esta padronizado"""
     msg = "Contour parameters"

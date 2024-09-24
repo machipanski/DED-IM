@@ -12,6 +12,7 @@ from components import morphology_tools as mt
 from skimage.measure import label
 from skimage.segmentation import flood_fill
 import copy
+from components import points_tools as pt
 
 
 def chain_to_lines(final_chain, canvas):
@@ -33,6 +34,16 @@ def chain_to_lines(final_chain, canvas):
         count += 1
         color = count % 5 + 1
     return canvas
+
+
+def comprimento_maior_que(area, comp):
+    area_pts = pt.x_y_para_pontos(np.nonzero(area))
+    area_xs = [a[1] for a in area_pts]
+    if area_xs:
+        area_comp = np.max(area_xs) - np.min(area_xs)
+        if area_comp >= comp:
+            return True
+    return False
 
 
 def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarray, int]:
@@ -131,6 +142,11 @@ def final_mapping(layer: Layer, folders: Paths):
                 )
         isl_final_map = sum_imgs(regions_imgs)
     return isl_final_map
+
+
+def has_contact(fail, new_zigzag):
+    connection = np.add(fail.astype(np.uint8), new_zigzag.astype(np.uint8))
+    return (connection == 2).any()
 
 
 def image_subtract(gray_img1: np.ndarray, gray_img2: np.ndarray) -> np.ndarray:

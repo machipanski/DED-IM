@@ -183,6 +183,7 @@ class Paths:
                 if isinstance(i_item, h5py.Group):
                     tw_group = twr_group.get(i_key)
                     island.thin_walls.regions.append(ThinWall(**tw_group.attrs))
+                    setattr(island.thin_walls.regions[-1], "name", i_key)
                     for i_key, i_item in tw_group.items():
                         setattr(island.thin_walls.regions[-1], i_key, np.array(i_item))
                 if isinstance(i_item, h5py.Dataset):

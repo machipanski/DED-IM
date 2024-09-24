@@ -19,15 +19,6 @@ class  ThinWall:
     de duas trilhas antes de fazer os contornos"""
 
     def __init__(self, *args, **kwargs):
-        # self,
-        # name,
-        # img,
-        # origin,
-        # trunk,
-        # n_paths,
-        # origin_marks,
-        # elementos_contorno=None,
-        # pontos_extremos=None,
         self.name:str
         self.img:np.ndarray
         self.origin:str
@@ -50,6 +41,15 @@ class  ThinWall:
             self.n_paths = args[4]
             self.origin_mark = args[5]
             self.destiny = 0
+        return
+    
+    def make_route(self, path_radius):
+        self.route = np.logical_and(self.origin, self.img)
+        self.route = self.route.astype(np.uint8)
+        self.trail = mt.dilation(self.route, kernel_size=path_radius)
+        pontos_extremos = np.nonzero(mt.hitmiss_ends_v2(self.route))
+        pontos_extremos = pt.x_y_para_pontos(pontos_extremos)
+        self.interruption_points = pontos_extremos
         return
 
 
@@ -159,7 +159,7 @@ class ThinWallRegions:
                             new_linhabaixos.append(
                                 [tw_group_path, "linhabaixo", linhabaixo]
                             )
-                            new_origins.append([tw_group_path, "origin_img", trunk])
+                            new_origins.append([tw_group_path, "origin", trunk])
                             print("OK: fechou contorno")
                     except Exception:
                         print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
@@ -263,3 +263,10 @@ class ThinWallRegions:
                 rest_of_picture_f1, np.logical_not(region_img)
             )
         return rest_of_picture_f1.astype(np.uint8)
+
+
+    def make_routes_tw(self, path_radius):
+        """Chama a função make_route() para cada região"""
+        for i in self.regions:
+            i.make_route(path_radius)
+        return

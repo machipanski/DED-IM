@@ -162,6 +162,26 @@ class Layer:
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
+    def make_thin_wall_routes(self, folders:Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_thin_walls_hdf5(self.name, isl)
+            isl.thin_walls.make_routes_tw(self.path_radius_internal)
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                for reg in isl.thin_walls.regions:
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/thin_walls/{reg.name}",
+                        "route",
+                        reg.route.astype(bool),
+                    )
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/thin_walls/{reg.name}",
+                        "trail",
+                        reg.trail.astype(bool),
+                    )
+        return
+
     def make_offsets(
         self, folders: Paths, void_max: float, external_max: int, internal_max: int
     ) -> None:

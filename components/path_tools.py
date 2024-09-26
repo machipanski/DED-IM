@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from components.zigzag import ZigZag
     from typing import List
+    from components.layer import Island
 import itertools
 import math
 import random
@@ -18,6 +19,453 @@ from scipy.spatial import distance_matrix
 
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
+
+
+class Path:
+
+    def __init__(self, name, seq, regions=None, img=None, saltos=None):
+        if regions is None:
+            regions = []
+        if img is None:
+            img = []
+        if saltos is None:
+            saltos = []
+        self.name = name
+        self.sequence = seq
+        self.regions = regions
+        self.img = img
+        self.saltos = saltos
+        return
+
+    def get_img(self, base_frame):
+        self.img = it.points_to_img(self.sequence, np.zeros(base_frame))
+        return self.img
+
+    def get_regions(self, island: Island):
+        self.regions = {
+            "offsets": [],
+            "zigzags": [],
+            "cross_over_bridges": [],
+            "offset_bridges": [],
+            "zigzag_bridges": [],
+            "thin walls": [],
+        }
+        for o in island.offsets.regions:
+            if np.logical_and(o.img, self.img).any():
+                self.regions["offsets"].append(o.name)
+        for z in island.zigzags.regions:
+            if np.logical_and(z.img, self.img).any():
+                self.regions["zigzags"].append(z.name)
+        for cb in island.bridges.cross_over_bridges:
+            if np.logical_and(cb.img, self.img).any():
+                self.regions["cross_over_bridges"].append(cb.name)
+        for ob in island.bridges.offset_bridges:
+            if np.logical_and(ob.img, self.img).any():
+                self.regions["offset_bridges"].append(ob.name)
+        for zb in island.bridges.zigzag_bridges:
+            if np.logical_and(zb.img, self.img).any():
+                self.regions["zigzag_bridges"].append(zb.name)
+        for tw in island.thin_walls.regions:
+            if np.logical_and(tw.img, self.img).any():
+                self.regions["thin walls"].append(tw.name)
+        return
+
+
+# def connect_internal_external(layer):
+#     def start_candidates(internal, external, path_radius):
+#         hy, hx = np.where(internal[int(path_radius*2)+1:] & external[:-(int(path_radius*2)+1)])  # horizontal edge start positions
+#         h_units = np.array([hx, hy]).T
+#         h_starts = [tuple(n) for n in h_units]
+#         canvas = np.zeros_like(internal)
+#         for p in h_starts:
+#             canvas[p[1], p[0]] = 1
+#         candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
+#         if len(candidates_external) == 0:
+#             chosen_external = random.choice(pt.x_y_para_pontos(np.nonzero(external)))
+#         else:
+#             chosen_external = random.choice(candidates_external)
+#         internal_pts = pt.x_y_para_pontos(np.nonzero(internal))
+#         chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
+#         return chosen_external, chosen_internal
+
+#     internal = it.sum_imgs([z.route for z in layer.zigzags.regions])
+#     external = layer.offsets.regions[0].route
+#     comeco_ext, comeco_int = start_candidates(internal.astype(np.uint8), external.astype(np.uint8), layer.path_radius_internal)
+#     return comeco_ext, comeco_int
+
+
+def add_routes_by_sequence(
+    nova_rota,
+    island: Island,
+    interruption_points,
+    order_crossover_regions,
+    cross_overs_included,
+    offssets_included,
+    saltos,
+):
+    indexes = []
+    for i, int_pt in enumerate(interruption_points):
+        idx_on_route = nova_rota.index(int_pt)
+        name_of_cob = order_crossover_regions[i]
+        cross_overs_included.add(name_of_cob)
+        i_b_cob = island.bridges.cross_over_bridges
+        cob_names = [x.name for x in i_b_cob]
+        references_a = i_b_cob[cob_names.index(name_of_cob)].reference_points
+        references_b = i_b_cob[cob_names.index(name_of_cob)].reference_points_b
+        distances_a = [
+            pt.distance_pts(references_a[0], int_pt),
+            pt.distance_pts(references_a[1], int_pt),
+        ]
+        distances_b = [
+            pt.distance_pts(references_b[0], int_pt),
+            pt.distance_pts(references_b[1], int_pt),
+        ]
+        min_dists = [np.min(distances_a), np.min(distances_b)]
+        rota_ponte = np.zeros_like(island.img)
+        refs = []
+        dists = []
+        if np.argmin(min_dists) == 0:
+            rota_ponte = i_b_cob[cob_names.index(name_of_cob)].route
+            refs = references_a
+            dists = distances_a
+        if np.argmin(min_dists) == 1:
+            rota_ponte = i_b_cob[cob_names.index(name_of_cob)].route_b
+            refs = references_b
+            dists = distances_b
+        linked_offset = list(
+            filter(
+                lambda x: x != 0,
+                i_b_cob[cob_names.index(name_of_cob)].linked_offset_regions,
+            )
+        )[0]
+        A = [
+            (linked_offset in y)
+            for y in [x.regions["offsets"] for x in island.external_tree_route]
+        ]
+        linked_offset_seq = island.external_tree_route[A.index(True)].sequence
+        # layer.external_tree_route[0].img
+        pt_close_to_start, _ = pt.closest_point(
+            refs[np.argmax(dists)], linked_offset_seq
+        )
+        linked_offset_seq = set_first_pt_in_seq(linked_offset_seq, pt_close_to_start)
+        offssets_included = offssets_included.union(
+            island.external_tree_route[A.index(True)].regions["offsets"]
+        )
+        indexes.append(idx_on_route)
+        linked_bridge_seq = img_to_chain(rota_ponte.astype(np.uint8))[0]
+        linked_bridge_seq = set_first_pt_in_seq(
+            linked_bridge_seq, list(refs[np.argmax(dists)])
+        )
+        linked_bridge_seq = cut_repetition(linked_bridge_seq)
+        nova_rota = (
+            nova_rota[:idx_on_route]
+            + linked_offset_seq
+            + linked_bridge_seq
+            + nova_rota[idx_on_route:]
+        )
+        saltos.append(nova_rota[idx_on_route])
+        print("salto: ", nova_rota[idx_on_route])
+    return nova_rota, cross_overs_included, offssets_included, saltos
+
+
+def connect_cross_over_bridges(island: Island) -> Path:
+    def find_interruption_points(
+        layer,
+        nova_rota,
+        cross_overs_included,
+        offssets_included,
+        order_crossover_regions,
+    ):
+        closest_points = {}
+        for bridge in island.bridges.cross_over_bridges:
+            if not (bridge.name in list(cross_overs_included)):
+                if set(bridge.linked_offset_regions).intersection(offssets_included):
+                    A = bridge.pontos_extremos
+                    closest_a = pt.closest_point(A[0], nova_rota)
+                    closest_b = pt.closest_point(A[1], nova_rota)
+                    closest_c = pt.closest_point(A[2], nova_rota)
+                    closest_d = pt.closest_point(A[3], nova_rota)
+                    cp = [closest_a, closest_b, closest_c, closest_d]
+                    cp.sort(key=lambda x: x[1])
+                    cp = cp[:2]
+                    cp = [x[0] for x in cp]
+                    closest_points[str(bridge.name)] = cp
+        special = []
+        for k in closest_points.values():
+            special = special + k
+        interruption_points = []
+        flags = np.zeros(len(closest_points.keys()))
+        for point in nova_rota:
+            if point in special:
+                for i, cp in enumerate(list(closest_points.values())):
+                    if point in cp:
+                        flags[i] += 1
+                        if flags[i] == 2:
+                            B = [(point in x) for x in list(closest_points.values())]
+                            idx = B.index(True)
+                            order_crossover_regions.append(
+                                list(closest_points.keys())[idx]
+                            )
+                            interruption_points.append(point)
+        return interruption_points, order_crossover_regions
+
+    start_path = list(
+        filter(lambda x: "Reg_000" in x.regions["offsets"], island.external_tree_route)
+    )[0]
+    offssets_included = set(start_path.regions["offsets"])
+    cross_overs_included = set(start_path.regions["cross_over_bridges"])
+    offset_bridges_included = set(start_path.regions["offset_bridges"])
+    bridges_number = len(island.bridges.cross_over_bridges)
+    if bridges_number == 0:
+        nova_rota = start_path.sequence
+        saltos = []
+    else:
+        start_point_ext = [island.comeco_ext[0], island.comeco_ext[1]]
+        start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_ext)
+        rota_antiga = start_path.sequence.copy()
+        nova_rota = []
+        stop = 0
+        saltos = []
+        while not stop:
+            order_crossover_regions = []
+            interruption_points, order_crossover_regions = find_interruption_points(
+                island,
+                rota_antiga,
+                cross_overs_included,
+                offssets_included,
+                order_crossover_regions,
+            )
+            if len(interruption_points) > 0:
+                nova_rota, cross_overs_included, offssets_included, saltos = (
+                    add_routes_by_sequence(
+                        rota_antiga,
+                        island,
+                        interruption_points,
+                        order_crossover_regions,
+                        cross_overs_included,
+                        offssets_included,
+                        saltos,
+                    )
+                )
+                rota_antiga = nova_rota
+            else:
+                stop = 1
+    new_regions = {
+        "offsets": list(offssets_included),
+        "zigzags": [],
+        "cross_over_bridges": list(cross_overs_included),
+        "offset_bridges": list(offset_bridges_included),
+        "zigzag_bridges": [],
+    }
+    new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
+    return new_route
+
+
+def connect_internal_external(island: Island, path_radius_internal):
+    # internal = it.sum_imgs([z.route for z in island.zigzags.regions]).astype(np.uint8)
+    filling = island.zigzags.all_zigzags
+    most_external = island.offsets.regions[0].route.astype(np.uint8)
+    offset = int(path_radius_internal * 2) + 1
+    hy, hx = np.where(filling[offset:] & most_external[:-offset])
+    h_starts = [(x, y) for x, y in zip(hx, hy)]
+    canvas = np.zeros_like(filling)
+    for x, y in h_starts:
+        canvas[y, x] = 1
+    candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
+    if not candidates_external:
+        candidates_external = pt.x_y_para_pontos(np.nonzero(most_external))
+    chosen_external = random.choice(candidates_external)
+    internal_pts = pt.x_y_para_pontos(np.nonzero(filling))
+    chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
+    return chosen_external, chosen_internal
+
+
+def connect_offset_bridges(island: Island, base_frame, mask_3_4, path_radius_external) -> Path:
+    def integrate_bridge(todas_espirais, path_radius, pontos_extremos, base_frame):
+
+        def filtrar_pontos(y_val, x_range):
+            return [
+                p
+                for p in todas_espirais_points
+                if p[0] == y_val and x_range[0] <= p[1] <= x_range[1]
+            ]
+
+        def find_contacts(pontos, condicao):
+            return [p for p in pontos if condicao(p[1])]
+
+        def closest_to_center(pontos):
+            return pontos[np.argmin([pt.distance_pts(midle_point, p) for p in pontos])]
+
+        y_da_ponte = pontos_extremos[0][0]
+        y_de_cima = y_da_ponte - path_radius
+        y_de_baixo = y_da_ponte + path_radius
+        x_pontos_extremos = [x[1] for x in pontos_extremos]
+        midle_point = [
+            y_da_ponte,
+            int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),
+        ]
+        todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
+        same_y_up_inside = filtrar_pontos(
+            y_de_cima, (min(x_pontos_extremos), max(x_pontos_extremos))
+        )
+        same_y_down_inside = filtrar_pontos(
+            y_de_baixo, (min(x_pontos_extremos), max(x_pontos_extremos))
+        )
+        contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
+        contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
+        contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
+        contact_db = find_contacts(same_y_down_inside, lambda x: x > midle_point[1])
+        ponto_esq_cima = closest_to_center(contact_ec)
+        ponto_dir_cima = closest_to_center(contact_dc)
+        ponto_esq_baixo = closest_to_center(contact_eb)
+        ponto_dir_baixo = closest_to_center(contact_db)
+        linha_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
+        linha_baixo = it.draw_line(
+            np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
+        )
+        retangulo = it.draw_polyline(
+            np.zeros(base_frame),
+            [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
+            1,
+        )
+        retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
+        new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
+        new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
+        A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
+        return A
+
+        # y_da_ponte = pontos_extremos[0][0]
+        # y_de_cima = y_da_ponte - path_radius
+        # y_de_baixo = y_da_ponte + path_radius
+        # x_pontos_extremos = [x[1] for x in pontos_extremos]
+        # midle_point = [y_da_ponte,int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),]
+        # todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
+        # same_y_up = list(filter(lambda b: b[0] == y_de_cima, todas_espirais_points))
+        # same_y_down = list(filter(lambda c: c[0] == y_de_baixo, todas_espirais_points))
+        # same_y_up_inside = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos),same_y_up,))
+        # same_y_down_inside = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos),same_y_down,))
+        # contact_ec = list(filter(lambda b: b[1] < midle_point[1], same_y_up_inside))
+        # contact_dc = list(filter(lambda b: b[1] > midle_point[1], same_y_up_inside))
+        # contact_eb = list(filter(lambda b: b[1] < midle_point[1], same_y_down_inside))
+        # contact_db = list(filter(lambda b: b[1] > midle_point[1], same_y_down_inside))
+        # ponto_esq_cima = contact_ec[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_ec)))]
+        # ponto_dir_cima = contact_dc[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_dc)))]
+        # ponto_esq_baixo = contact_eb[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_eb)))]
+        # ponto_dir_baixo = contact_db[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_db)))]
+        # linha_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
+        # linha_baixo = it.draw_line(np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo)
+        # retangulo = it.draw_polyline(np.zeros(base_frame),[ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo,],1)
+        # retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
+        # new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
+        # new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
+        # A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
+
+        # contact_points = list(filter(lambda a: a[0] == y_da_ponte, todas_espirais_points))
+        # contact_points_cima_dentro = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos), contact_points_cima))
+        # contact_points_baixo_dentro = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos), contact_points_baixo))
+        # extended_line_points = []
+        # extended_line_points_cima = []
+        # extended_line_points_baixo = []
+        # for ponto in pontos_extremos:
+        #     dists = list(map(lambda x: pt.distance_pts(ponto, x), contact_points))
+        #     ponto_destino = contact_points[np.argmin(dists)]
+        #     extended_line_points.append(ponto_destino)
+        #     dists_cima = list(map(lambda x: pt.distance_pts(ponto, x), contact_points_cima_dentro))
+        #     dists_baixo = list(map(lambda x: pt.distance_pts(ponto, x), contact_points_baixo_dentro))
+        #     ponto_destino_cima = contact_points_cima_dentro[np.argmin(dists_cima)]
+        #     ponto_destino_baixo = contact_points_baixo_dentro[np.argmin(dists_baixo)]
+        #     extended_line_points_cima.append(ponto_destino_cima)
+        #     extended_line_points_baixo.append(ponto_destino_baixo)
+        # linha_cima = it.draw_line(np.zeros(base_frame), extended_line_points_cima[0], extended_line_points_cima[1])
+        # linha_baixo = it.draw_line(np.zeros(base_frame), extended_line_points_baixo[0], extended_line_points_baixo[1])
+        # extended_line_points[0][1] = np.min(
+        #     [extended_line_points_cima[0][1], extended_line_points_baixo[0][1]]
+        # )
+        # extended_line_points[1][1] = np.max(
+        #     [extended_line_points_cima[1][1], extended_line_points_baixo[1][1]]
+        # )
+        # linha = it.draw_line(np.zeros(base_frame), extended_line_points[0], extended_line_points[1])
+        # p1 = np.add(linha_baixo, linha_cima)
+        # todas_espirais = np.logical_and(todas_espirais, np.logical_not(mt.dilation(linha, kernel_img=mask_full)))
+        # new_img = np.logical_or(p1, todas_espirais)
+        # A, _, _ = sk.create_prune_divide_skel(new_img, path_radius)
+        # return A
+
+    # def integrate_bridge(
+    #     todas_espirais, path_radius, pontos_extremos, mask_full, base_frame
+    # ):
+
+    #     def get_contact_points(y):
+    #         return list(filter(lambda p: p[0] == y, todas_espirais_points))
+
+    #     def find_closest_points(pontos, contact_points):
+    #         return [
+    #             contact_points[
+    #                 np.argmin([pt.distance_pts(p, cp) for cp in contact_points])
+    #             ]
+    #             for p in pontos
+    #         ]
+
+    #     y_da_ponte = pontos_extremos[0][0]
+    #     y_de_cima = y_da_ponte - path_radius
+    #     y_de_baixo = y_da_ponte + path_radius
+    #     todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
+    #     contact_points = get_contact_points(y_da_ponte)
+    #     contact_points_cima = get_contact_points(y_de_cima)
+    #     contact_points_baixo = get_contact_points(y_de_baixo)
+    #     extended_line_points = find_closest_points(pontos_extremos, contact_points)
+    #     extended_line_points_cima = find_closest_points(
+    #         pontos_extremos, contact_points_cima
+    #     )
+    #     extended_line_points_baixo = find_closest_points(
+    #         pontos_extremos, contact_points_baixo
+    #     )
+    #     linha_cima = it.draw_line(
+    #         np.zeros(base_frame),
+    #         extended_line_points_cima[0],
+    #         extended_line_points_cima[1],
+    #     )
+    #     linha_baixo = it.draw_line(
+    #         np.zeros(base_frame),
+    #         extended_line_points_baixo[0],
+    #         extended_line_points_baixo[1],
+    #     )
+    #     extended_line_points[0][1] = min(
+    #         extended_line_points_cima[0][1], extended_line_points_baixo[0][1]
+    #     )
+    #     extended_line_points[1][1] = max(
+    #         extended_line_points_cima[1][1], extended_line_points_baixo[1][1]
+    #     )
+    #     linha = it.draw_line(
+    #         np.zeros(base_frame), extended_line_points[0], extended_line_points[1]
+    #     )
+    #     p1 = np.add(linha_baixo, linha_cima)
+    #     todas_espirais = np.logical_and(
+    #         todas_espirais, np.logical_not(mt.dilation(linha, kernel_img=mask_full))
+    #     )
+    #     new_img = np.logical_or(p1, todas_espirais)
+    #     A, _, _ =
+
+    lista_de_rotas = []
+    todas_espirais_img = np.zeros(base_frame)
+    for region in island.offsets.regions:
+        todas_espirais_img = np.logical_or(todas_espirais_img, region.route)
+    for bridge in island.bridges.offset_bridges:
+        pontos_extremos = pt.x_y_para_pontos(
+            np.nonzero(mt.hitmiss_ends_v2(bridge.origin))
+        )
+        todas_espirais_img = integrate_bridge(
+            todas_espirais_img,
+            path_radius_external,
+            pontos_extremos,
+            base_frame,
+        )
+    rotas_isoladas = img_to_chain(todas_espirais_img.astype(np.uint8))
+    for i, rota in enumerate(rotas_isoladas):
+        lista_de_rotas.append(Path(i, rota))
+        lista_de_rotas[-1].get_img(base_frame)
+        lista_de_rotas[-1].get_regions(island)
+    return lista_de_rotas
 
 
 def cut_repetition(seq):

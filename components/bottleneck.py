@@ -83,7 +83,7 @@ class Bottleneck:
         return
 
 
-class Bridge:\
+class Bridge:
 
     def __init__(
         self,
@@ -122,6 +122,7 @@ class Bridge:\
         self.center = []
         self.interruption_points = []
         self.reference_points = []
+        self.reference_points_b = []
         self.linked_offset_regions = linked_offset_regions
         self.linked_zigzag_regions = linked_zigzag_regions
         return

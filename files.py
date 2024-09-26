@@ -1,4 +1,5 @@
 from __future__ import annotations
+from email.headerregistry import Group
 from typing import TYPE_CHECKING
 from networkx import bridges
 from components.bottleneck import Bridge, BridgeRegions
@@ -204,17 +205,22 @@ class Paths:
                     island.offsets.regions.append(
                         Region(region_name, np.array(group[region_name + "/img"]), [])
                     )
-                    loops_group = group.get(f"{region_name}/loops")
-                    for loop_name in list(loops_group.keys()):
-                        island.offsets.regions[-1].loops.append(
-                            Loop(
-                                loops_group[loop_name].attrs["name"],
-                                np.array(loops_group[loop_name]),
-                                loops_group[loop_name].attrs["offset_level"],
-                                [],
-                                **loops_group[loop_name].attrs,
-                            )
-                        )
+                    region_group = group.get(region_name)
+                    for i_key, i_item in region_group.items():
+                        if isinstance(i_item, h5py.Group):
+                            loops_group = region_group.get(i_key)
+                            for loop_name in list(loops_group.keys()):
+                                island.offsets.regions[-1].loops.append(
+                                    Loop(
+                                        loops_group[loop_name].attrs["name"],
+                                        np.array(loops_group[loop_name]),
+                                        loops_group[loop_name].attrs["offset_level"],
+                                        [],
+                                        **loops_group[loop_name].attrs,
+                                    )
+                                )
+                        elif isinstance(i_item, h5py.Dataset):
+                            setattr(island.offsets.regions[-1], i_key, np.array(i_item))
         except:
             pass
         finally:
@@ -236,180 +242,38 @@ class Paths:
                     if i_key == "cross_over_bridges":
                         b_group = bridges_group.get(i_key)
                         cob = island.bridges.cross_over_bridges
-                        for j_key, j_item in b_group.items():
-                            if not j_key[0:6] in [x.name for x in cob]:
-                                cob.append(Bridge(j_key, [], [], [], 0, []))
-                                for att, value in dict(j_item.attrs).items():
-                                    setattr(cob[-1], att, value)
-                                setattr(cob[-1], "name", j_key[0:6])
-                            if j_key.endswith("origin"):
-                                setattr(
-                                    [x for x in cob if x.name == j_key[0:6]][0],
-                                    "origin",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("contorno"):
-                                setattr(
-                                    [x for x in cob if x.name == j_key[0:6]][0],
-                                    "contorno",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("route"):
-                                setattr(
-                                    [x for x in cob if x.name == j_key[0:6]][0],
-                                    "route",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("trail"):
-                                setattr(
-                                    [x for x in cob if x.name == j_key[0:6]][0],
-                                    "trail",
-                                    np.array(j_item),
-                                )
-                            else:
-                                setattr(
-                                    [x for x in cob if x.name == j_key[0:6]][0],
-                                    "img",
-                                    np.array(j_item),
-                                )
                     if i_key == "zigzag_bridges":
                         b_group = bridges_group.get(i_key)
-                        for j_key, j_item in b_group.items():
-                            if not j_key[0:6] in [
-                                x.name for x in island.bridges.zigzag_bridges
-                            ]:
-                                island.bridges.zigzag_bridges.append(
-                                    Bridge(j_key, [], [], [], 0, [])
-                                )
-                                for att, value in dict(j_item.attrs).items():
-                                    setattr(
-                                        island.bridges.zigzag_bridges[-1], att, value
-                                    )
-                                setattr(
-                                    island.bridges.zigzag_bridges[-1],
-                                    "name",
-                                    j_key[0:6],
-                                )
-                            if j_key.endswith("origin"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.zigzag_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "origin",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("contorno"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.zigzag_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "contorno",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("route"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.zigzag_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "route",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("trail"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.zigzag_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "trail",
-                                    np.array(j_item),
-                                )
-                            else:
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.zigzag_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "img",
-                                    np.array(j_item),
-                                )
+                        cob = island.bridges.zigzag_bridges
                     if i_key == "offset_bridges":
                         b_group = bridges_group.get(i_key)
-                        for j_key, j_item in b_group.items():
-                            if not j_key[0:6] in [
-                                x.name for x in island.bridges.offset_bridges
-                            ]:
-                                island.bridges.offset_bridges.append(
-                                    Bridge(j_key, [], [], [], 0, [])
-                                )
-                                for att, value in dict(j_item.attrs).items():
-                                    setattr(
-                                        island.bridges.offset_bridges[-1], att, value
-                                    )
-                                setattr(
-                                    island.bridges.offset_bridges[-1],
-                                    "name",
-                                    j_key[0:6],
-                                )
-                            if j_key.endswith("origin"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.offset_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "origin",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("contorno"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.offset_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "contorno",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("route"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.offset_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "route",
-                                    np.array(j_item),
-                                )
-                            elif j_key.endswith("trail"):
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.offset_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "trail",
-                                    np.array(j_item),
-                                )
-                            else:
-                                setattr(
-                                    [
-                                        x
-                                        for x in island.bridges.offset_bridges
-                                        if x.name == j_key[0:6]
-                                    ][0],
-                                    "img",
-                                    np.array(j_item),
-                                )
-                if isinstance(i_item, h5py.Dataset):
-                    setattr(island.bridges, i_key, np.array(i_item))
+                        cob = island.bridges.offset_bridges
+                    for j_key, j_item in b_group.items():
+                        b_region_group = b_group.get(j_key)
+                        b_region_group_props = dict(b_region_group.attrs)
+                        cob.append(
+                            Bridge(
+                                j_key,
+                                [],
+                                [],
+                                [],
+                                0,
+                                [],
+                                pontos_extremos=b_region_group_props["pontos_extremos"],
+                                linked_offset_regions=b_region_group_props[
+                                    "linked_offset_regions"
+                                ],
+                                linked_zigzag_regions=b_region_group_props[
+                                    "linked_zigzag_regions"
+                                ],
+                            )
+                        )
+                        for k_key, k_item in b_region_group.items():
+                            setattr(cob[-1], k_key, np.array(k_item))
+                        setattr(cob[-1], "reference_points", b_region_group_props["reference_points"])
+                        setattr(cob[-1], "reference_points_b", b_region_group_props["reference_points_b"])
+                        # for k_key, k_item in b_region_group_props.items():
+                        #     setattr(cob[-1], k_key, np.array(k_item))
         f.close()
         os.chdir(self.home)
         return
@@ -421,47 +285,15 @@ class Paths:
         zzr_group = island_group.get("zigzags")
         if zzr_group:
             island.zigzags = ZigZagRegions()
-            island.zigzags.regions = []
+            cob = island.zigzags.regions
             for i_key, i_item in zzr_group.items():
-                if i_key.endswith("graph"):
-                    setattr(
-                        island.zigzags,
-                        "zigzags_graph",
-                        np.array(i_item),
-                    )
-                elif i_key.endswith("all_zigzags"):
-                    setattr(
-                        island.zigzags,
-                        "all_zigzags",
-                        np.array(i_item),
-                    )
-                elif i_key.endswith("macro_areas"):
-                    setattr(
-                        island.zigzags,
-                        "macro_areas",
-                        np.array(i_item),
-                    )
-                elif not i_key[0:6] in [x.name for x in island.zigzags.regions]:
-                    island.zigzags.regions.append(ZigZag(i_key, np.array(i_item)))
-                elif i_key.endswith("route"):
-                    setattr(
-                        [x for x in island.zigzags.regions if x.name == i_key[0:6]][0],
-                        "route",
-                        np.array(i_item),
-                    )
-                elif i_key.endswith("trail"):
-                    setattr(
-                        [x for x in island.zigzags.regions if x.name == i_key[0:6]][0],
-                        "trail",
-                        np.array(i_item),
-                    )
+                region_group = zzr_group.get(i_key)
+                if isinstance(i_item, h5py.Group):
+                    cob.append(ZigZag(i_key, []))
+                    for k_key, k_item in region_group.items():
+                        setattr(cob[-1], k_key, np.array(k_item))
                 else:
-                    setattr(
-                        [x for x in island.zigzags.regions if x.name == i_key[0:6]][0],
-                        "img",
-                        np.array(i_item),
-                    )
-
+                    setattr(island.zigzags, i_key, np.array(i_item))
         f.close()
         os.chdir(self.home)
         return
@@ -494,6 +326,23 @@ class Paths:
             f.close()
             os.chdir(self.home)
         return
+    
+    def save_seq_hdf5(self, path, name, seq):
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "a")
+        try:
+            local = f.get(path)
+            if local.get(name):
+                local[name] = seq
+            else:
+                local.create_dataset(name, data=seq)
+        except:
+            pass
+        finally:
+            f.close()
+            os.chdir(self.home)
+        return
+    
 
     def save_graph_hdf5(self, path, name, G):
         os.chdir(self.output)

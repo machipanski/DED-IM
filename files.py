@@ -270,8 +270,16 @@ class Paths:
                         )
                         for k_key, k_item in b_region_group.items():
                             setattr(cob[-1], k_key, np.array(k_item))
-                        setattr(cob[-1], "reference_points", b_region_group_props["reference_points"])
-                        setattr(cob[-1], "reference_points_b", b_region_group_props["reference_points_b"])
+                        setattr(
+                            cob[-1],
+                            "reference_points",
+                            b_region_group_props["reference_points"],
+                        )
+                        setattr(
+                            cob[-1],
+                            "reference_points_b",
+                            b_region_group_props["reference_points_b"],
+                        )
                         # for k_key, k_item in b_region_group_props.items():
                         #     setattr(cob[-1], k_key, np.array(k_item))
         f.close()
@@ -326,7 +334,7 @@ class Paths:
             f.close()
             os.chdir(self.home)
         return
-    
+
     def save_seq_hdf5(self, path, name, seq):
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
@@ -342,7 +350,6 @@ class Paths:
             f.close()
             os.chdir(self.home)
         return
-    
 
     def save_graph_hdf5(self, path, name, G):
         os.chdir(self.output)

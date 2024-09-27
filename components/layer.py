@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Dict, reveal_type
 if TYPE_CHECKING:
     from files import Paths
     from components.zigzag import ZigZag
+    from components.path_tools import Path
+    from typing import List
 from components import images_tools as it, path_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
@@ -12,7 +14,6 @@ from components.zigzag import ZigZagRegions
 from components.bottleneck import BridgeRegions
 from timer import Timer
 import numpy as np
-from typing import List
 import concurrent.futures
 from functools import wraps
 import mypy
@@ -31,7 +32,9 @@ class Island:
         self.rest_of_picture_f3 = np.ndarray([])
         self.comeco_ext = []
         self.comeco_int = []
-        self.external_tree_route = []
+        self.external_tree_route: List[Path] = []
+        self.internal_tree_route: List[Path] = []
+        self.thinwalls_tree_route: List[Path] = []
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -89,26 +92,80 @@ class Layer:
                     )
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
-                folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/external_tree_route")
+                folders.create_new_hdf5_group(
+                    f"/{self.name}/{isl.name}/external_tree_route"
+                )
                 folders.save_props_hdf5(
-                        f"/{self.name}/{isl.name}/external_tree_route",
-                        isl.external_tree_route.__dict__
-                    )
-                folders.save_seq_hdf5(f"/{self.name}/{isl.name}/external_tree_route",
-                                      "sequence",
-                                      isl.external_tree_route.sequence)
+                    f"/{self.name}/{isl.name}/external_tree_route",
+                    isl.external_tree_route.__dict__,
+                )
+                folders.save_seq_hdf5(
+                    f"/{self.name}/{isl.name}/external_tree_route",
+                    "sequence",
+                    isl.external_tree_route.sequence,
+                )
+            folders.save_props_hdf5(
+                    f"/{self.name}/{isl.name}",
+                    isl.__dict__,)
         return
 
-    def close_routes_internal(self):
-        with Timer("Conectando zgzags vizinhos"):
-            self.internal_tree_route = path_tools.zigzag_imgs_to_path(self)
-        with Timer("Conectando pontes de zigzag"):
-            self.internal_tree_route = path_tools.connect_zigzag_bridges(self)
+    def close_routes_internal(self, folders: Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_bridges_hdf5(self.name, isl)
+            folders.load_zigzags_hdf5(self.name, isl)
+            folders.load_offsets_hdf5(self.name, isl)
+            folders.load_thin_walls_hdf5(self.name, isl)
+            with Timer("Conectando zgzags vizinhos"):
+                isl.internal_tree_route = path_tools.zigzag_imgs_to_path(
+                    isl, mt.make_mask(self, "full_int"), self.path_radius_internal
+                )
+            with Timer("Conectando pontes de zigzag"):
+                isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
+        
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                folders.create_new_hdf5_group(
+                    f"/{self.name}/{isl.name}/internal_tree_route"
+                )
+                folders.save_props_hdf5(
+                    f"/{self.name}/{isl.name}/internal_tree_route",
+                    isl.internal_tree_route.__dict__,
+                )
+                folders.save_seq_hdf5(
+                    f"/{self.name}/{isl.name}/internal_tree_route",
+                    "sequence",
+                    isl.internal_tree_route.sequence,
+                )
+            folders.save_props_hdf5(
+                    f"/{self.name}/{isl.name}",
+                    isl.__dict__,)
+        return
 
-    def close_routes_thinwalls(self):
-        with Timer("Convertendo paredes finas"):
-            self.thinwalls_tree_route = path_tools.connect_thin_walls(self)
-
+    def close_routes_thinwalls(self, folders: Paths):
+        folders.load_islands_hdf5(self)
+        for island in self.islands:
+            folders.load_thin_walls_hdf5(self.name, island)
+            with Timer("Convertendo paredes finas"):
+                island.thinwalls_tree_route = path_tools.connect_thin_walls(island, self.path_radius_external)
+        
+        with Timer("salvando imagens das rotas"):
+            for isl in self.islands:
+                folders.create_new_hdf5_group(
+                    f"/{self.name}/{isl.name}/thinwalls_tree_route"
+                )
+                folders.save_props_hdf5(
+                    f"/{self.name}/{isl.name}/thinwalls_tree_route",
+                    isl.thinwalls_tree_route.__dict__,
+                )
+                folders.save_seq_hdf5(
+                    f"/{self.name}/{isl.name}/thinwalls_tree_route",
+                    "sequence",
+                    isl.thinwalls_tree_route.sequence,
+                )
+            folders.save_props_hdf5(
+                    f"/{self.name}/{isl.name}",
+                    isl.__dict__,)
     def make_input_img(
         self,
         name: int,
@@ -680,7 +737,10 @@ class Layer:
                             f"trail",
                             reg.trail.astype(bool),
                         )
-                        folders.save_props_hdf5(f"/{self.name}/{isl.name}/bridges/offset_bridges/{reg.name}", reg.__dict__)
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/offset_bridges/{reg.name}",
+                            reg.__dict__,
+                        )
                     for reg in isl.bridges.zigzag_bridges:
                         folders.save_img_hdf5(
                             f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{reg.name}",
@@ -692,7 +752,10 @@ class Layer:
                             f"trail",
                             reg.trail.astype(bool),
                         )
-                        folders.save_props_hdf5(f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{reg.name}", reg.__dict__)
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{reg.name}",
+                            reg.__dict__,
+                        )
                     for reg in isl.bridges.cross_over_bridges:
                         folders.save_img_hdf5(
                             f"/{self.name}/{isl.name}/bridges/cross_over_bridges/{reg.name}",
@@ -714,7 +777,10 @@ class Layer:
                             f"trail_b",
                             reg.trail_b.astype(bool),
                         )
-                        folders.save_props_hdf5(f"/{self.name}/{isl.name}/bridges/cross_over_bridges/{reg.name}", reg.__dict__)
+                        folders.save_props_hdf5(
+                            f"/{self.name}/{isl.name}/bridges/cross_over_bridges/{reg.name}",
+                            reg.__dict__,
+                        )
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_zigzags(self, folders: Paths):
@@ -801,8 +867,12 @@ class Layer:
             #             reg.trail.astype(bool),
             #         )
             def save_zigzag_images(base_path, reg):
-                folders.save_img_hdf5(f"{base_path}/{reg.name}", "route", reg.route.astype(bool))
-                folders.save_img_hdf5(f"{base_path}/{reg.name}", "trail", reg.trail.astype(bool))
+                folders.save_img_hdf5(
+                    f"{base_path}/{reg.name}", "route", reg.route.astype(bool)
+                )
+                folders.save_img_hdf5(
+                    f"{base_path}/{reg.name}", "trail", reg.trail.astype(bool)
+                )
 
             for isl in self.islands:
                 base_path = f"/{self.name}/{isl.name}/zigzags"
@@ -880,6 +950,11 @@ class Layer:
                     f"macro_areas",
                     isl.zigzags.macro_areas,
                 )
+                for bridge in isl.bridges.zigzag_bridges:
+                    folders.save_props_hdf5(
+                        f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{bridge.name}",
+                        bridge.__dict__
+                    )
         return
 
     def internal_weaving(self, internal_weaving, folders: Paths):

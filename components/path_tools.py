@@ -10,6 +10,7 @@ import math
 import random
 import numpy as np
 import networkx as nx
+import skimage
 from components import points_tools as pt
 from components import morphology_tools as mt
 from components import images_tools as it
@@ -50,24 +51,36 @@ class Path:
             "zigzag_bridges": [],
             "thin walls": [],
         }
-        for o in island.offsets.regions:
-            if np.logical_and(o.img, self.img).any():
-                self.regions["offsets"].append(o.name)
-        for z in island.zigzags.regions:
-            if np.logical_and(z.img, self.img).any():
-                self.regions["zigzags"].append(z.name)
-        for cb in island.bridges.cross_over_bridges:
-            if np.logical_and(cb.img, self.img).any():
-                self.regions["cross_over_bridges"].append(cb.name)
-        for ob in island.bridges.offset_bridges:
-            if np.logical_and(ob.img, self.img).any():
-                self.regions["offset_bridges"].append(ob.name)
-        for zb in island.bridges.zigzag_bridges:
-            if np.logical_and(zb.img, self.img).any():
-                self.regions["zigzag_bridges"].append(zb.name)
-        for tw in island.thin_walls.regions:
-            if np.logical_and(tw.img, self.img).any():
-                self.regions["thin walls"].append(tw.name)
+        if hasattr(island, "offsets"):
+            if len(island.offsets.regions):
+                for o in island.offsets.regions:
+                    if np.logical_and(o.img, self.img).any():
+                        self.regions["offsets"].append(o.name)
+        if hasattr(island, "zigzags"):
+            if len(island.zigzags.regions):
+                for z in island.zigzags.regions:
+                    if np.logical_and(z.img, self.img).any():
+                        self.regions["zigzags"].append(z.name)
+        if hasattr(island, "bridges"):
+            if len(island.bridges.cross_over_bridges):
+                for cb in island.bridges.cross_over_bridges:
+                    if np.logical_and(cb.img, self.img).any():
+                        self.regions["cross_over_bridges"].append(cb.name)
+        if hasattr(island, "bridges"):
+            if len(island.bridges.offset_bridges):
+                for ob in island.bridges.offset_bridges:
+                    if np.logical_and(ob.img, self.img).any():
+                        self.regions["offset_bridges"].append(ob.name)
+        if hasattr(island, "bridges"):
+            if len(island.bridges.zigzag_bridges):
+                for zb in island.bridges.zigzag_bridges:
+                    if np.logical_and(zb.img, self.img).any():
+                        self.regions["zigzag_bridges"].append(zb.name)
+        if hasattr(island, "thin"):
+            if len(island.thin_walls.regions):
+                for tw in island.thin_walls.regions:
+                    if np.logical_and(tw.img, self.img).any():
+                        self.regions["thin walls"].append(tw.name)
         return
 
 
@@ -167,6 +180,86 @@ def add_routes_by_sequence(
         print("salto: ", nova_rota[idx_on_route])
     return nova_rota, cross_overs_included, offssets_included, saltos
 
+
+def add_routes_by_sequence_internal(
+    nova_rota,
+    island: Island,
+    interruption_points,
+    order_zigzag_bridges_regions,
+    zigzag_bridges_included,
+    zigzags_included,
+    saltos,
+):
+    indexes = []
+    for i, int_pt in enumerate(interruption_points):
+        idx_on_route = nova_rota.index(int_pt)
+        name_of_zigzag_bridge = order_zigzag_bridges_regions[i]
+        i_b_zb = island.bridges.zigzag_bridges
+        i_b_zb_names = [x.name for x in i_b_zb]
+        references_a = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].reference_points
+        distances_a = [
+            pt.distance_pts(references_a[0], int_pt),
+            pt.distance_pts(references_a[1], int_pt),
+        ]
+        rota_ponte = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].route
+        refs = references_a
+        dists = distances_a
+        linked_zigzag = list(filter(lambda x: not (x in zigzags_included), i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].linked_zigzag_regions,))[0]
+        A = [
+            (linked_zigzag in y)
+            for y in [x.regions["zigzags"] for x in island.internal_tree_route]
+        ]
+        linked_zigzag_seq = island.internal_tree_route[A.index(True)].sequence
+        pt_close_to_start, _ = pt.closest_point(
+            refs[np.argmax(dists)], linked_zigzag_seq
+        )
+        linked_zigzag_seq = set_first_pt_in_seq(linked_zigzag_seq, pt_close_to_start)
+        zigzags_included = zigzags_included.union(
+            island.internal_tree_route[A.index(True)].regions["zigzags"]
+        )
+        indexes.append(idx_on_route)
+        linked_bridge_seq = img_to_chain(rota_ponte.astype(np.uint8))[0]
+        linked_bridge_seq = set_first_pt_in_seq(
+            linked_bridge_seq, list(refs[np.argmax(dists)])
+        )
+        linked_bridge_seq = cut_repetition(linked_bridge_seq)
+        nova_rota = (
+            nova_rota[:idx_on_route]
+            + linked_zigzag_seq
+            + linked_bridge_seq
+            + nova_rota[idx_on_route:]
+        )
+        saltos.append(nova_rota[idx_on_route])
+        print("salto: ", nova_rota[idx_on_route])
+        zigzag_bridges_included.add(name_of_zigzag_bridge)
+    return nova_rota, zigzag_bridges_included, zigzags_included, saltos
+
+def connect_thin_walls(island: Island, path_radius_external):
+    thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
+    thinwall_path_list = []
+    for i, tw in enumerate(thinwall_list):
+        tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
+        tw_path = img_to_chain(tw.astype(np.uint8))[0]
+        one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
+        tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
+        tw_path = cut_repetition(tw_path)
+        thinwall_path_list.append(Path(i, tw_path, img=tw))
+        thinwall_path_list[-1].get_regions(island)
+    nova_rota = []
+    saltos = []
+    thinwalls_included = []
+    for tw_p in thinwall_path_list:
+        saltos.append(tw_p.sequence[-1])
+        nova_rota = nova_rota + tw_p.sequence
+        thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
+    new_regions = {"offsets": [],
+                   "zigzags": [],
+                   "cross_over_bridges": [],
+                   "offset_bridges": [],
+                   "zigzag_bridges": [],
+                   "thin walls": list(thinwalls_included)}
+    new_route = Path("thin wall tree", nova_rota, new_regions,  saltos=saltos)
+    return new_route
 
 def connect_cross_over_bridges(island: Island) -> Path:
     def find_interruption_points(
@@ -280,15 +373,13 @@ def connect_internal_external(island: Island, path_radius_internal):
     return chosen_external, chosen_internal
 
 
-def connect_offset_bridges(island: Island, base_frame, mask_3_4, path_radius_external) -> Path:
+def connect_offset_bridges(
+    island: Island, base_frame, mask_3_4, path_radius_external
+) -> Path:
     def integrate_bridge(todas_espirais, path_radius, pontos_extremos, base_frame):
 
-        def filtrar_pontos(y_val, x_range):
-            return [
-                p
-                for p in todas_espirais_points
-                if p[0] == y_val and x_range[0] <= p[1] <= x_range[1]
-            ]
+        def filtrar_pontos(y_val):
+            return [p for p in todas_espirais_points if p[0] == y_val]
 
         def find_contacts(pontos, condicao):
             return [p for p in pontos if condicao(p[1])]
@@ -305,12 +396,8 @@ def connect_offset_bridges(island: Island, base_frame, mask_3_4, path_radius_ext
             int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),
         ]
         todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-        same_y_up_inside = filtrar_pontos(
-            y_de_cima, (min(x_pontos_extremos), max(x_pontos_extremos))
-        )
-        same_y_down_inside = filtrar_pontos(
-            y_de_baixo, (min(x_pontos_extremos), max(x_pontos_extremos))
-        )
+        same_y_up_inside = filtrar_pontos(y_de_cima)
+        same_y_down_inside = filtrar_pontos(y_de_baixo)
         contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
         contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
         contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
@@ -466,6 +553,59 @@ def connect_offset_bridges(island: Island, base_frame, mask_3_4, path_radius_ext
         lista_de_rotas[-1].get_img(base_frame)
         lista_de_rotas[-1].get_regions(island)
     return lista_de_rotas
+
+
+def connect_zigzag_bridges(island: Island):
+    start_path = island.internal_tree_route[0]
+    zigzags_included = set(start_path.regions["zigzags"])
+    zigzag_bridges_included = set(start_path.regions["zigzag_bridges"])
+    zigzag_bridges_number = len(island.bridges.zigzag_bridges)
+    if zigzag_bridges_number == 0:
+        nova_rota = start_path.sequence
+        saltos = []
+    else:
+        start_point_int = [island.comeco_int[0], island.comeco_int[1]]
+        start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_int)
+        rota_antiga = start_path.sequence.copy()
+        nova_rota = []
+        stop = 0
+        saltos = []
+        while not stop:
+            order_zigzag_bridges_regions = []
+            interruption_points, order_zigzag_bridges_regions = (
+                find_interruption_points_v2(
+                    island,
+                    rota_antiga,
+                    zigzag_bridges_included,
+                    zigzags_included,
+                    order_zigzag_bridges_regions,
+                )
+            )
+            if len(interruption_points) > 0:
+                nova_rota, zigzag_bridges_included, zigzags_included, saltos = (
+                    add_routes_by_sequence_internal(
+                        rota_antiga,
+                        island,
+                        interruption_points,
+                        order_zigzag_bridges_regions,
+                        zigzag_bridges_included,
+                        zigzags_included,
+                        saltos,
+                    )
+                )
+                rota_antiga = nova_rota
+                # asfdfadsf = images_tools.points_to_img(nova_rota, np.zeros(island.base_frame))
+            else:
+                stop = 1
+    new_regions = {
+        "offsets": [],
+        "zigzags": list(zigzags_included),
+        "cross_over_bridges": [],
+        "offset_bridges": [],
+        "zigzag_bridges": list(zigzag_bridges_included),
+    }
+    new_route = Path("interior tree", nova_rota, new_regions, saltos=saltos)
+    return new_route
 
 
 def cut_repetition(seq):
@@ -656,6 +796,49 @@ def find_points_of_contact(
             centers.append(center)
             interface_types.append(has_bridge)
     return interfaces, centers, interface_types
+
+
+def find_interruption_points_v2(
+    isl: Island,
+    nova_rota,
+    zigzag_bridges_included,
+    zigzags_included,
+    order_zigzag_bridges_regions,
+):
+    from components.points_tools import closest_point
+
+    closest_points = {}
+    for bridge in isl.bridges.zigzag_bridges:
+        if not (bridge.name in zigzag_bridges_included):
+            if set(bridge.linked_zigzag_regions).intersection(zigzags_included):
+                A = bridge.pontos_extremos
+                closest_a = closest_point(A[0], nova_rota)
+                closest_b = closest_point(A[1], nova_rota)
+                closest_c = closest_point(A[2], nova_rota)
+                closest_d = closest_point(A[3], nova_rota)
+                cp = [closest_a, closest_b, closest_c, closest_d]
+                cp.sort(key=lambda x: x[1])
+                cp = cp[:2]
+                cp = [x[0] for x in cp]
+                closest_points[bridge.name] = cp
+    special = []
+    for k in closest_points.values():
+        special = special + k
+    interruption_points = []
+    flags = np.zeros(len(closest_points.keys()))
+    for pt in nova_rota:
+        if pt in special:
+            for i, cp in enumerate(list(closest_points.values())):
+                if pt in cp:
+                    flags[i] += 1
+                    if flags[i] == 2:
+                        B = [(pt in x) for x in list(closest_points.values())]
+                        idx = B.index(True)
+                        order_zigzag_bridges_regions.append(
+                            list(closest_points.keys())[idx]
+                        )
+                        interruption_points.append(pt)
+    return interruption_points, order_zigzag_bridges_regions
 
 
 def generate_guide_line(region, base_frame, prohibited_areas):
@@ -992,6 +1175,10 @@ def organize_points_cw(pts, origin=[]):
     return organized
 
 
+def one_pixel_wide(img):
+    return skimage.morphology.thin(img, max_num_iter=None)
+
+
 def rectangle_cut(contours, linha, points, n_loops, base_frame, mode=0, idx=0):
     fila = contours
     rotations = fila.index(points[0])
@@ -1152,3 +1339,18 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
     if (idx % 2 == 0) and n_loops == 2:
         borda_cortada = np.logical_and(borda_normal, np.logical_not(borda_cortada))
     return borda_cortada
+
+
+def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
+    macroa_area_path_list = []
+    _, min_n_pixels_img = mt.detect_contours(mask_full_int, return_img=True)
+    min_n_pixels = np.sum(min_n_pixels_img)
+    for i, ma in enumerate(isl.zigzags.macro_areas):
+        ma, _, _ = sk.create_prune_divide_skel(ma, path_radius_internal)
+        ma = one_pixel_wide(ma)
+        zigzag_path = img_to_chain(
+            ma.astype(np.uint8), isl.zigzags.regions[0].img, min_n_pixels
+        )
+        macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
+        macroa_area_path_list[-1].get_regions(isl)
+    return macroa_area_path_list

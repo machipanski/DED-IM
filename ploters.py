@@ -1,7 +1,8 @@
 from __future__ import annotations
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
-    from files import Paths
+    from files import System_Paths
 # from __future__ import annotations
 from typing import TYPE_CHECKING
 from matplotlib import pyplot as plt
@@ -28,7 +29,7 @@ def color_palette(num, saved=False):
     return colors
 
 
-def mapping_thin_walls(layer: Layer, folders: Paths):
+def mapping_thin_walls(layer: Layer, folders: System_Paths):
     # thin_img = layer.original_img.copy()
     # thin_img = folders.load_layer_orig_img(layer.original_img)
     thin_img = np.zeros(layer.base_frame, np.uint8)
@@ -42,9 +43,11 @@ def mapping_thin_walls(layer: Layer, folders: Paths):
                 thin_img = np.add(thin_img, reg_img.astype(np.uint8))
     return thin_img
 
+
 def mapping_thin_walls_medialAxis(layer: Layer) -> np.ndarray:
     all_medial = np.zeros(layer.base_frame)
     for isl in layer.islands:
-        all_medial = np.add(all_medial, mt.dilation(isl.thin_walls.medial_transform, kernel_size=8))
+        all_medial = np.add(
+            all_medial, mt.dilation(isl.thin_walls.medial_transform, kernel_size=8)
+        )
     return all_medial
-

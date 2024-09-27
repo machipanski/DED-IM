@@ -2,7 +2,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from files import Paths
+    from files import System_Paths
     from typing import List
 import numpy as np
 from components import images_tools as it
@@ -14,14 +14,14 @@ from components import path_tools as ptht
 import concurrent.futures
 
 
-class  ThinWall:
-    """Cada região que precisa ser feita com menos 
+class ThinWall:
+    """Cada região que precisa ser feita com menos
     de duas trilhas antes de fazer os contornos"""
 
     def __init__(self, *args, **kwargs):
-        self.name:str
-        self.img:np.ndarray
-        self.origin:str
+        self.name: str
+        self.img: np.ndarray
+        self.origin: str
         self.destiny = 0
         self.n_paths = int
         self.origin_mark = []
@@ -32,7 +32,7 @@ class  ThinWall:
         self.pontos_extremos = []
         if kwargs:
             for key, value in kwargs.items():
-                setattr(self, key, value)            
+                setattr(self, key, value)
         if args:
             self.name = args[0]
             self.img = args[1]
@@ -42,7 +42,7 @@ class  ThinWall:
             self.origin_mark = args[5]
             self.destiny = 0
         return
-    
+
     def make_route(self, path_radius):
         self.route = np.logical_and(self.origin, self.img)
         self.route = self.route.astype(np.uint8)
@@ -54,7 +54,7 @@ class  ThinWall:
 
 
 class ThinWallRegions:
-    """O grupo de regiões chamadas de Thin Walls, gruarda também a 
+    """O grupo de regiões chamadas de Thin Walls, gruarda também a
     configuração geral para essas regiões"""
 
     def __init__(self):
@@ -254,7 +254,7 @@ class ThinWallRegions:
         }
         return img_packs
 
-    def apply_thin_walls(self, folders: Paths, original, base_frame):
+    def apply_thin_walls(self, folders: System_Paths, original, base_frame):
         rest_of_picture_f1 = np.zeros(base_frame)
         rest_of_picture_f1 = np.logical_or(original, rest_of_picture_f1)
         for region in self.regions:
@@ -263,7 +263,6 @@ class ThinWallRegions:
                 rest_of_picture_f1, np.logical_not(region_img)
             )
         return rest_of_picture_f1.astype(np.uint8)
-
 
     def make_routes_tw(self, path_radius):
         """Chama a função make_route() para cada região"""

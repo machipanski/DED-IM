@@ -1,5 +1,5 @@
 from easygui import multenterbox, fileopenbox, buttonbox
-from files import Paths
+from files import System_Paths
 import os
 import re
 from typing import List
@@ -13,7 +13,7 @@ def ask_load_or_begin():
     return reply
 
 
-def load_model(folders: Paths) -> List[str]:
+def load_model(folders: System_Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
     os.chdir(folders.input)
     path_input = fileopenbox()
@@ -22,7 +22,7 @@ def load_model(folders: Paths) -> List[str]:
     return path_input, file_name
 
 
-def find_saved_file(folders: Paths) -> List[str]:
+def find_saved_file(folders: System_Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
     os.chdir(folders.output)
     path_input = fileopenbox()
@@ -72,7 +72,7 @@ def ask_parameters_thin_walls():
 
 
 def ask_parameters_weaving():
-    """Pergunta se será aplicado o weaving de preenchimento """
+    """Pergunta se será aplicado o weaving de preenchimento"""
     msg = "Internal Weaving parameters"
     title = "Internal Weaving parameters"
     fieldNames = ["Internal Weaving"]

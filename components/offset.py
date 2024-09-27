@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from files import Paths
+    from files import System_Paths
     from typing import List
     from components.layer import Layer
 from components import morphology_tools as mt, path_tools
@@ -410,7 +410,7 @@ class OffsetRegions:
         prohibited_areas,
         path_radius,
         amendment_size,
-        folders: Paths,
+        folders: System_Paths,
     ):
         prohibited_areas = np.zeros_like(prohibited_areas)
 

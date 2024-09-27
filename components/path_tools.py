@@ -1354,3 +1354,62 @@ def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
         macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
         macroa_area_path_list[-1].get_regions(isl)
     return macroa_area_path_list
+
+
+def layers_to_Gcode(layers, arquivos):
+    import os
+    mm_per_pixel = layers[0].mm_per_pxl
+    layer_height = layers[0].layer_height
+    os.chdir(arquivos.home)
+    outFile = "testedeSeq.gcode"
+    output = ""
+    output += ";Layer height: " + str(layer_height) + "\n"
+    output += ";DPI: " + str(layers[0].dpi) + "\n"
+    output += ";Camadas: " + str(layers[0].n_camadas) + "\n"
+    output += ";void_max: " + str(layers[0].void_max) + "\n"
+    output += ";max_internal_walls: " + str(layers[0].max_internal_walls) + "\n"
+    output += ";max_external_walls: " + str(layers[0].max_external_walls) + "\n"
+    output += ";max_external_walls: " + str(layers[0].max_external_walls) + "\n"
+    output += ";path_radius: " + str(layers[0].path_radius_internal) + "\n"
+    output += ";n_max: " + str(layers[0].n_max) + "\n"
+    output += "G91\n"
+    output += "M400\n"
+    output += "M42 P4 S255; turn off welder\n"
+    output += "M400\n"
+    output += "G1 F360; speed g1\n"
+    bfr = [0, 0]
+    base_frame = layers[0].base_frame
+    for i, l in enumerate(layers):
+        seq = l.final_route
+        chain = seq
+        counter = 0
+        flag_salto = 0
+        output += 'M400; Inicio; Layer' + str(i+1) + '\n'
+        output += "G1 F360; speed g1\n"
+        output += "G1 Z" + str(layer_height) + " ; POS INICIAL\n"
+        for i, p in enumerate(chain):
+            if p == [["a","a"]]:
+                output += "M42 P4 S255; turn off welder\n"
+                flag_salto = 1
+            else:
+                if i == 1:
+                    output += "M42 P4 S0; turn on welder\n"
+                    output += "G4 P2000\n"
+                coords = p[0] 
+                coords = [base_frame[0] - coords[0], coords[1]]
+                desloc = np.subtract(coords, bfr)
+                output += "G1 X" + str(desloc[1]*mm_per_pixel) + " Y" + str(desloc[0]*mm_per_pixel) + "\n"
+                output += "M400\n"
+                bfr = coords
+                counter += 1
+                if flag_salto == 1:
+                    output += "M42 P4 S0; turn on welder\n"
+                    output += "G4 P2000\n"
+                    flag_salto = 0
+        output += "G4 P30000\n"
+    output += "G1 Z" + str(2*layer_height) + " ; POS FINAL\n"
+    output += "M104 S0; End of Gcode\n"
+    f = open(outFile, 'w')
+    f.write(output)
+    f.close()
+    return

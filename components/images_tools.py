@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from components.layer import Layer
     from typing import List
-    from files import Paths
+    from files import System_Paths
 import itertools
 import cv2
 import numpy as np
@@ -91,7 +91,7 @@ def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.
     return internal_area
 
 
-def final_mapping(layer: Layer, folders: Paths):
+def final_mapping(layer: Layer, folders: System_Paths):
     isl_final_map = np.zeros(layer.base_frame)
     regions_imgs = []
     for isl in layer.islands:

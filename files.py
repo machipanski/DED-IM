@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 import h5py
+from components.path_tools import Path
 
 if TYPE_CHECKING:
     from typing import List
@@ -58,61 +59,6 @@ class System_Paths:
         save_file = h5py.File(save_file_name, "a")
         os.chdir(self.home)
         return save_file
-
-    def create_layers_2d(self, path_input, dpi, layer_height, file_name: str):
-        """No caso de um arquivo 2D cria um objeto Layer apenas (usado mais para testes mesmo)"""
-        layer = Layer()
-        img = layer.make_input_img(0, path_input, dpi, 0, layer_height, 1, self)
-        save_name = file_name.replace(".pgm", "")
-        save_name = save_name.replace("/", "")
-        save_file = self.create_hdf5_file(save_name)
-        layer_group_nome = self.create_new_hdf5_group(f"/L_000")
-        props_layer = {
-            "name": "L_000",
-            "dpi": dpi,
-            "base_frame": img.shape,
-            "n_camadas": 1,
-            "layer_height": layer_height,
-            "odd_layer": 0,
-            "img_name": "original_img",
-        }
-        self.save_props_hdf5(layer_group_nome, props_layer)
-        self.save_img_hdf5(layer_group_nome, "original_img", img)
-        return
-
-    def create_layers_3d(self, path_input, dpi, layer_height, file_name):
-        """No caso de um arquivo 3D o programa chama o algoritmo SliceWithImages do Prof Minetto e cria um objeto Layer por camada"""
-        os.chdir(self.slicer)
-        subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
-        camadas_imgs_names = self.list(origins=1)
-        n_camadas = len(camadas_imgs_names)
-        save_name = file_name.replace(".stl", "")
-        save_name = save_name.replace(".STL", "")
-        save_name = save_name.replace("stl_models", "")
-        save_name = save_name.replace("/", "")
-        save_file = self.create_hdf5_file(save_name)
-        for i, name in enumerate(camadas_imgs_names):
-            layer_group = self.create_new_hdf5_group(f"/L_{i:03d}")
-            odd_layer = i % 2
-            layer = Layer()
-            os.chdir(self.sliced)
-            img = layer.make_input_img(
-                i, name, dpi, odd_layer, layer_height, n_camadas, self
-            )
-            os.chdir(self.home)
-            layer_dataset = self.save_img_hdf5(layer_group, "original_img", img)
-            props_layer = {
-                "name": f"L_{i:03d}",
-                "dpi": dpi,
-                "base_frame": img.shape,
-                "n_camadas": n_camadas,
-                "layer_height": layer_height,
-                "odd_layer": odd_layer,
-                "img_name": "original_img",
-            }
-            self.save_props_hdf5(layer_group, props_layer)
-        os.chdir(self.home)
-        return
 
     def list(self, origins=0, layers=0, isles=0):
         list = []
@@ -223,6 +169,29 @@ class System_Paths:
                 for i_key, i_item in island_group.items():
                     if isinstance(i_item, h5py.Dataset):
                         setattr(layer.islands[-1], i_key, np.array(i_item))
+        f.close()
+        os.chdir(self.home)
+        return
+
+    def load_island_paths_hdf5(self, layer_name, island: Island) -> None:
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "r")
+        island_group = f.get(f"/{layer_name}/{island.name}")
+        etr_group = island_group.get("external_tree_route")
+        itr_group = island_group.get("internal_tree_route")
+        twtr_group = island_group.get("thinwalls_tree_route")
+        island.external_tree_route = Path(
+            "external_tree_route", list(etr_group.get("sequence"))
+        )
+        island.internal_tree_route = Path(
+            "internal_tree_route", list(itr_group.get("sequence"))
+        )
+        island.thinwalls_tree_route = Path(
+            "thinwalls_tree_route", list(twtr_group.get("sequence"))
+        )
+        island.external_tree_route.img = list(etr_group.get("img"))
+        island.internal_tree_route.img = list(itr_group.get("img"))
+        island.thinwalls_tree_route.img = list(twtr_group.get("img"))
         f.close()
         os.chdir(self.home)
         return
@@ -398,6 +367,32 @@ class System_Paths:
                 element_path, "sequence", isl.external_tree_route.sequence
             )
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
+        return
+
+    def save_internal_routes_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
+            self.create_new_hdf5_group(element_path)
+            self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
+            self.save_seq_hdf5(
+                element_path, "sequence", isl.internal_tree_route.sequence
+            )
+            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
+        return
+    
+    def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            element_path = f"/{layer_name}/{isl.name}/thinwalls_tree_route"
+            self.create_new_hdf5_group(element_path)
+            self.save_props_hdf5(element_path, isl.thinwalls_tree_route.__dict__)
+            self.save_seq_hdf5(
+                element_path, "sequence", isl.thinwalls_tree_route.sequence
+            )
+            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.thinwalls_tree_route.img)
+        return
 
     def save_img_hdf5(self, path, name, img, type="bool"):
         os.chdir(self.output)
@@ -414,7 +409,7 @@ class System_Paths:
             f.close()
             os.chdir(self.home)
         return
-    
+
     def delete_img_hdf5(self, path):
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
@@ -425,6 +420,40 @@ class System_Paths:
         finally:
             f.close()
             os.chdir(self.home)
+        return
+
+    def call_slicer(self, file_name: str, path_input, dpi, layer_height):
+        list_layers = []
+        os.chdir(self.slicer)
+        subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
+        camadas_imgs_names = self.list(origins=1)
+        n_camadas = len(camadas_imgs_names)
+        os.chdir(self.sliced)
+        for i, file_path in enumerate(camadas_imgs_names):
+            layer = Layer()
+            layer.make_input_img(
+                f"L_{i:03d}", file_path, dpi, i % 2, layer_height, n_camadas
+            )
+            list_layers.append(layer)
+        os.chdir(self.home)
+        return list_layers
+
+    def save_layers(self, save_name, layers_list: List[Layer]):
+        os.chdir(self.output)
+        try:
+            f = h5py.File(save_name, "r")
+        except:
+            self.create_hdf5_file(save_name)
+            # f = h5py.File(save_name, "a")
+        for layer in layers_list:
+            self.create_new_hdf5_group(layer.name)
+            self.save_props_hdf5(layer.name, layer.__dict__)
+            self.save_img_hdf5(layer.name, "original_img", layer.original_img)
+            for island in layer.islands:
+                self.create_new_hdf5_group(f"{layer.name}/{island.name}")
+                self.save_props_hdf5(f"{layer.name}/{island.name}", island.__dict__)
+                self.save_img_hdf5(f"{layer.name}/{island.name}", "img", island.img)
+        os.chdir(self.home)
         return
 
     def save_graph_hdf5(self, path, name, G):
@@ -483,9 +512,7 @@ class System_Paths:
                     if isinstance(reg.name, int):
                         reg.name = f"ZZ_{reg.name:03d}"
                     self.create_new_hdf5_group(f"{base_path}/{reg.name}")
-                    self.save_img_hdf5(
-                        f"{base_path}/{reg.name}", "img", reg.img
-                    )
+                    self.save_img_hdf5(f"{base_path}/{reg.name}", "img", reg.img)
                     if len(reg.route) > 0:
                         self.save_img_hdf5(
                             f"{base_path}/{reg.name}", "route", reg.route

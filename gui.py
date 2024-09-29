@@ -17,8 +17,8 @@ def load_model(folders: System_Paths) -> List[str]:
     """Abre uma caixa para explorar os arquivos e captura o caminho"""
     os.chdir(folders.input)
     path_input = fileopenbox()
-    os.chdir(folders.home)
     file_name = re.sub(folders.input, "", path_input)
+    os.chdir(folders.home)
     return path_input, file_name
 
 

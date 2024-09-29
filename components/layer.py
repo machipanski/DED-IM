@@ -16,7 +16,6 @@ from timer import Timer
 import numpy as np
 import concurrent.futures
 from functools import wraps
-import mypy
 
 
 class Island:
@@ -27,9 +26,9 @@ class Island:
         self.offsets: OffsetRegions
         self.bridges: BridgeRegions
         self.zigzags: ZigZagRegions
-        self.rest_of_picture_f1 = np.ndarray([])
-        self.rest_of_picture_f2 = np.ndarray([])
-        self.rest_of_picture_f3 = np.ndarray([])
+        self.rest_of_picture_f1 = []
+        self.rest_of_picture_f2 = []
+        self.rest_of_picture_f3 = []
         self.comeco_ext = []
         self.comeco_int = []
         self.external_tree_route: List[Path] = []
@@ -69,9 +68,8 @@ class Layer:
     def close_final_path(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
         for island in self.islands:
+            folders.load_island_paths_hdf5(self.name, island)
             with Timer("Conectando ambas as partes"):
-                island.internal_tree_route.get_img(self.base_frame)
-                island.external_tree_route.get_img(self.base_frame)
                 internal_simpl = path_tools.simplifica_retas_master(
                     island.internal_tree_route.sequence,
                     0.0002,
@@ -114,12 +112,13 @@ class Layer:
                         isl,
                         self.base_frame,
                         mt.make_mask(self, "3_4_ext"),
-                        self.path_radius_external,
+                        self.path_radius_external
                     )
                 with Timer("Conectando pontes de Crossover"):
                     isl.external_tree_route = path_tools.connect_cross_over_bridges(
-                        isl,
+                        isl
                     )
+                isl.external_tree_route.get_img(self.base_frame)
         with Timer("salvando imagens das rotas"):
             folders.save_external_routes_hdf5(self.name, self.islands)
         return
@@ -137,64 +136,69 @@ class Layer:
                 )
             with Timer("Conectando pontes de zigzag"):
                 isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
-
+                isl.internal_tree_route.get_img(self.base_frame)
+        
         with Timer("salvando imagens das rotas"):
-            for isl in self.islands:
-                folders.create_new_hdf5_group(
-                    f"/{self.name}/{isl.name}/internal_tree_route"
-                )
-                folders.save_props_hdf5(
-                    f"/{self.name}/{isl.name}/internal_tree_route",
-                    isl.internal_tree_route.__dict__,
-                )
-                folders.save_seq_hdf5(
-                    f"/{self.name}/{isl.name}/internal_tree_route",
-                    "sequence",
-                    isl.internal_tree_route.sequence,
-                )
-            folders.save_props_hdf5(
-                f"/{self.name}/{isl.name}",
-                isl.__dict__,
-            )
+            folders.save_internal_routes_hdf5(self.name, self.islands)
         return
 
     def close_routes_thinwalls(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
-        for island in self.islands:
-            folders.load_thin_walls_hdf5(self.name, island)
+        for isl in self.islands:
+            folders.load_thin_walls_hdf5(self.name, isl)
             with Timer("Convertendo paredes finas"):
-                island.thinwalls_tree_route = path_tools.connect_thin_walls(
-                    island, self.path_radius_external
+                isl.thinwalls_tree_route = path_tools.connect_thin_walls(
+                    isl, self.path_radius_external
                 )
+                isl.thinwalls_tree_route.get_img(self.base_frame)
 
         with Timer("salvando imagens das rotas"):
-            for isl in self.islands:
-                folders.create_new_hdf5_group(
-                    f"/{self.name}/{isl.name}/thinwalls_tree_route"
+            folders.save_thinwall_final_routes_hdf5(self.name, self.islands)
+
+    def create_layers(
+        folders: System_Paths, path_input: str, file_name: str, dpi: int, layer_height
+    ):
+
+        def divide_islands(layer: Layer):
+            img = layer.original_img
+            separated_imgs, labels, num = it.divide_by_connected(img)
+            layer.islands_number = num
+            islands = []
+            for i, si in enumerate(separated_imgs):
+                islands.append(Island(f"I_{i:03d}", si))
+            layer.islands = islands
+            return
+
+        list_layers = []
+        with Timer("criando as camadas"):
+            if file_name.endswith(".stl") or file_name.endswith(".STL"):
+                hdf5_file_name = file_name.replace(".stl", "")
+                hdf5_file_name = hdf5_file_name.replace(".STL", "")
+                hdf5_file_name = hdf5_file_name.replace("stl_models", "")
+                hdf5_file_name = hdf5_file_name.replace("/", "")
+                list_layers = folders.call_slicer(
+                    file_name, path_input, dpi, layer_height
                 )
-                folders.save_props_hdf5(
-                    f"/{self.name}/{isl.name}/thinwalls_tree_route",
-                    isl.thinwalls_tree_route.__dict__,
-                )
-                folders.save_seq_hdf5(
-                    f"/{self.name}/{isl.name}/thinwalls_tree_route",
-                    "sequence",
-                    isl.thinwalls_tree_route.sequence,
-                )
-            folders.save_props_hdf5(
-                f"/{self.name}/{isl.name}",
-                isl.__dict__,
-            )
+            else:
+                hdf5_file_name = file_name.replace(".pgm", "")
+                hdf5_file_name = hdf5_file_name.replace("/", "")
+                layer = Layer()
+                layer.make_input_img("L_000", path_input, dpi, 0, layer_height, 1)
+                list_layers = [layer]
+            for layer in list_layers:
+                divide_islands(layer)
+        with Timer("salvando as camadas"):
+            folders.save_layers(hdf5_file_name, list_layers)
+        return
 
     def make_input_img(
         self,
-        name: int,
+        name: str,
         img_path: str,
         dpi: int,
         odd_layer: bool,
         layer_height: float,
-        n_camadas: int,
-        arquivos: System_Paths,
+        n_camadas: int
     ):
         """Usa o Path dos arquivos para importar as imagens e transforma-las em binarias,
         assim como ja cria um objeto Layer pra cada"""
@@ -207,7 +211,8 @@ class Layer:
         self.base_frame = img.shape
         self.n_camadas = n_camadas
         self.layer_height = layer_height
-        return img
+        self.original_img = img
+        return
 
     def make_thin_walls(
         self,
@@ -711,7 +716,7 @@ class Layer:
         for isl in self.islands:
             folders.load_zigzags_hdf5(self.name, isl)
             isl.zigzags.make_routes_z(self.base_frame, self.path_radius_internal)
-        
+
         with Timer("salvando imagens das rotas"):
             folders.save_zigzags_hdf5(self.name, self.islands)
         return
@@ -827,25 +832,3 @@ class Layer:
                     isl.zigzags.macro_areas,
                 )
         return
-
-
-def divide_islands(folders: System_Paths):
-    save_file = folders.load_hdf5_file(folders.save_file_name)
-    layer_names = list(save_file.keys())
-    for ln in layer_names:
-        layer_group = save_file[ln]
-        img = layer_group["original_img"]
-        separated_imgs, labels, num = it.divide_by_connected(img)
-        layer_group.attrs["islands_number"] = num
-        islands = []
-        for i, si in enumerate(separated_imgs):
-            if not (f"I_{i:03d}" in layer_group.keys()):
-                island_group = layer_group.create_group(f"I_{i:03d}")
-                folders.save_img_hdf5(island_group.name, "img", si)
-                island_group.attrs["name"] = f"I_{i:03d}"
-                island_group.attrs["img_name"] = "img"
-                islands.append(Island(f"I_{i:03d}", "img"))
-        layer_group.attrs["islands"] = [x.name for x in islands]
-    save_file.attrs["Fase 0"] = "OK"
-    save_file.close()
-    return

@@ -1,10 +1,6 @@
 from __future__ import annotations
+from re import L
 from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from components.zigzag import ZigZag
-    from typing import List
-    from components.layer import Island
 import itertools
 import math
 import random
@@ -17,6 +13,11 @@ from components import images_tools as it
 from components import skeleton as sk
 from cv2 import boundingRect, arcLength, approxPolyDP
 from scipy.spatial import distance_matrix
+if TYPE_CHECKING:
+    from components.zigzag import ZigZag
+    from typing import List
+    from components.layer import Layer, Island
+    from files import System_Paths
 
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
@@ -147,7 +148,7 @@ def add_routes_by_sequence(
             dists = distances_b
         linked_offset = list(
             filter(
-                lambda x: x != 0,
+                lambda x: x != "Reg_000",
                 i_b_cob[cob_names.index(name_of_cob)].linked_offset_regions,
             )
         )[0]
@@ -196,7 +197,9 @@ def add_routes_by_sequence_internal(
         name_of_zigzag_bridge = order_zigzag_bridges_regions[i]
         i_b_zb = island.bridges.zigzag_bridges
         i_b_zb_names = [x.name for x in i_b_zb]
-        references_a = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].reference_points
+        references_a = i_b_zb[
+            i_b_zb_names.index(name_of_zigzag_bridge)
+        ].reference_points
         distances_a = [
             pt.distance_pts(references_a[0], int_pt),
             pt.distance_pts(references_a[1], int_pt),
@@ -204,7 +207,12 @@ def add_routes_by_sequence_internal(
         rota_ponte = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].route
         refs = references_a
         dists = distances_a
-        linked_zigzag = list(filter(lambda x: not (x in zigzags_included), i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].linked_zigzag_regions,))[0]
+        linked_zigzag = list(
+            filter(
+                lambda x: not (x in zigzags_included),
+                i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].linked_zigzag_regions,
+            )
+        )[0]
         A = [
             (linked_zigzag in y)
             for y in [x.regions["zigzags"] for x in island.internal_tree_route]
@@ -234,6 +242,7 @@ def add_routes_by_sequence_internal(
         zigzag_bridges_included.add(name_of_zigzag_bridge)
     return nova_rota, zigzag_bridges_included, zigzags_included, saltos
 
+
 def connect_thin_walls(island: Island, path_radius_external):
     thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
     thinwall_path_list = []
@@ -252,14 +261,17 @@ def connect_thin_walls(island: Island, path_radius_external):
         saltos.append(tw_p.sequence[-1])
         nova_rota = nova_rota + tw_p.sequence
         thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
-    new_regions = {"offsets": [],
-                   "zigzags": [],
-                   "cross_over_bridges": [],
-                   "offset_bridges": [],
-                   "zigzag_bridges": [],
-                   "thin walls": list(thinwalls_included)}
-    new_route = Path("thin wall tree", nova_rota, new_regions,  saltos=saltos)
+    new_regions = {
+        "offsets": [],
+        "zigzags": [],
+        "cross_over_bridges": [],
+        "offset_bridges": [],
+        "zigzag_bridges": [],
+        "thin walls": list(thinwalls_included),
+    }
+    new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
     return new_route
+
 
 def connect_cross_over_bridges(island: Island) -> Path:
     def find_interruption_points(
@@ -420,118 +432,6 @@ def connect_offset_bridges(
         new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
         A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
         return A
-
-        # y_da_ponte = pontos_extremos[0][0]
-        # y_de_cima = y_da_ponte - path_radius
-        # y_de_baixo = y_da_ponte + path_radius
-        # x_pontos_extremos = [x[1] for x in pontos_extremos]
-        # midle_point = [y_da_ponte,int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),]
-        # todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-        # same_y_up = list(filter(lambda b: b[0] == y_de_cima, todas_espirais_points))
-        # same_y_down = list(filter(lambda c: c[0] == y_de_baixo, todas_espirais_points))
-        # same_y_up_inside = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos),same_y_up,))
-        # same_y_down_inside = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos),same_y_down,))
-        # contact_ec = list(filter(lambda b: b[1] < midle_point[1], same_y_up_inside))
-        # contact_dc = list(filter(lambda b: b[1] > midle_point[1], same_y_up_inside))
-        # contact_eb = list(filter(lambda b: b[1] < midle_point[1], same_y_down_inside))
-        # contact_db = list(filter(lambda b: b[1] > midle_point[1], same_y_down_inside))
-        # ponto_esq_cima = contact_ec[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_ec)))]
-        # ponto_dir_cima = contact_dc[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_dc)))]
-        # ponto_esq_baixo = contact_eb[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_eb)))]
-        # ponto_dir_baixo = contact_db[np.argmin(list(map(lambda x: pt.distance_pts(midle_point, x), contact_db)))]
-        # linha_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
-        # linha_baixo = it.draw_line(np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo)
-        # retangulo = it.draw_polyline(np.zeros(base_frame),[ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo,],1)
-        # retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
-        # new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
-        # new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
-        # A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
-
-        # contact_points = list(filter(lambda a: a[0] == y_da_ponte, todas_espirais_points))
-        # contact_points_cima_dentro = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos), contact_points_cima))
-        # contact_points_baixo_dentro = list(filter(lambda b: min(x_pontos_extremos) <= b[1] <= max(x_pontos_extremos), contact_points_baixo))
-        # extended_line_points = []
-        # extended_line_points_cima = []
-        # extended_line_points_baixo = []
-        # for ponto in pontos_extremos:
-        #     dists = list(map(lambda x: pt.distance_pts(ponto, x), contact_points))
-        #     ponto_destino = contact_points[np.argmin(dists)]
-        #     extended_line_points.append(ponto_destino)
-        #     dists_cima = list(map(lambda x: pt.distance_pts(ponto, x), contact_points_cima_dentro))
-        #     dists_baixo = list(map(lambda x: pt.distance_pts(ponto, x), contact_points_baixo_dentro))
-        #     ponto_destino_cima = contact_points_cima_dentro[np.argmin(dists_cima)]
-        #     ponto_destino_baixo = contact_points_baixo_dentro[np.argmin(dists_baixo)]
-        #     extended_line_points_cima.append(ponto_destino_cima)
-        #     extended_line_points_baixo.append(ponto_destino_baixo)
-        # linha_cima = it.draw_line(np.zeros(base_frame), extended_line_points_cima[0], extended_line_points_cima[1])
-        # linha_baixo = it.draw_line(np.zeros(base_frame), extended_line_points_baixo[0], extended_line_points_baixo[1])
-        # extended_line_points[0][1] = np.min(
-        #     [extended_line_points_cima[0][1], extended_line_points_baixo[0][1]]
-        # )
-        # extended_line_points[1][1] = np.max(
-        #     [extended_line_points_cima[1][1], extended_line_points_baixo[1][1]]
-        # )
-        # linha = it.draw_line(np.zeros(base_frame), extended_line_points[0], extended_line_points[1])
-        # p1 = np.add(linha_baixo, linha_cima)
-        # todas_espirais = np.logical_and(todas_espirais, np.logical_not(mt.dilation(linha, kernel_img=mask_full)))
-        # new_img = np.logical_or(p1, todas_espirais)
-        # A, _, _ = sk.create_prune_divide_skel(new_img, path_radius)
-        # return A
-
-    # def integrate_bridge(
-    #     todas_espirais, path_radius, pontos_extremos, mask_full, base_frame
-    # ):
-
-    #     def get_contact_points(y):
-    #         return list(filter(lambda p: p[0] == y, todas_espirais_points))
-
-    #     def find_closest_points(pontos, contact_points):
-    #         return [
-    #             contact_points[
-    #                 np.argmin([pt.distance_pts(p, cp) for cp in contact_points])
-    #             ]
-    #             for p in pontos
-    #         ]
-
-    #     y_da_ponte = pontos_extremos[0][0]
-    #     y_de_cima = y_da_ponte - path_radius
-    #     y_de_baixo = y_da_ponte + path_radius
-    #     todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-    #     contact_points = get_contact_points(y_da_ponte)
-    #     contact_points_cima = get_contact_points(y_de_cima)
-    #     contact_points_baixo = get_contact_points(y_de_baixo)
-    #     extended_line_points = find_closest_points(pontos_extremos, contact_points)
-    #     extended_line_points_cima = find_closest_points(
-    #         pontos_extremos, contact_points_cima
-    #     )
-    #     extended_line_points_baixo = find_closest_points(
-    #         pontos_extremos, contact_points_baixo
-    #     )
-    #     linha_cima = it.draw_line(
-    #         np.zeros(base_frame),
-    #         extended_line_points_cima[0],
-    #         extended_line_points_cima[1],
-    #     )
-    #     linha_baixo = it.draw_line(
-    #         np.zeros(base_frame),
-    #         extended_line_points_baixo[0],
-    #         extended_line_points_baixo[1],
-    #     )
-    #     extended_line_points[0][1] = min(
-    #         extended_line_points_cima[0][1], extended_line_points_baixo[0][1]
-    #     )
-    #     extended_line_points[1][1] = max(
-    #         extended_line_points_cima[1][1], extended_line_points_baixo[1][1]
-    #     )
-    #     linha = it.draw_line(
-    #         np.zeros(base_frame), extended_line_points[0], extended_line_points[1]
-    #     )
-    #     p1 = np.add(linha_baixo, linha_cima)
-    #     todas_espirais = np.logical_and(
-    #         todas_espirais, np.logical_not(mt.dilation(linha, kernel_img=mask_full))
-    #     )
-    #     new_img = np.logical_or(p1, todas_espirais)
-    #     A, _, _ =
 
     lista_de_rotas = []
     todas_espirais_img = np.zeros(base_frame)
@@ -1175,6 +1075,20 @@ def organize_points_cw(pts, origin=[]):
     return organized
 
 
+def rotate_path_odd_layer(coords, base_frame):
+    new_coords = []
+    for p in coords:
+        if p == ["a", "a"]:
+            new_coords.append(p)
+        else:
+            (y, x) = p
+            angler = (270) * math.pi / 180
+            newx = int(x * math.cos(angler) - y * math.sin(angler))
+            newy = int(x * math.sin(angler) + y * math.cos(angler)) + base_frame[1]
+            new_coords.append([newy, newx])
+    return new_coords
+
+
 def one_pixel_wide(img):
     return skimage.morphology.thin(img, max_num_iter=None)
 
@@ -1268,19 +1182,16 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     approx_seq = []
     for s in segmentos:
         candidates = []
-        candidates.append(
-            factor_epilson * arcLength(s, False)
-        )  # diminuir valor para aumentar quantidade de segmentos
-        candidates.append(
-            factor_epilson * arcLength(s, True)
-        )  # diminuir valor para aumentar quantidade de segmentos
+        candidates.append(factor_epilson * arcLength(s, False))
+        candidates.append(factor_epilson * arcLength(s, True))
         epsilon = candidates[np.argmax(candidates)]
         approx_seg = approxPolyDP(np.ascontiguousarray(s), epsilon, False)
+        approx_seg = [list(x[0]) for x in approx_seg]
         if approx_seg is None:
             pass
         else:
-            approx_seq += approx_seg.tolist()
-            approx_seq += [[["a", "a"]]]
+            approx_seq += approx_seg
+            approx_seq += [["a", "a"]]
     return approx_seq
 
 
@@ -1356,12 +1267,13 @@ def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
     return macroa_area_path_list
 
 
-def layers_to_Gcode(layers, arquivos):
+def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     import os
+
+    os.chdir(folders.home)
     mm_per_pixel = layers[0].mm_per_pxl
     layer_height = layers[0].layer_height
-    os.chdir(arquivos.home)
-    outFile = "testedeSeq.gcode"
+    outFile = f"arrumar_como_se_salva_nomes.gcode"
     output = ""
     output += ";Layer height: " + str(layer_height) + "\n"
     output += ";DPI: " + str(layers[0].dpi) + "\n"
@@ -1379,37 +1291,44 @@ def layers_to_Gcode(layers, arquivos):
     output += "G1 F360; speed g1\n"
     bfr = [0, 0]
     base_frame = layers[0].base_frame
-    for i, l in enumerate(layers):
-        seq = l.final_route
-        chain = seq
-        counter = 0
-        flag_salto = 0
-        output += 'M400; Inicio; Layer' + str(i+1) + '\n'
-        output += "G1 F360; speed g1\n"
-        output += "G1 Z" + str(layer_height) + " ; POS INICIAL\n"
-        for i, p in enumerate(chain):
-            if p == [["a","a"]]:
-                output += "M42 P4 S255; turn off welder\n"
-                flag_salto = 1
-            else:
-                if i == 1:
-                    output += "M42 P4 S0; turn on welder\n"
-                    output += "G4 P2000\n"
-                coords = p[0] 
-                coords = [base_frame[0] - coords[0], coords[1]]
-                desloc = np.subtract(coords, bfr)
-                output += "G1 X" + str(desloc[1]*mm_per_pixel) + " Y" + str(desloc[0]*mm_per_pixel) + "\n"
-                output += "M400\n"
-                bfr = coords
-                counter += 1
-                if flag_salto == 1:
-                    output += "M42 P4 S0; turn on welder\n"
-                    output += "G4 P2000\n"
-                    flag_salto = 0
-        output += "G4 P30000\n"
-    output += "G1 Z" + str(2*layer_height) + " ; POS FINAL\n"
+    for n_layer, layer in enumerate(layers):
+        for n_island, island in enumerate(layer.islands):
+            seq = island.island_route
+            chain = seq
+            counter = 0
+            flag_salto = 0
+            output += "M400; Inicio; Layer" + str(n_layer + 1) + "\n"
+            output += "G1 F360; speed g1\n"
+            output += "G1 Z" + str(layer_height) + " ; POS INICIAL\n"
+            for i, p in enumerate(chain):
+                if p == ["a", "a"]:
+                    output += "M42 P4 S255; turn off welder\n"
+                    flag_salto = 1
+                else:
+                    if i == 1:
+                        output += "M42 P4 S0; turn on welder\n"
+                        output += "G4 P2000\n"
+                    coords = p
+                    coords = [base_frame[0] - coords[0], coords[1]]
+                    desloc = np.subtract(coords, bfr)
+                    output += (
+                        "G1 X"
+                        + str(desloc[1] * mm_per_pixel)
+                        + " Y"
+                        + str(desloc[0] * mm_per_pixel)
+                        + "\n"
+                    )
+                    output += "M400\n"
+                    bfr = coords
+                    counter += 1
+                    if flag_salto == 1:
+                        output += "M42 P4 S0; turn on welder\n"
+                        output += "G4 P2000\n"
+                        flag_salto = 0
+            output += "G4 P30000\n"
+    output += "G1 Z" + str(2 * layer_height) + " ; POS FINAL\n"
     output += "M104 S0; End of Gcode\n"
-    f = open(outFile, 'w')
+    f = open(outFile, "w")
     f.write(output)
     f.close()
     return

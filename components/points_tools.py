@@ -40,16 +40,15 @@ def extreme_points(img, force_top=False):
         chull = convex_hull_image(img)
         sequence = path_tools.img_to_chain(chull)
         sequence_simpl = path_tools.simplifica_retas_master(sequence, 0.001, [])
-        sequence_simpl.remove([["a", "a"]])
+        sequence_simpl.remove(["a", "a"])
         regyar = it.chain_to_lines(
-            [[x[0][1], x[0][0]] for x in sequence_simpl], np.zeros_like(img)
+            [[x[1], x[0]] for x in sequence_simpl], np.zeros_like(img)
         )
         if len(sequence_simpl) < 4:
             considered = np.where(img != 0)
         else:
-            sdfaffa = [x[0] for x in sequence_simpl]
-            ffdfsfdf = [x[0] for x in sdfaffa]
-            rtertrtet = [x[1] for x in sdfaffa]
+            ffdfsfdf = [x[0] for x in sequence_simpl]
+            rtertrtet = [x[1] for x in sequence_simpl]
             considered = [ffdfsfdf, rtertrtet]
             reduced = x_y_para_pontos(considered)
             first_pair = most_distant(reduced)

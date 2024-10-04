@@ -375,6 +375,7 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
+            self.delete_img_hdf5(f"{element_path}/sequence")
             self.save_seq_hdf5(
                 element_path, "sequence", isl.internal_tree_route.sequence
             )

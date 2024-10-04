@@ -14,6 +14,7 @@ from cv2 import getStructuringElement, MORPH_RECT
 from scipy.spatial import distance_matrix, distance
 from scipy.ndimage import distance_transform_edt
 from skimage.segmentation import flood_fill
+import timer
 
 
 class DivisionLine:
@@ -73,32 +74,43 @@ class Subregion:
                 shadow_img_esq[index] = np.flip(labeled_line_esq)
             shadow_img_dir_dd = shadow_img_dir == 1
             shadow_img_esq_dd = shadow_img_esq == 1
-            all_ones = np.logical_or(
-                shadow_img_dir_dd.astype(int), shadow_img_esq_dd.astype(int)
-            )
+            candidates = [shadow_img_dir_dd, shadow_img_esq_dd]
+            if len(np.add(shadow_img_dir_dd, shadow_img_esq_dd) == 2) > 0:
+                sums = [np.sum(x) for x in candidates]
+                all_ones = candidates[np.argmax(sums)]
+            else:
+                all_ones = np.logical_or(
+                    shadow_img_dir_dd.astype(int), shadow_img_esq_dd.astype(int)
+                )
             separated, _, num = it.divide_by_connected(all_ones)
             filtered_separated = []
+            # for s in separated:
+            #     for index, linha in enumerate(s[0:]):
+            #         labeled_line_dir = label(linha, connectivity=1)
+            #         shadow_img_dir[index] = labeled_line_dir
+            #     if len(np.unique(shadow_img_dir)) > 2:
+            #         filtered_separated.append(shadow_img_dir == 1)
+            #     else:
+            #         filtered_separated.append(s)
+            # shadows = shadows + filtered_separated
+            # for s in filtered_separated:
             for s in separated:
-                for index, linha in enumerate(s[0:]):
-                    labeled_line_dir = label(linha, connectivity=1)
-                    shadow_img_dir[index] = labeled_line_dir
-                if len(np.unique(shadow_img_dir)) > 2:
-                    filtered_separated.append(shadow_img_dir == 1)
-                else:
-                    filtered_separated.append(s)
-            shadows = shadows + filtered_separated
-            for s in filtered_separated:
+                shadows.append(s)
                 img = np.logical_and(img, np.logical_not(s))
         shadow_img = it.sum_imgs_colored(shadows)
-        areas = []
-        for d in shadows:
-            labeled_divs, _, _ = it.divide_by_connected(d)
-            areas = areas + labeled_divs
+        # areas = []
+        # for d in shadows:
+        #     labeled_divs, _, _ = it.divide_by_connected(d)
+        #     areas = areas + labeled_divs
+        separated_after_rejoined, _, num = it.divide_by_connected(shadow_img)
+        shadows_after_rejoined = separated_after_rejoined
+        new_shadow_img = it.sum_imgs_colored(shadows)
         final_areas = []
-        for i, area in enumerate(areas):
+        # for i, area in enumerate(areas):
+        for i, area in enumerate(shadows_after_rejoined):
             final_areas.append(ShadowArea(i, area))
             shadow_img = it.sum_imgs_colored([x.img for x in final_areas])
-        return shadow_img, final_areas
+        return new_shadow_img, final_areas
 
     def unite_monotonic_shadow_areas(self, areas):
         """Toda área com apenas um vizinho acima e abaixo é listada
@@ -353,406 +365,178 @@ class ZigZagRegions:
     ):
         def zigzag_internal_hole_filler_v2():
 
-            def all_internal_routes():
-                rotas = np.zeros(base_frame)
-                for r in macro_areas:
-                    rotas = np.logical_or(rotas, r)
-                return rotas
-
-            def all_external_trails():
-                rotas = np.zeros(base_frame)
-                for r in bridges.cross_over_bridges:
-                    rotas = np.logical_or(rotas, r.img)
-                for r in bridges.offset_bridges:
-                    rotas = np.logical_or(rotas, r.img)
-                for r in offsets:
-                    rotas = np.logical_or(rotas, r.img)
-                for r in thin_walls:
-                    rotas = np.logical_or(rotas, r.img)
-                return rotas
-
-            def find_internal_fails():  # calcula e separa em imagens cada area nao coberta pelo ziguezague interno
-                internal_area = np.logical_and(
-                    original_img, np.logical_not(all_external_trails())
-                )
-                internal_trails = np.zeros(base_frame)
-                for r in bridges.zigzag_bridges:
-                    internal_trails = np.logical_or(internal_trails, r.trail)
-                for r in macro_areas:
-                    trail = mt.dilation(r, kernel_img=mask_full_int)
-                    internal_trails = np.logical_or(internal_trails, trail)
-                internal_fails = np.logical_and(
-                    internal_area, np.logical_not(internal_trails)
-                )
-                internal_fails = mt.opening(internal_fails, kernel_size=2)
-                separated_imgs, _, _ = it.divide_by_connected(internal_fails)
-                separated_imgs = list(
-                    filter(
-                        lambda x: it.comprimento_maior_que(
-                            x, (path_radius_internal * 4)
-                        ),
-                        separated_imgs,
-                    )
-                )
-                return separated_imgs
-
-            def zigzag_region_next2fail():
-                # determina a qual zzarea deve ser conectada a falha, o criterio eh a maior area de conexao
-                fail_reg = {}
-                for i, fail in enumerate(separated_imgs):
-                    reg_list = []
-                    sums = []
-                    for reg in zigzags:
-                        vertical_trail = mt.dilation(reg.route, kernel_img=mask_line)
-                        area_conjunta = np.logical_and(fail, vertical_trail)
-                        if np.sum(area_conjunta) > 0:
-                            reg_list.append(reg.name)
-                            sums.append(np.sum(area_conjunta))
-                        if sums:
-                            fail_reg.update({i: reg_list[np.argmax(sums)]})
-                return fail_reg
-
-            def contact_lines():
-                # usa a mesma dilatacao para determinar as linas onde ocorre o contato com a trilha, escolhe a mais reta dela
-                contacts_imgs = []
-                contacts_pts = []
-                zigzag_contact_lines_imgs = []
-                zigzag_contact_lines_pts = []
-                for j, regs in enumerate(
-                    list(fail_reg.values())
-                ):  # aqui comeca uma operacao nova
-                    fail_img = separated_imgs[j]
-                    contact = mt.dilation(zigzags[int(regs[3:])].route, kernel_img=mask_line)
-                    contact = np.add(contact, fail_img.astype(np.uint8)) == 2
-                    _, conts = mt.detect_contours(fail_img, return_img=True)
-                    contact = np.logical_and(contact, conts)
-                    if np.sum(contact) > 0:
-                        for l, line in enumerate(contact):
-                            if np.sum(line) < 3:
-                                contact[l, :] = 0
-                        dif_contacts, _, cont_num = it.divide_by_connected(contact)
-                        if cont_num > 1:
-                            sums = []
-                            for contact in dif_contacts:
-                                if len(np.unique(np.nonzero(contact)[0])) > 5:
-                                    sums.append(0)
-                                else:
-                                    sums.append(np.sum(contact))
-                            contact = dif_contacts[np.argmax(sums)]
-                        contacts_imgs.append(contact)
-                        # encontra a parte do ziguezague que esta criando o contato
-                        contact_ys, contact_xs = np.nonzero(contact)
-                        contact_ys = [np.min(contact_ys), np.max(contact_ys)]
-                        contact_xs = [np.min(contact_xs), np.max(contact_xs)]
-                        linhas = zigzags[int(regs[3:])].route.copy()
-                        linhas[:, : contact_xs[0]] = 0  # zera tudo antes
-                        linhas[:, (contact_xs[1] + 1) :] = 0  # zera tudo depois
-                        linhas, _, _ = it.divide_by_connected(linhas)
-                        pts_contact = pt.x_y_para_pontos(
-                            np.nonzero(mt.hitmiss_ends_v2(contact))
-                        )
-                        pts_contact = sorted(pts_contact, key=lambda x: x[1])
-                        contacts_pts.append(pts_contact)
-                        linhas_pts = [pt.img_to_points(x) for x in linhas]
-                        linha_antiga, _ = pt.closest_line(pts_contact[0], linhas_pts)
-                        linha_antiga = it.points_to_img(
-                            linha_antiga, np.zeros(base_frame)
-                        )
-                        linha_antiga[
-                            : (contact_ys[0] - path_radius_internal - 5), :
-                        ] = 0
-                        linha_antiga[
-                            (contact_ys[1] + path_radius_internal + 5) :, :
-                        ] = 0  # ESSA PRECISA SER A BASE DAS SEPARACOES!
-                        zigzag_contact_lines_imgs.append(linha_antiga)
-                        pts_linha = pt.x_y_para_pontos(
-                            np.nonzero(mt.hitmiss_ends_v2(linha_antiga))
-                        )
-                        pts_linha = sorted(pts_linha, key=lambda x: x[1])
-                        zigzag_contact_lines_pts.append(pts_linha)
-                    else:
-                        contacts_imgs.append(np.zeros_like(contact))
-                        contacts_pts.append([])
-                        zigzag_contact_lines_imgs.append(np.zeros_like(contact))
-                        zigzag_contact_lines_pts.append([])
-                return (
-                    contacts_imgs,
-                    contacts_pts,
-                    zigzag_contact_lines_imgs,
-                    zigzag_contact_lines_pts,
-                )
-
-            def connect_fails_to_zigzags():
-                # criacao do poligono que conecta a falha ao ziguezague
-                separated_connected_fails = []
-                all_new_fails = np.zeros_like(old_zigzag)
-                for j, regs in enumerate(
-                    list(fail_reg.values())
-                ):  # aqui comeca uma operacao nova
-                    canvas = np.zeros_like(zigzag_contact_lines_imgs[j])
-                    if (
-                        len(zigzag_contact_lines_pts[j]) > 0
-                        and len(contacts_pts[j]) > 0
-                    ):
-                        canvas = it.draw_line(
-                            canvas, zigzag_contact_lines_pts[j][0], contacts_pts[j][0]
-                        )
-                        canvas = it.draw_line(
-                            canvas, zigzag_contact_lines_pts[j][1], contacts_pts[j][1]
-                        )
-                        canvas = np.logical_or(
-                            canvas,
-                            np.logical_or(
-                                zigzag_contact_lines_imgs[j], contacts_imgs[j]
-                            ),
-                        )
-                        connection_poligon = it.fill_internal_area(
-                            canvas, np.ones_like(canvas)
-                        )
-                        polygon_xs = np.nonzero(connection_poligon)[1]
-                        fail_inside_polygon_xs = pt.img_to_points(separated_imgs[j])
-                        fail_inside_polygon_xs = list(
-                            filter(
-                                lambda x: x[1] >= np.min(polygon_xs),
-                                fail_inside_polygon_xs,
-                            )
-                        )
-                        # AQUIIIIIII
-                        fail_inside_polygon_xs = list(
-                            filter(
-                                lambda x: x[1] <= np.max(polygon_xs),
-                                fail_inside_polygon_xs,
-                            )
-                        )
-                        fail_inside_polygon_xs = it.points_to_img(
-                            fail_inside_polygon_xs, np.zeros_like(canvas)
-                        )
-                        connected_fail_area_img = np.logical_or(
-                            connection_poligon, fail_inside_polygon_xs
-                        )
-                        # separated_connected_fails.append(connected_fail_area_img)
-                        linha_antiga_ys, linha_antiga_xs = np.nonzero(
-                            zigzag_contact_lines_imgs[j]
-                        )
-                        linha_antiga_ys = [
-                            np.min(linha_antiga_ys),
-                            np.max(linha_antiga_ys),
-                        ]
-                        linha_antiga_xs = [
-                            np.min(linha_antiga_xs),
-                            np.max(linha_antiga_xs),
-                        ]
-                        metade_fail_baixo = connected_fail_area_img.copy()
-                        metade_fail_baixo[linha_antiga_ys[0] + 1 :] = 0
-                        metade_fail_cima = connected_fail_area_img.copy()
-                        metade_fail_cima[: linha_antiga_ys[0]] = 0
-                        selective_kernel_baixo = mask_full_int.copy()
-                        selective_kernel_baixo[int(path_radius_internal) + 1 :] = 0
-                        selective_kernel_cima = mask_full_int.copy()
-                        selective_kernel_cima[: int(path_radius_internal)] = 0
-                        eroded_baixo = mt.erosion(
-                            metade_fail_baixo, kernel_img=selective_kernel_baixo
-                        )
-                        eroded_cima = mt.erosion(
-                            metade_fail_cima, kernel_img=selective_kernel_cima
-                        )
-                        eroded_fail = np.add(eroded_baixo, eroded_cima)
-                        all_new_fails = np.logical_or(all_new_fails, eroded_fail)
-                separated_connected_fails, _, _ = it.divide_by_connected(all_new_fails)
-                separated_connected_fails = list(
-                    filter(
-                        lambda x: it.has_contact(x, old_zigzag),
-                        separated_connected_fails,
-                    )
-                )
-                return separated_connected_fails, all_new_fails
-
-            def divide_in_pairs(interface_line, path_radius, line_points):
-                [origin_point, end_point] = line_points
-                n_origens = 0
-                adjust = 0
-                pontos_org = path_tools.line_img_to_freeman_chain(
-                    interface_line, origin_point
-                )
-                if pt.distance_pts(pontos_org[0], pontos_org[1]) > 3:
-                    pontos_org.reverse()
-                    pontos_org = [pontos_org[-1]] + pontos_org[:-1]
-                while n_origens % 2 == 1 or n_origens == 0:
-                    origens_pontos = [pontos_org[0]]
-                    division_distance = (path_radius * 2) - adjust
-                    copied_origin = interface_line.copy()
-                    while np.sum(copied_origin.astype(np.uint8)) > 0:
-                        canvas = np.zeros_like(interface_line, np.uint8)
-                        centro = origens_pontos[-1]
-                        area_distance = it.draw_circle(
-                            canvas, (centro), division_distance
-                        )
-                        candidates = np.logical_and(area_distance, copied_origin)
-                        candidates = pt.x_y_para_pontos(np.nonzero(candidates))
-                        if candidates:
-                            new_point = pt.most_distant_from(
-                                origens_pontos[-1], candidates
-                            )
-                            dist = pt.distance_pts(new_point, origens_pontos[-1])
-                            dist_from_end = pt.distance_pts(new_point, end_point)
-                            if (
-                                dist > (3 * division_distance) / 4
-                                and dist_from_end >= division_distance
-                            ):
-                                origens_pontos.append(new_point)
-                                copied_origin = np.logical_and(
-                                    copied_origin, np.logical_not(area_distance)
-                                )
-                            else:
-                                origens_pontos.append(end_point)
-                                copied_origin = np.zeros_like(interface_line, np.uint8)
-                                break
-                    n_origens = len(origens_pontos)
-                    adjust += 1
-                return origens_pontos
-
             mask_line = np.zeros(np.add(mask_full_int.shape, [4, 4]))
             mask_line[:, int(mask_full_int.shape[0] / 2)] = 1
-            old_zigzag = all_internal_routes()
-            separated_imgs = find_internal_fails()
-            fail_reg = zigzag_region_next2fail()
+            old_zigzag = all_internal_routes(macro_areas, base_frame)
+            separated_fail_imgs = find_internal_fails(
+                original_img,
+                base_frame,
+                bridges,
+                macro_areas,
+                mask_full_int,
+                path_radius_internal,
+                offsets,
+                thin_walls,
+            )
+            fail_region_names = zigzag_region_next2fail(
+                separated_fail_imgs, macro_areas, mask_line
+            )
             (
                 contacts_imgs,
                 contacts_pts,
                 zigzag_contact_lines_imgs,
                 zigzag_contact_lines_pts,
-            ) = contact_lines()
-            separated_connected_fails, all_new_fails = connect_fails_to_zigzags()
+            ) = contact_lines(
+                fail_region_names,
+                separated_fail_imgs,
+                mask_line,
+                macro_areas,
+                path_radius_internal,
+            )
+            separated_connected_fails, all_new_fails = connect_fails_to_zigzags(
+                old_zigzag,
+                separated_fail_imgs,
+                fail_region_names,
+                zigzag_contact_lines_imgs,
+                zigzag_contact_lines_pts,
+                contacts_pts,
+                contacts_imgs,
+                mask_full_int,
+                path_radius_internal,
+            )
             all_new_zigzags = copy.deepcopy(old_zigzag)
             for fail in separated_connected_fails:
-                mask_line = np.zeros([5, 5])
-                mask_line[:, 2] = 1
-                interface_line_a = np.add(
-                    mt.dilation(fail.astype(np.uint8), kernel_img=mask_line), old_zigzag
-                )
-                interface_line = interface_line_a == 2
-                _, _, num_parts = it.divide_by_connected(interface_line)
-                if num_parts > 1:
-                    mask_line = np.zeros([7, 7])
-                    mask_line[:, 4] = 1
+                try:
+                    mask_line = np.zeros([5, 5])
+                    mask_line[:, 2] = 1
                     interface_line_a = np.add(
-                        mt.dilation(fail.astype(np.uint8), kernel_img=mask_line),
-                        old_zigzag,
+                        mt.dilation(fail.astype(np.uint8), kernel_img=mask_line), old_zigzag
                     )
                     interface_line = interface_line_a == 2
                     _, _, num_parts = it.divide_by_connected(interface_line)
                     if num_parts > 1:
-                        mask_line = np.zeros([9, 9])
-                        mask_line[:, 6] = 1
+                        mask_line = np.zeros([7, 7])
+                        mask_line[:, 4] = 1
                         interface_line_a = np.add(
                             mt.dilation(fail.astype(np.uint8), kernel_img=mask_line),
                             old_zigzag,
                         )
                         interface_line = interface_line_a == 2
                         _, _, num_parts = it.divide_by_connected(interface_line)
-                line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
-                if line_points == []:
-                    break
-                div_points = divide_in_pairs(
-                    interface_line, path_radius_internal, line_points
-                )
-                div_lines = np.zeros_like(fail)
-                crossings = []
-                extreme_points = [[], [], [], []]
-                last_iter = len(div_points) - 1
-                for i, div in enumerate(div_points):
-                    thisdiv = np.zeros_like(fail)
-                    thisdiv[:, div[1]] = 1
-                    thisdiv = np.logical_and(thisdiv, fail)
-                    crossings_img = mt.hitmiss_ends_v2(thisdiv)
-                    crossings_pts = pt.img_to_points(crossings_img)
-                    if i == 0:
-                        div_min = div[1]
-                        if (
-                            len(list(filter(lambda x: x in line_points, crossings_pts)))
-                            > 0
-                        ):
-                            extreme_points[0] = list(
-                                filter(lambda x: x in line_points, crossings_pts)
-                            )[0]
-                            extreme_points[3] = list(
-                                filter(lambda x: not (x in line_points), crossings_pts)
-                            )[0]
-                        else:
-                            break
-                    elif i == last_iter:
-                        div_max = div[1]
-                        fail_inside_divs = fail.copy()
-                        fail_inside_divs[:, :div_min] = 0
-                        fail_inside_divs[:, (div_max + 1) :] = 0
-                        if np.sum(fail_inside_divs) == 0:
-                            fail_inside_divs = fail.copy()
-                            fail_inside_divs[:, :div_max] = 0
-                            fail_inside_divs[:, (div_min + 1) :] = 0
-                        if (
-                            len(list(filter(lambda x: x in line_points, crossings_pts)))
-                            > 0
-                        ):
-                            extreme_points[1] = list(
-                                filter(lambda x: x in line_points, crossings_pts)
-                            )[0]
-                            extreme_points[2] = list(
-                                filter(lambda x: not (x in line_points), crossings_pts)
-                            )[0]
-                        else:
-                            last_point = list(
-                                filter(lambda x: not (x in extreme_points), line_points)
-                            )[0]
-                            fail_ctr, fail_contour_img = mt.detect_contours(
-                                fail_inside_divs, return_img=True, only_external=True
+                        if num_parts > 1:
+                            mask_line = np.zeros([9, 9])
+                            mask_line[:, 6] = 1
+                            interface_line_a = np.add(
+                                mt.dilation(fail.astype(np.uint8), kernel_img=mask_line),
+                                old_zigzag,
                             )
-                            ctr_list = pt.contour_to_list(fail_ctr)
-                            if last_point not in ctr_list:
-                                included_interface = pt.img_to_points(
-                                    np.logical_and(fail_contour_img, interface_line)
-                                )
-                                last_point, _ = pt.closest_point(
-                                    last_point, included_interface
-                                )
-                            extreme_points[1] = last_point
-                            extreme_points[2] = extreme_points[1]
-                    else:
-                        crossings = crossings + crossings_pts
-                    div_lines = np.logical_or(div_lines, thisdiv)
-                new_zigzags = []
-                if not ([] in extreme_points):
-                    all_bordacortada_medicao = []
-                    fail_ctr, fail_contour_img = mt.detect_contours(
-                        fail_inside_divs, return_img=True, only_external=True
+                            interface_line = interface_line_a == 2
+                            _, _, num_parts = it.divide_by_connected(interface_line)
+                    line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
+                    if line_points == []:
+                        break
+                    div_points = divide_in_pairs(
+                        interface_line, path_radius_internal, line_points
                     )
-                    fail_ctr = pt.contour_to_list(fail_ctr)
-                    if extreme_points[0] in crossings:
-                        crossings.remove(extreme_points[0])
-                    if extreme_points[1] in crossings:
-                        crossings.remove(extreme_points[1])
-                    if extreme_points[2] in crossings:
-                        crossings.remove(extreme_points[2])
-                    if extreme_points[3] in crossings:
-                        crossings.remove(extreme_points[3])
-                    for zig_zag_zag_zig in [0, 1]:
-                        bordacortada = internal_oscilatory_cut(
-                            fail_ctr, crossings, extreme_points, zig_zag_zag_zig, fail
+                    div_lines = np.zeros_like(fail)
+                    crossings = []
+                    extreme_points = [[], [], [], []]
+                    last_iter = len(div_points) - 1
+                    for i, div in enumerate(div_points):
+                        thisdiv = np.zeros_like(fail)
+                        thisdiv[:, div[1]] = 1
+                        thisdiv = np.logical_and(thisdiv, fail)
+                        crossings_img = mt.hitmiss_ends_v2(thisdiv)
+                        crossings_pts = pt.img_to_points(crossings_img)
+                        if i == 0:
+                            div_min = div[1]
+                            if (
+                                len(list(filter(lambda x: x in line_points, crossings_pts)))
+                                > 0
+                            ):
+                                extreme_points[0] = list(
+                                    filter(lambda x: x in line_points, crossings_pts)
+                                )[0]
+                                extreme_points[3] = list(
+                                    filter(lambda x: not (x in line_points), crossings_pts)
+                                )[0]
+                            else:
+                                break
+                        elif i == last_iter:
+                            div_max = div[1]
+                            fail_inside_divs = fail.copy()
+                            fail_inside_divs[:, :div_min] = 0
+                            fail_inside_divs[:, (div_max + 1) :] = 0
+                            if np.sum(fail_inside_divs) == 0:
+                                fail_inside_divs = fail.copy()
+                                fail_inside_divs[:, :div_max] = 0
+                                fail_inside_divs[:, (div_min + 1) :] = 0
+                            if (
+                                len(list(filter(lambda x: x in line_points, crossings_pts)))
+                                > 0
+                            ):
+                                extreme_points[1] = list(
+                                    filter(lambda x: x in line_points, crossings_pts)
+                                )[0]
+                                extreme_points[2] = list(
+                                    filter(lambda x: not (x in line_points), crossings_pts)
+                                )[0]
+                            else:
+                                last_point = list(
+                                    filter(lambda x: not (x in extreme_points), line_points)
+                                )[0]
+                                fail_ctr, fail_contour_img = mt.detect_contours(
+                                    fail_inside_divs, return_img=True, only_external=True
+                                )
+                                ctr_list = pt.contour_to_list(fail_ctr)
+                                if last_point not in ctr_list:
+                                    included_interface = pt.img_to_points(
+                                        np.logical_and(fail_contour_img, interface_line)
+                                    )
+                                    last_point, _ = pt.closest_point(
+                                        last_point, included_interface
+                                    )
+                                extreme_points[1] = last_point
+                                extreme_points[2] = extreme_points[1]
+                        else:
+                            crossings = crossings + crossings_pts
+                        div_lines = np.logical_or(div_lines, thisdiv)
+                    new_zigzags = []
+                    if not ([] in extreme_points):
+                        all_bordacortada_medicao = []
+                        fail_ctr, fail_contour_img = mt.detect_contours(
+                            fail_inside_divs, return_img=True, only_external=True
                         )
-                        new_zigzags.append(np.logical_or(bordacortada, div_lines))
-                        all_new_zigzags = np.logical_and(
-                            all_new_zigzags, np.logical_not(fail_inside_divs)
+                        fail_ctr = pt.contour_to_list(fail_ctr)
+                        if extreme_points[0] in crossings:
+                            crossings.remove(extreme_points[0])
+                        if extreme_points[1] in crossings:
+                            crossings.remove(extreme_points[1])
+                        if extreme_points[2] in crossings:
+                            crossings.remove(extreme_points[2])
+                        if extreme_points[3] in crossings:
+                            crossings.remove(extreme_points[3])
+                        for zig_zag_zag_zig in [0, 1]:
+                            bordacortada = internal_oscilatory_cut(
+                                fail_ctr, crossings, extreme_points, zig_zag_zag_zig, fail
+                            )
+                            new_zigzags.append(np.logical_or(bordacortada, div_lines))
+                            all_new_zigzags = np.logical_and(
+                                all_new_zigzags, np.logical_not(fail_inside_divs)
+                            )
+                            bordacortada_medicao = np.logical_and(
+                                bordacortada, np.logical_not(interface_line)
+                            )
+                            all_bordacortada_medicao.append(bordacortada_medicao)
+                        sums = [
+                            np.sum(all_bordacortada_medicao[0]),
+                            np.sum(all_bordacortada_medicao[1]),
+                        ]
+                        all_new_zigzags = np.add(
+                            all_new_zigzags, new_zigzags[np.argmax(sums)]
                         )
-                        bordacortada_medicao = np.logical_and(
-                            bordacortada, np.logical_not(interface_line)
-                        )
-                        all_bordacortada_medicao.append(bordacortada_medicao)
-                    sums = [
-                        np.sum(all_bordacortada_medicao[0]),
-                        np.sum(all_bordacortada_medicao[1]),
-                    ]
-                    all_new_zigzags = np.add(
-                        all_new_zigzags, new_zigzags[np.argmax(sums)]
-                    )
+                except:
+                    pass
             new_macroareas, _, _ = it.divide_by_connected(all_new_zigzags)
             return new_macroareas, all_new_zigzags
 
@@ -810,60 +594,57 @@ class ZigZagRegions:
     def make_routes_z(self, base_frame, path_radius):
         # def make_zigzag_route(region: ZigZag):
         for region in self.regions:
-            region.center = pt.points_center(pt.contour_to_list(mt.detect_contours(region.img)))
+            region.center = pt.points_center(
+                pt.contour_to_list(mt.detect_contours(region.img))
+            )
             zig_options = []
-            lines, n_lines, internal_border_img, contours, new_path_radius = cut_in_lines(region.img, path_radius, var_path_width=0)
-            filled = it.fill_internal_area(internal_border_img.astype(np.uint8), np.ones_like(internal_border_img))
+            lines, n_lines, internal_border_img, contours, new_path_radius = (
+                cut_in_lines(region.img, path_radius, var_path_width=0)
+            )
+            filled = it.fill_internal_area(
+                internal_border_img.astype(np.uint8), np.ones_like(internal_border_img)
+            )
             opened = mt.opening(filled, kernel_size=path_radius)
-            if np.sum(opened) > 0:
-                [new_zigzag_a, new_zigzag_b] = zig_zag_two_options(
-                    internal_border_img,
-                    lines,
-                    n_lines,
-                    new_path_radius,
-                    contours,
-                    base_frame,
-                    False,
+            with timer.Timer("fazendo as tres opções:"):
+                if np.sum(opened) > 0:
+                    [new_zigzag_a, new_zigzag_b] = zig_zag_two_options(
+                        internal_border_img,
+                        lines,
+                        n_lines,
+                        new_path_radius,
+                        contours,
+                        base_frame,
+                        False,
+                    )
+                    [new_zigzag_d, new_zigzag_e] = zig_zag_two_options(
+                        internal_border_img,
+                        lines,
+                        n_lines,
+                        new_path_radius,
+                        contours,
+                        base_frame,
+                        True,
+                    )
+                    zig_options.append(new_zigzag_a)
+                    zig_options.append(new_zigzag_b)
+                    zig_options.append(new_zigzag_d)
+                    zig_options.append(new_zigzag_e)
+                [new_zigzag_c] = zig_zag_third_option(
+                    region.img, lines, n_lines, new_path_radius, contours, base_frame
                 )
-                [new_zigzag_d, new_zigzag_e] = zig_zag_two_options(
-                    internal_border_img,
-                    lines,
-                    n_lines,
-                    new_path_radius,
-                    contours,
-                    base_frame,
-                    True,
+                zig_options.append(new_zigzag_c)
+            with timer.Timer("escolhendo entre elas:"):
+                zig_fills = [
+                    mt.dilation(x.astype(np.uint8), kernel_size=path_radius)
+                    for x in zig_options
+                ]
+                zig_sums = [np.sum(x) for x in zig_fills]
+                new_zigzag = zig_options[np.argmax(zig_sums)]
+                new_trail = mt.dilation(
+                    new_zigzag.astype(np.uint8), kernel_size=path_radius
                 )
-                zig_options.append(new_zigzag_a)
-                zig_options.append(new_zigzag_b)
-                zig_options.append(new_zigzag_d)
-                zig_options.append(new_zigzag_e)
-            [new_zigzag_c] = zig_zag_third_option(
-                region.img, lines, n_lines, new_path_radius, contours, base_frame
-            )
-            zig_options.append(new_zigzag_c)
-            zig_fills = [
-                mt.dilation(x.astype(np.uint8), kernel_size=path_radius)
-                for x in zig_options
-            ]
-            zig_sums = [np.sum(x) for x in zig_fills]
-            new_zigzag = zig_options[np.argmax(zig_sums)]
-            new_trail = mt.dilation(
-                new_zigzag.astype(np.uint8), kernel_size=path_radius
-            )
             region.route = new_zigzag
             region.trail = new_trail
-            # return region
-
-        # processed_regions = []
-        # with concurrent.futures.ThreadPoolExecutor() as executor:
-        #     results = [
-        #         executor.submit(make_zigzag_route, region) for region in self.regions
-        #     ]
-        #     for l in concurrent.futures.as_completed(results):
-        #         processed_regions.append(l.result())
-        # processed_regions.sort(key=lambda x: x.name)
-        # self.regions = processed_regions
         return
 
 
@@ -1085,3 +866,271 @@ def internal_oscilatory_cut(
             borda_cortada[fila[i][0]][fila[i][1]] = 1
         counter_debug += 1
     return borda_cortada
+
+
+def all_internal_routes(macro_areas, base_frame):
+    rotas = np.zeros(base_frame)
+    for r in macro_areas:
+        rotas = np.logical_or(rotas, r)
+    return rotas
+
+
+def all_external_trails(bridges, offsets, thin_walls, base_frame):
+    rotas = np.zeros(base_frame)
+    for r in bridges.cross_over_bridges:
+        rotas = np.logical_or(rotas, r.img)
+    for r in bridges.offset_bridges:
+        rotas = np.logical_or(rotas, r.img)
+    for r in offsets:
+        rotas = np.logical_or(rotas, r.img)
+    for r in thin_walls:
+        rotas = np.logical_or(rotas, r.img)
+    return rotas
+
+
+def find_internal_fails(
+    original_img,
+    base_frame,
+    bridges,
+    macro_areas,
+    mask_full_int,
+    path_radius_internal,
+    offsets,
+    thin_walls,
+):  # calcula e separa em imagens cada area nao coberta pelo ziguezague interno
+    from cv2 import boundingRect
+
+    internal_area = np.logical_and(
+        original_img,
+        np.logical_not(all_external_trails(bridges, offsets, thin_walls, base_frame)),
+    )
+    limits = boundingRect(all_internal_routes(macro_areas, base_frame).astype(np.uint8))
+    internal_trails = np.zeros(base_frame)
+    for r in bridges.zigzag_bridges:
+        internal_trails = np.logical_or(internal_trails, r.trail)
+    for r in macro_areas:
+        trail = mt.dilation(r, kernel_img=mask_full_int)
+        internal_trails = np.logical_or(internal_trails, trail)
+    internal_fails = np.logical_and(internal_area, np.logical_not(internal_trails))
+    internal_fails = mt.opening(internal_fails, kernel_size=2)
+    internal_fails_in_limmits = np.zeros_like(internal_fails)
+    [
+        internal_fails_in_limmits.__setitem__((y, x), internal_fails[y, x])
+        for x in range(limits[0], limits[0] + limits[2])
+        for y in range(limits[1], limits[1] + limits[3])
+    ]
+    separated_imgs, _, _ = it.divide_by_connected(internal_fails_in_limmits)
+    separated_imgs = list(
+        filter(
+            lambda x: it.comprimento_maior_que(x, (path_radius_internal * 4)),
+            separated_imgs,
+        )
+    )
+    return separated_imgs
+
+
+def zigzag_region_next2fail(separated_fail_imgs, macro_areas, mask_line):
+    # determina a qual zzarea deve ser conectada a falha, o criterio eh a maior area de conexao
+    fail_reg = {}
+    for i, fail in enumerate(separated_fail_imgs):
+        reg_list = []
+        sums = []
+        for j, reg in enumerate(macro_areas):
+            vertical_trail = mt.dilation(reg, kernel_img=mask_line)
+            area_conjunta = np.logical_and(fail, vertical_trail)
+            if np.sum(area_conjunta) > 0:
+                reg_list.append(j)
+                sums.append(np.sum(area_conjunta))
+            if sums:
+                fail_reg.update({i: reg_list[np.argmax(sums)]})
+    return fail_reg
+
+
+def contact_lines(
+    fail_reg, separated_fail_imgs, mask_line, macro_areas, path_radius_internal
+):
+    # usa a mesma dilatacao para determinar as linas onde ocorre o contato com a trilha, escolhe a mais reta dela
+    contacts_imgs = []
+    contacts_pts = []
+    zigzag_contact_lines_imgs = []
+    zigzag_contact_lines_pts = []
+    for j, regs in fail_reg.items():  # aqui comeca uma operacao nova
+        fail_img = separated_fail_imgs[j]
+        dilated_route = mt.dilation(macro_areas[regs], kernel_img=mask_line)
+        fail_contact = np.add(dilated_route, fail_img.astype(np.uint8)) == 2
+        _, fail_contours_img = mt.detect_contours(fail_img, return_img=True)
+        fail_contact = np.add(fail_contact, fail_contours_img) == 2
+        if np.sum(fail_contact) > 0:
+            for l, line in enumerate(fail_contact):
+                if np.sum(line) < 3:
+                    fail_contact[l, :] = 0
+            linhas = macro_areas[regs].copy()
+            contact_ys, contact_xs = np.nonzero(fail_contact)
+            contact_ys = [np.min(contact_ys), np.max(contact_ys)]
+            contact_xs = [np.min(contact_xs), np.max(contact_xs)]
+            linhas[:, : contact_xs[0]] = 0  # zera tudo antes
+            linhas[:, (contact_xs[1] + 1) :] = 0  # zera tudo depois
+            linhas, _, _ = it.divide_by_connected(linhas)
+            dif_fail_contacts, _, cont_num = it.divide_by_connected(fail_contact)
+            if cont_num > 1:
+                sums = []
+                distances = []
+                for cont in dif_fail_contacts:
+                    pt.closest_line
+                    if len(np.unique(np.nonzero(cont)[0])) > 5:
+                        sums.append(0)
+                    else:
+                        sums.append(np.sum(cont))
+                fail_contact = dif_fail_contacts[np.argmax(sums)]
+            contacts_imgs.append(fail_contact)
+            # encontra a parte do ziguezague que esta criando o contato
+            pts_fail_contact = pt.x_y_para_pontos(
+                np.nonzero(mt.hitmiss_ends_v2(fail_contact))
+            )
+            pts_fail_contact = sorted(pts_fail_contact, key=lambda x: x[1])
+            contacts_pts.append(pts_fail_contact)
+            linhas_pts = [pt.img_to_points(x) for x in linhas]
+            linha_antiga, _ = pt.closest_line(pts_fail_contact[0], linhas_pts)
+            linha_antiga = it.points_to_img(linha_antiga, np.zeros_like(fail_img))
+            linha_antiga[: (contact_ys[0] - path_radius_internal - 5), :] = 0
+            linha_antiga[(contact_ys[1] + path_radius_internal + 5) :, :] = (
+                0  # ESSA PRECISA SER A BASE DAS SEPARACOES!
+            )
+            zigzag_contact_lines_imgs.append(linha_antiga)
+            pts_linha = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(linha_antiga)))
+            pts_linha = sorted(pts_linha, key=lambda x: x[1])
+            zigzag_contact_lines_pts.append(pts_linha)
+        else:
+            contacts_imgs.append(np.zeros_like(fail_contact))
+            contacts_pts.append([])
+            zigzag_contact_lines_imgs.append(np.zeros_like(fail_contact))
+            zigzag_contact_lines_pts.append([])
+    return (
+        contacts_imgs,
+        contacts_pts,
+        zigzag_contact_lines_imgs,
+        zigzag_contact_lines_pts,
+    )
+
+
+def connect_fails_to_zigzags(
+    old_zigzag,
+    separated_fail_imgs,
+    fail_reg,
+    zigzag_contact_lines_imgs,
+    zigzag_contact_lines_pts,
+    contacts_pts,
+    contacts_imgs,
+    mask_full_int,
+    path_radius_internal,
+):
+    # criacao do poligono que conecta a falha ao ziguezague
+    separated_connected_fails = []
+    all_new_fails = np.zeros_like(
+        old_zigzag,
+    )
+    for j, regs in enumerate(list(fail_reg.values())):  # aqui comeca uma operacao nova
+        canvas = np.zeros_like(zigzag_contact_lines_imgs[j])
+        if len(zigzag_contact_lines_pts[j]) > 0 and len(contacts_pts[j]) > 0:
+            canvas = it.draw_line(
+                canvas, zigzag_contact_lines_pts[j][0], contacts_pts[j][0]
+            )
+            canvas = it.draw_line(
+                canvas, zigzag_contact_lines_pts[j][1], contacts_pts[j][1]
+            )
+            canvas = np.logical_or(
+                canvas, np.logical_or(zigzag_contact_lines_imgs[j], contacts_imgs[j])
+            )
+            connection_poligon = it.fill_internal_area(canvas, np.ones_like(canvas))
+            polygon_xs = np.nonzero(connection_poligon)[1]
+            fail_inside_polygon_xs = pt.img_to_points(separated_fail_imgs[j])
+            fail_inside_polygon_xs = list(
+                filter(
+                    lambda x: x[1] >= np.min(polygon_xs),
+                    fail_inside_polygon_xs,
+                )
+            )
+            # AQUIIIIIII
+            fail_inside_polygon_xs = list(
+                filter(
+                    lambda x: x[1] <= np.max(polygon_xs),
+                    fail_inside_polygon_xs,
+                )
+            )
+            fail_inside_polygon_xs = it.points_to_img(
+                fail_inside_polygon_xs, np.zeros_like(canvas)
+            )
+            connected_fail_area_img = np.logical_or(
+                connection_poligon, fail_inside_polygon_xs
+            )
+            # separated_connected_fails.append(connected_fail_area_img)
+            linha_antiga_ys, linha_antiga_xs = np.nonzero(zigzag_contact_lines_imgs[j])
+            linha_antiga_ys = [
+                np.min(linha_antiga_ys),
+                np.max(linha_antiga_ys),
+            ]
+            linha_antiga_xs = [
+                np.min(linha_antiga_xs),
+                np.max(linha_antiga_xs),
+            ]
+            metade_fail_baixo = connected_fail_area_img.copy()
+            metade_fail_baixo[linha_antiga_ys[0] + 1 :] = 0
+            metade_fail_cima = connected_fail_area_img.copy()
+            metade_fail_cima[: linha_antiga_ys[0]] = 0
+            selective_kernel_baixo = mask_full_int.copy()
+            selective_kernel_baixo[int(path_radius_internal) + 1 :] = 0
+            selective_kernel_cima = mask_full_int.copy()
+            selective_kernel_cima[: int(path_radius_internal)] = 0
+            eroded_baixo = mt.erosion(
+                metade_fail_baixo, kernel_img=selective_kernel_baixo
+            )
+            eroded_cima = mt.erosion(metade_fail_cima, kernel_img=selective_kernel_cima)
+            eroded_fail = np.add(eroded_baixo, eroded_cima)
+            all_new_fails = np.logical_or(all_new_fails, eroded_fail)
+    separated_connected_fails, _, _ = it.divide_by_connected(all_new_fails)
+    separated_connected_fails = list(
+        filter(
+            lambda x: it.has_contact(x, old_zigzag),
+            separated_connected_fails,
+        )
+    )
+    return separated_connected_fails, all_new_fails
+
+
+def divide_in_pairs(interface_line, path_radius, line_points):
+    [origin_point, end_point] = line_points
+    n_origens = 0
+    adjust = 0
+    pontos_org = path_tools.line_img_to_freeman_chain(interface_line, origin_point)
+    if pt.distance_pts(pontos_org[0], pontos_org[1]) > 3:
+        pontos_org.reverse()
+        pontos_org = [pontos_org[-1]] + pontos_org[:-1]
+    while n_origens % 2 == 1 or n_origens == 0:
+        origens_pontos = [pontos_org[0]]
+        division_distance = (path_radius * 2) - adjust
+        copied_origin = interface_line.copy()
+        while np.sum(copied_origin.astype(np.uint8)) > 0:
+            canvas = np.zeros_like(interface_line, np.uint8)
+            centro = origens_pontos[-1]
+            area_distance = it.draw_circle(canvas, (centro), division_distance)
+            candidates = np.logical_and(area_distance, copied_origin)
+            candidates = pt.x_y_para_pontos(np.nonzero(candidates))
+            if candidates:
+                new_point = pt.most_distant_from(origens_pontos[-1], candidates)
+                dist = pt.distance_pts(new_point, origens_pontos[-1])
+                dist_from_end = pt.distance_pts(new_point, end_point)
+                if (
+                    dist > (3 * division_distance) / 4
+                    and dist_from_end >= division_distance
+                ):
+                    origens_pontos.append(new_point)
+                    copied_origin = np.logical_and(
+                        copied_origin, np.logical_not(area_distance)
+                    )
+                else:
+                    origens_pontos.append(end_point)
+                    copied_origin = np.zeros_like(interface_line, np.uint8)
+                    break
+        n_origens = len(origens_pontos)
+        adjust += 1
+    return origens_pontos

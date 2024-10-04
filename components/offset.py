@@ -532,14 +532,21 @@ class OffsetRegions:
                         fil_region_img = np.logical_or(fil_region_img, candidate.trail)
                         fil_region_loops.append(candidate)
                 else:
-                    print(
-                        str(loop)
-                        + " Perdendo total:"
-                        + str(candidate.lost_area_sum)
-                        + " maior void:"
-                        + str(sums[np.argmax(sums)] / ideal_sum)
-                        + "Bw -> bloqueado"
-                    )
+                    if len(sums) > 0:
+                        print(
+                            str(loop)
+                            + " Perdendo total:"
+                            + str(candidate.lost_area_sum)
+                            + " maior void:"
+                            + str(sums[np.argmax(sums)] / ideal_sum)
+                            + "Bw -> bloqueado"
+                        )
+                    else: 
+                        print(
+                            str(loop)
+                            + " Perdendo total:"
+                            + str(candidate.lost_area_sum)
+                            + "Bw -> bloqueado por limite maximo")
             if fil_region_img.any():  # and counter < 4:
                 self.regions.append(Region(counter, fil_region_img, fil_region_loops))
                 all_loops_img = np.logical_or(all_loops_img, fil_region_img)
@@ -606,13 +613,17 @@ class OffsetRegions:
                 loop_level = int(loop[0].replace("Lvl_", ""))
                 if loop[1] == 1:
                     thisloop = levels[loop_level].hole_loops[loop[2]]
+                    this_counter = internal_counter
+                    this_max = max_internal_walls - 1
                 elif loop[1] == 0:
                     thisloop = levels[loop_level].outer_loops[loop[2]]
+                    this_counter = external_counter
+                    this_max = max_external_walls - 1
                 aaaaaaa.append(thisloop)
                 voids, _, _ = it.divide_by_connected(thisloop.lost_area)
                 voids_sums = np.divide([np.sum(x) for x in voids], ideal_sum)
                 # AAAA = np.add(thisloop.lost_area, thisloop.trail * 2)
-                if any(voids_sums > void_max):
+                if loop_level != 0 and (any(voids_sums > void_max)) or this_counter > this_max:
                     thisloop.acceptable = 0
                 else:
                     thisloop.acceptable = 1

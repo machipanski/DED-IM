@@ -72,6 +72,7 @@ class ThinWallRegions:
         base_frame,
         path_radius,
         mask,
+        mm_per_pxl
     ):
 
         def close_contour(trunk, i):
@@ -82,9 +83,19 @@ class ThinWallRegions:
                 trunk_chain = pt.invert_x_y(
                     ptht.make_a_chain_open_segment(trunk.astype(bool), t_ends)
                 )
-                n_trilhas = trunk / (2 * path_radius)
-                n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
+
+                # for origin_candidate in origin_candidates:
+                # normalized_distance_map  = sem_galhos_dist / path_radius
+                # normalized_trunk = trunk *  normalized_distance_map
+                # tw_origin = np.logical_and(normalized_trunk != 0, normalized_trunk < 2)
+                # tw_origins.append(tw_origin)
+
+                # # n_trilhas = trunk / (2 * path_radius)
+                # # n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
+                # n_trilhas_max = np.min(np.nonzero(normalized_trunk))
+                max_width = path_radius
                 bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
+
                 if np.sum(bridge_origin) > 0:
                     region = ThinWall(0, "", [], [], 0, 0, [], [])
                     ends = pt.img_to_points(sk.find_tips(bridge_origin))
@@ -175,7 +186,7 @@ class ThinWallRegions:
         new_linhabaixos = []
         new_origins = []
         sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-            island_img.astype(np.uint8), path_radius
+            island_img.astype(np.uint8), 2*path_radius
         )
         # TODO:Achar o melhor size para o serviço
         new_medial_transforms.append(
@@ -188,34 +199,46 @@ class ThinWallRegions:
         # Dividindo partes do esquelet que podem ser paredes finas
         trunks = [pt.contour_to_list([x]) for x in trunks]
         trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
+        normalized_distance_map  = sem_galhos_dist / path_radius
+        normalized_trunks = [trunk * normalized_distance_map for trunk in trunks]
+        n_trilhas_max = [(np.unique(trunk))[1] for trunk in normalized_trunks]
+
+
         all_thin_walls = np.zeros(base_frame)
         all_origins = np.zeros(base_frame)
         divided_by_large_areas = []
-        for trunk in trunks:
-            trunk_dist = trunk * sem_galhos_dist
-            no_large_parts = np.logical_and(
-                trunk_dist < 3 * path_radius, trunk_dist > 0
-            )
-            divided_segs, _, num = it.divide_by_connected(no_large_parts)
-            if num > 1:
-                for seg in divided_segs:
-                    if len(pt.img_to_points(seg)) > path_radius:
-                        divided_by_large_areas.append(seg)
-            elif num == 0:
-                pass
-            else:
-                divided_by_large_areas.append(no_large_parts)
-        trunks = divided_by_large_areas
+        tw_origins = []
+        origin_candidates = [normalized_trunks[i] for i,x in enumerate(n_trilhas_max) if x<=2]
+        # for origin_candidate in origin_candidates:
+        #     n_trilhas_max = sem_galhos_dist / path_radius
+        #     normalized_trunk = origin_candidate * n_trilhas_max
+        #     tw_origin = np.logical_and(normalized_trunk != 0, normalized_trunk < 2)
+        #     tw_origins.append(tw_origin)
+
+            # trunk_dist = trunk * sem_galhos_dist
+            # no_large_parts = np.logical_and(
+            #     trunk_dist < 2 * path_radius, trunk_dist > 0
+            #     # trunk_dist < 3 * path_radius, trunk_dist > 0
+            #  )
+            # divided_segs, _, num = it.divide_by_connected(no_large_parts)
+            # if num > 1:
+            #     for seg in divided_segs:
+            #         if len(pt.img_to_points(seg)) > path_radius:
+            #             divided_by_large_areas.append(seg * sem_galhos_dist)
+            # elif num == 0:
+            #     pass
+            # else:
+            #     divided_by_large_areas.append(no_large_parts * sem_galhos_dist)
 
         # Transformando cada galho em uma região fechada
-        max_width = 2 * path_radius
-        counter = 0
+        # max_width = 2 * path_radius
+        # counter = 0
 
         processed_trunks = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
-                executor.submit(close_contour, trunk, i)
-                for i, trunk in enumerate(trunks)
+                executor.submit(close_contour, origin_candidate, i)
+                for i, origin_candidate in enumerate(origin_candidates)
             ]
             for l in concurrent.futures.as_completed(results):
                 processed_trunks.append(l.result())
@@ -223,6 +246,7 @@ class ThinWallRegions:
         processed_trunks = list(filter(lambda x: x.img != [], processed_trunks))
         processed_trunks.sort(key=lambda x: x.name)
         self.regions = processed_trunks
+
         # Produzindo as imagens de resumo
         all_thin_walls = np.zeros_like(island_img)
         all_origins = np.zeros_like(island_img)

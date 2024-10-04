@@ -244,32 +244,35 @@ def add_routes_by_sequence_internal(
 
 
 def connect_thin_walls(island: Island, path_radius_external):
-    thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
-    thinwall_path_list = []
-    for i, tw in enumerate(thinwall_list):
-        tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
-        tw_path = img_to_chain(tw.astype(np.uint8))[0]
-        one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
-        tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
-        tw_path = cut_repetition(tw_path)
-        thinwall_path_list.append(Path(i, tw_path, img=tw))
-        thinwall_path_list[-1].get_regions(island)
-    nova_rota = []
-    saltos = []
-    thinwalls_included = []
-    for tw_p in thinwall_path_list:
-        saltos.append(tw_p.sequence[-1])
-        nova_rota = nova_rota + tw_p.sequence
-        thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
-    new_regions = {
-        "offsets": [],
-        "zigzags": [],
-        "cross_over_bridges": [],
-        "offset_bridges": [],
-        "zigzag_bridges": [],
-        "thin walls": list(thinwalls_included),
-    }
-    new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
+    if hasattr(island.thin_walls, "all_origins"):
+        thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
+        thinwall_path_list = []
+        for i, tw in enumerate(thinwall_list):
+            tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
+            tw_path = img_to_chain(tw.astype(np.uint8))[0]
+            one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
+            tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
+            tw_path = cut_repetition(tw_path)
+            thinwall_path_list.append(Path(i, tw_path, img=tw))
+            thinwall_path_list[-1].get_regions(island)
+        nova_rota = []
+        saltos = []
+        thinwalls_included = []
+        for tw_p in thinwall_path_list:
+            saltos.append(tw_p.sequence[-1])
+            nova_rota = nova_rota + tw_p.sequence
+            thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
+        new_regions = {
+            "offsets": [],
+            "zigzags": [],
+            "cross_over_bridges": [],
+            "offset_bridges": [],
+            "zigzag_bridges": [],
+            "thin walls": list(thinwalls_included),
+        }
+        new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
+    else:
+        new_route = Path("thin wall tree", [], [], saltos=[])
     return new_route
 
 
@@ -505,6 +508,7 @@ def connect_zigzag_bridges(island: Island):
         "zigzag_bridges": list(zigzag_bridges_included),
     }
     new_route = Path("interior tree", nova_rota, new_regions, saltos=saltos)
+# aaa = new_route.get_img(island.img.shape)
     return new_route
 
 
@@ -653,12 +657,13 @@ def find_points_of_contact(
 
     def dilate_and_search(a1, a2, grow):
         mask_line = np.zeros(np.add(mask_full_int.shape, [grow, grow]))
-        mask_line[:, int(mask_full_int.shape[0] / 2)] = 1
+        mask_line[:, int(mask_line.shape[0] / 2)] = 1
         # a1_reg = zigzags[int(edge[0][1])]
         a1_vertical_trail = mt.dilation(a1.route, kernel_img=mask_line)
         # a2_reg = zigzags[int(edge[1][1])]
         a2_vertical_trail = mt.dilation(a2.route, kernel_img=mask_line)
         interface = np.add(a1_vertical_trail, a2_vertical_trail) == 2
+        aaa = np.add(a1_vertical_trail, a2_vertical_trail) 
         return interface
 
     def vert_connection(a1, a2):
@@ -685,8 +690,8 @@ def find_points_of_contact(
             while np.sum(interface) == 0:
                 grow = grow + 1
                 interface = dilate_and_search(a1, a2, grow)
-                if grow > path_radius_internal:
-                    interface = vert_connection(a1, a2)
+                # if grow > 4*path_radius_internal:
+                #     interface = vert_connection(a1, a2)
             separated, _, num = it.divide_by_connected(interface)
             if num > 1:
                 sums = [np.sum(x) for x in separated]
@@ -1263,15 +1268,14 @@ def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
         zigzag_path = img_to_chain(
             ma.astype(np.uint8), isl.zigzags.regions[0].img, min_n_pixels
         )
-        macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
-        macroa_area_path_list[-1].get_regions(isl)
+        if len(zigzag_path) > 0:
+            macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
+            macroa_area_path_list[-1].get_regions(isl)
     return macroa_area_path_list
 
 
 def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     import os
-
-    os.chdir(folders.output)
     mm_per_pixel = layers[0].mm_per_pxl
     layer_height = layers[0].layer_height
     outFile = f"arrumar_como_se_salva_nomes.gcode"
@@ -1293,6 +1297,7 @@ def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     bfr = [0, 0]
     base_frame = layers[0].base_frame
     for n_layer, layer in enumerate(layers):
+        # folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             seq = island.island_route
             chain = seq
@@ -1329,6 +1334,7 @@ def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
             output += "G4 P30000\n"
     output += "G1 Z" + str(2 * layer_height) + " ; POS FINAL\n"
     output += "M104 S0; End of Gcode\n"
+    os.chdir(folders.output)
     f = open(outFile, "w")
     f.write(output)
     f.close()

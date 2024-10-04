@@ -221,7 +221,7 @@ class Layer:
         nozzle_diam_internal: float,
     ) -> None:
 
-        def make_islands_thinWalls(island: Island) -> List[Island, dict]:
+        def make_islands_thinWalls(island: Island, mm_per_pxl) -> List[Island, dict]:
             island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
             island.thin_walls = ThinWallRegions()
             imgs_pack = island.thin_walls.make_thin_walls(
@@ -231,6 +231,7 @@ class Layer:
                 self.base_frame,
                 self.path_radius_external,
                 mt.make_mask(self, "full_ext"),
+                mm_per_pxl
             )
             return [island, imgs_pack]
 
@@ -248,7 +249,7 @@ class Layer:
             processed_regions: List[Island] = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
-                    executor.submit(make_islands_thinWalls, island)
+                    executor.submit(make_islands_thinWalls, island, self.mm_per_pxl)
                     for island in self.islands  # self.islands
                 ]
                 for l in concurrent.futures.as_completed(results):
@@ -714,8 +715,9 @@ class Layer:
     def make_zigzag_routes(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
         for isl in self.islands:
-            folders.load_zigzags_hdf5(self.name, isl)
-            isl.zigzags.make_routes_z(self.base_frame, self.path_radius_internal)
+            with Timer(f"criando as rotas de zigzag, camada:{self.name}"):
+                folders.load_zigzags_hdf5(self.name, isl)
+                isl.zigzags.make_routes_z(self.base_frame, self.path_radius_internal)
 
         with Timer("salvando imagens das rotas"):
             folders.save_zigzags_hdf5(self.name, self.islands)
@@ -826,6 +828,7 @@ class Layer:
                     f"all_zigzags",
                     isl.zigzags.all_zigzags,
                 )
+                folders.delete_img_hdf5(f"/{self.name}/{isl.name}/zigzags/macro_areas")
                 folders.save_img_hdf5(
                     f"/{self.name}/{isl.name}/zigzags",
                     f"macro_areas",

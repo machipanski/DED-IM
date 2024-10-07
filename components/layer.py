@@ -189,6 +189,7 @@ class Layer:
                 divide_islands(layer)
         with Timer("salvando as camadas"):
             folders.save_layers(hdf5_file_name, list_layers)
+            folders.save_folders_structure(hdf5_file_name)
         return
 
     def make_input_img(

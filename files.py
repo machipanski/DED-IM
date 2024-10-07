@@ -160,15 +160,16 @@ class System_Paths:
     def load_islands_hdf5(self, layer: Layer) -> None:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
-        layer_group = f.get(layer.name)
-        layer.islands = []
-        for l_key, l_item in layer_group.items():
-            if isinstance(l_item, h5py.Group):
-                island_group = layer_group.get(l_key)
-                layer.islands.append(Island(**island_group.attrs))
-                for i_key, i_item in island_group.items():
-                    if isinstance(i_item, h5py.Dataset):
-                        setattr(layer.islands[-1], i_key, np.array(i_item))
+        if hasattr(layer, "name"):
+            layer_group = f.get(layer.name)
+            layer.islands = []
+            for l_key, l_item in layer_group.items():
+                if isinstance(l_item, h5py.Group):
+                    island_group = layer_group.get(l_key)
+                    layer.islands.append(Island(**island_group.attrs))
+                    for i_key, i_item in island_group.items():
+                        if isinstance(i_item, h5py.Dataset):
+                            setattr(layer.islands[-1], i_key, np.array(i_item))
         f.close()
         os.chdir(self.home)
         return
@@ -201,9 +202,10 @@ class System_Paths:
         f = h5py.File(self.save_file_name, "r")
         layers = []
         for key, item in f.items():
-            # isinstance(item, h5py.Group)
-            layers.append(Layer(**dict(f[key].attrs)))
-            layers[-1].original_img = np.array(f.get(f"/{key}/original_img"))
+            if key != "folders_structure":
+                # isinstance(item, h5py.Group)
+                layers.append(Layer(**dict(f[key].attrs)))
+                layers[-1].original_img = np.array(f.get(f"/{key}/original_img"))
         f.close()
         os.chdir(self.home)
         return layers
@@ -382,7 +384,7 @@ class System_Paths:
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
         return
-    
+
     def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:
             element_path = f"/{layer_name}/{isl.name}/thinwalls_tree_route"
@@ -454,6 +456,16 @@ class System_Paths:
                 self.create_new_hdf5_group(f"{layer.name}/{island.name}")
                 self.save_props_hdf5(f"{layer.name}/{island.name}", island.__dict__)
                 self.save_img_hdf5(f"{layer.name}/{island.name}", "img", island.img)
+        os.chdir(self.home)
+        return
+
+    def save_folders_structure(self, hdf5_file_name):
+        os.chdir(self.output)
+        f = h5py.File(hdf5_file_name + ".hdf5", "a")
+        self.create_new_hdf5_group("folders_structure")
+        self.selected = hdf5_file_name
+        self.save_props_hdf5("/folders_structure", self.__dict__)
+        f.close()
         os.chdir(self.home)
         return
 

@@ -72,109 +72,55 @@ class ThinWallRegions:
         base_frame,
         path_radius,
         mask,
-        mm_per_pxl
+        mm_per_pxl,
     ):
 
-        def close_contour(trunk, i):
-            t_ends = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
-            if len(t_ends) < 2 or len(pt.img_to_points(trunk)) < path_radius * 2:
-                return []
-            else:
-                trunk_chain = pt.invert_x_y(
-                    ptht.make_a_chain_open_segment(trunk.astype(bool), t_ends)
+        def close_contour(reduced_continuous_origin, i):
+            max_width = 2
+            try:
+                bridge_img, elementos_contorno, contorno, pontos_extremos = (
+                    bottleneck.close_bridge_contour(
+                        reduced_continuous_origin,
+                        base_frame,
+                        max_width,
+                        island_img,
+                        mask,
+                        path_radius,
+                        sem_galhos,
+                    )
                 )
-
-                # for origin_candidate in origin_candidates:
-                # normalized_distance_map  = sem_galhos_dist / path_radius
-                # normalized_trunk = trunk *  normalized_distance_map
-                # tw_origin = np.logical_and(normalized_trunk != 0, normalized_trunk < 2)
-                # tw_origins.append(tw_origin)
-
-                # # n_trilhas = trunk / (2 * path_radius)
-                # # n_trilhas_max = np.min(n_trilhas[np.nonzero(n_trilhas)])
-                # n_trilhas_max = np.min(np.nonzero(normalized_trunk))
-                max_width = path_radius
-                bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
-
-                if np.sum(bridge_origin) > 0:
-                    region = ThinWall(0, "", [], [], 0, 0, [], [])
-                    ends = pt.img_to_points(sk.find_tips(bridge_origin))
-                    indices = [trunk_chain.index(x) for x in ends]
-                    ends = [trunk_chain[np.min(indices)], trunk_chain[np.max(indices)]]
-                    origin_chain = pt.invert_x_y(
-                        ptht.make_a_chain_open_segment(trunk.astype(bool), ends)
+                if np.sum(bridge_img) > 0:
+                    y_mark = np.where(reduced_continuous_origin)[1][
+                        np.round(len(np.where(reduced_continuous_origin)))
+                    ]
+                    x_mark = np.where(reduced_continuous_origin)[0][
+                        np.round(len(np.where(reduced_continuous_origin)))
+                    ]
+                    origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
+                    tw_group_path = f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}"
+                    new_groups.append([tw_group_path])
+                    [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
+                    region = ThinWall(
+                        f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}",
+                        f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}/img",
+                        reduced_continuous_origin,
+                        reduced_continuous_origin,
+                        n_trilhas_max,
+                        origin_mark,
+                        elementos_contorno,
+                        pontos_extremos,
                     )
-                    new_origin = origin_chain.copy()
-                    count_up = 0
-                    count_down = -1
-                    start_flag = 0
-                    end_flag = 0
-                    while not (start_flag and end_flag):
-                        current_pt_1 = origin_chain[count_up]
-                        current_pt_2 = origin_chain[count_down]
-                        if current_pt_1 in ends:
-                            start_flag = 1
-                        else:
-                            new_origin.remove(current_pt_1)
-                            count_up += 1
-                        if current_pt_2 in ends:
-                            end_flag = 1
-                        else:
-                            new_origin.remove(current_pt_2)
-                            count_down -= 1
-                    bridge_origin = it.points_to_img(
-                        new_origin, np.zeros_like(island_img)
-                    )
-                    try:
-                        bridge_img, elementos_contorno, contorno, pontos_extremos = (
-                            bottleneck.close_bridge_contour(
-                                bridge_origin,
-                                base_frame,
-                                max_width,
-                                island_img,
-                                mask,
-                                path_radius,
-                                sem_galhos,
-                            )
-                        )
-
-                        if np.sum(bridge_img) > 0:
-                            y_mark = np.where(bridge_origin)[1][
-                                np.round(len(np.where(bridge_origin)))
-                            ]
-                            x_mark = np.where(bridge_origin)[0][
-                                np.round(len(np.where(bridge_origin)))
-                            ]
-                            origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
-                            tw_group_path = (
-                                f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}"
-                            )
-                            new_groups.append([tw_group_path])
-                            [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
-                            region = ThinWall(
-                                f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}",
-                                f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}/img",
-                                trunk,
-                                trunk,
-                                n_trilhas_max,
-                                origin_mark,
-                                elementos_contorno,
-                                pontos_extremos,
-                            )
-                            new_tw_imgs.append([tw_group_path, "img", bridge_img])
-                            new_linha1s.append([tw_group_path, "linha1", linha1])
-                            new_linha2s.append([tw_group_path, "linha2", linha2])
-                            new_linhatopos.append(
-                                [tw_group_path, "linhatopo", linhatopo]
-                            )
-                            new_linhabaixos.append(
-                                [tw_group_path, "linhabaixo", linhabaixo]
-                            )
-                            new_origins.append([tw_group_path, "origin", trunk])
-                            print("OK: fechou contorno")
-                    except Exception:
-                        print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
-                return region
+                    new_tw_imgs.append([tw_group_path, "img", bridge_img])
+                    new_linha1s.append([tw_group_path, "linha1", linha1])
+                    new_linha2s.append([tw_group_path, "linha2", linha2])
+                    new_linhatopos.append([tw_group_path, "linhatopo", linhatopo])
+                    new_linhabaixos.append([tw_group_path, "linhabaixo", linhabaixo])
+                    new_origins.append([tw_group_path, "origin", reduced_continuous_origin])
+                    print("OK: fechou contorno")
+            except Exception:
+                print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
+                pass
+            return region
 
         # Criando o MAT
         new_groups = []
@@ -186,7 +132,7 @@ class ThinWallRegions:
         new_linhabaixos = []
         new_origins = []
         sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-            island_img.astype(np.uint8), 2*path_radius
+            island_img.astype(np.uint8), 2 * path_radius
         )
         # TODO:Achar o melhor size para o serviço
         new_medial_transforms.append(
@@ -197,38 +143,42 @@ class ThinWallRegions:
             ]
         )
         # Dividindo partes do esquelet que podem ser paredes finas
+        max_width = 2
         trunks = [pt.contour_to_list([x]) for x in trunks]
         trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
-        normalized_distance_map  = sem_galhos_dist / path_radius
+        normalized_distance_map = sem_galhos_dist / path_radius
         normalized_trunks = [trunk * normalized_distance_map for trunk in trunks]
         n_trilhas_max = [(np.unique(trunk))[1] for trunk in normalized_trunks]
-
-
         all_thin_walls = np.zeros(base_frame)
         all_origins = np.zeros(base_frame)
         divided_by_large_areas = []
         tw_origins = []
-        origin_candidates = [normalized_trunks[i] for i,x in enumerate(n_trilhas_max) if x<=2]
+        origin_candidates = [
+            normalized_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width
+        ]
+        reduced_origins = [bottleneck.reduce_trunk_continuous(
+            x, max_width, island_img
+        ) for x in origin_candidates]
         # for origin_candidate in origin_candidates:
         #     n_trilhas_max = sem_galhos_dist / path_radius
         #     normalized_trunk = origin_candidate * n_trilhas_max
         #     tw_origin = np.logical_and(normalized_trunk != 0, normalized_trunk < 2)
         #     tw_origins.append(tw_origin)
 
-            # trunk_dist = trunk * sem_galhos_dist
-            # no_large_parts = np.logical_and(
-            #     trunk_dist < 2 * path_radius, trunk_dist > 0
-            #     # trunk_dist < 3 * path_radius, trunk_dist > 0
-            #  )
-            # divided_segs, _, num = it.divide_by_connected(no_large_parts)
-            # if num > 1:
-            #     for seg in divided_segs:
-            #         if len(pt.img_to_points(seg)) > path_radius:
-            #             divided_by_large_areas.append(seg * sem_galhos_dist)
-            # elif num == 0:
-            #     pass
-            # else:
-            #     divided_by_large_areas.append(no_large_parts * sem_galhos_dist)
+        # trunk_dist = trunk * sem_galhos_dist
+        # no_large_parts = np.logical_and(
+        #     trunk_dist < 2 * path_radius, trunk_dist > 0
+        #     # trunk_dist < 3 * path_radius, trunk_dist > 0
+        #  )
+        # divided_segs, _, num = it.divide_by_connected(no_large_parts)
+        # if num > 1:
+        #     for seg in divided_segs:
+        #         if len(pt.img_to_points(seg)) > path_radius:
+        #             divided_by_large_areas.append(seg * sem_galhos_dist)
+        # elif num == 0:
+        #     pass
+        # else:
+        #     divided_by_large_areas.append(no_large_parts * sem_galhos_dist)
 
         # Transformando cada galho em uma região fechada
         # max_width = 2 * path_radius
@@ -238,7 +188,7 @@ class ThinWallRegions:
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
                 executor.submit(close_contour, origin_candidate, i)
-                for i, origin_candidate in enumerate(origin_candidates)
+                for i, origin_candidate in enumerate(reduced_origins)
             ]
             for l in concurrent.futures.as_completed(results):
                 processed_trunks.append(l.result())

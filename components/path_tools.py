@@ -1,6 +1,6 @@
 from __future__ import annotations
-from re import L
-from typing import TYPE_CHECKING
+from ctypes.wintypes import HSTR
+from typing import TYPE_CHECKING, Dict, reveal_type
 import itertools
 import math
 import random
@@ -13,12 +13,13 @@ from components import images_tools as it
 from components import skeleton as sk
 from cv2 import boundingRect, arcLength, approxPolyDP
 from scipy.spatial import distance_matrix
+
 if TYPE_CHECKING:
     from components.zigzag import ZigZag
     from typing import List
     from components.layer import Layer, Island
     from files import System_Paths
-
+    from components.bottleneck import Bridge
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
 
@@ -366,16 +367,21 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "zigzag_bridges": [],
     }
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
+    # aaa = new_route.get_img()
     return new_route
 
 
 def connect_internal_external(island: Island, path_radius_internal):
     # internal = it.sum_imgs([z.route for z in island.zigzags.regions]).astype(np.uint8)
-    filling = island.zigzags.all_zigzags
+    filling = island.zigzags.all_zigzags.astype(np.uint8)
     most_external = island.offsets.regions[0].route.astype(np.uint8)
-    offset = int(path_radius_internal * 2) + 1
-    hy, hx = np.where(filling[offset:] & most_external[:-offset])
-    h_starts = [(x, y) for x, y in zip(hx, hy)]
+    offset = int(path_radius_internal * 2)
+    h_starts = []
+    while len(h_starts) == 0:
+        offset = offset + 1
+        hy, hx = np.where(filling[offset:] & most_external[:-offset])
+        h_starts = [(x, y) for x, y in zip(hx, hy)]
+        print(offset)
     canvas = np.zeros_like(filling)
     for x, y in h_starts:
         canvas[y, x] = 1
@@ -436,6 +442,14 @@ def connect_offset_bridges(
         A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
         return A
 
+    def integrate_contact(todas_espirais, path_radius, bridge: Bridge, base_frame):
+        route = bridge.route
+        eraser = mt.dilation(bridge.origin, kernel_size=path_radius - 2)
+        aaa = it.sum_imgs([route, todas_espirais])
+        new_todas_espirais = it.image_subtract(aaa, eraser)
+        A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
+        return A
+
     lista_de_rotas = []
     todas_espirais_img = np.zeros(base_frame)
     for region in island.offsets.regions:
@@ -444,17 +458,28 @@ def connect_offset_bridges(
         pontos_extremos = pt.x_y_para_pontos(
             np.nonzero(mt.hitmiss_ends_v2(bridge.origin))
         )
-        todas_espirais_img = integrate_bridge(
-            todas_espirais_img,
-            path_radius_external,
-            pontos_extremos,
-            base_frame,
-        )
+        if bridge.type == "common_offset_bridge":
+            todas_espirais_img = integrate_bridge(
+                todas_espirais_img,
+                path_radius_external,
+                pontos_extremos,
+                base_frame,
+            )
+        elif bridge.type == "contact_offset_bridge":
+            todas_espirais_img = integrate_contact(
+                todas_espirais_img,
+                path_radius_external,
+                bridge,
+                base_frame,
+            )
     rotas_isoladas = img_to_chain(todas_espirais_img.astype(np.uint8))
+    lens = [len(x) for x in rotas_isoladas]
+    circunf = 2 * 3.14 * path_radius_external
     for i, rota in enumerate(rotas_isoladas):
-        lista_de_rotas.append(Path(i, rota))
-        lista_de_rotas[-1].get_img(base_frame)
-        lista_de_rotas[-1].get_regions(island)
+        if lens[i] > 2 * circunf:
+            lista_de_rotas.append(Path(i, rota))
+            lista_de_rotas[-1].get_img(base_frame)
+            lista_de_rotas[-1].get_regions(island)
     return lista_de_rotas
 
 
@@ -508,7 +533,7 @@ def connect_zigzag_bridges(island: Island):
         "zigzag_bridges": list(zigzag_bridges_included),
     }
     new_route = Path("interior tree", nova_rota, new_regions, saltos=saltos)
-# aaa = new_route.get_img(island.img.shape)
+    # aaa = new_route.get_img(island.img.shape)
     return new_route
 
 
@@ -663,7 +688,7 @@ def find_points_of_contact(
         # a2_reg = zigzags[int(edge[1][1])]
         a2_vertical_trail = mt.dilation(a2.route, kernel_img=mask_line)
         interface = np.add(a1_vertical_trail, a2_vertical_trail) == 2
-        aaa = np.add(a1_vertical_trail, a2_vertical_trail) 
+        aaa = np.add(a1_vertical_trail, a2_vertical_trail)
         return interface
 
     def vert_connection(a1, a2):
@@ -677,7 +702,7 @@ def find_points_of_contact(
     interfaces = []
     centers = []
     interface_types = []
-    translated_edges = [(f[0]+f[4:],e[0]+e[4:]) for f,e in edges]
+    translated_edges = [(f[0] + f[4:], e[0] + e[4:]) for f, e in edges]
     for edge in translated_edges:
         has_bridge = False
         type_a1 = edge[0][0]
@@ -885,7 +910,7 @@ def line_img_to_freeman_chain(img, origin_point):
     return pontos_org
 
 
-def make_offset_graph(filtered_regions):
+def make_offset_graph(filtered_regions, regs_touching):
     graph = nx.MultiGraph()
     for i in np.arange(0, len(filtered_regions)):
         graph.add_node(filtered_regions[i].name)
@@ -936,6 +961,32 @@ def make_offset_graph(filtered_regions):
                     coord_destino=elem_paralelo.lista_d[i],
                     extremo_origem="d",
                 )
+    for origem_a, origem_b in regs_touching:
+        region_a = [x for x in filtered_regions if x.name == origem_a][0]
+        region_b = [x for x in filtered_regions if x.name == origem_b][0]
+        region_a_all_loops = it.sum_imgs([x.route for x in region_a.loops])
+        region_b_all_loops = it.sum_imgs([x.route for x in region_b.loops])
+        coord_origem_a, coord_origem_b = it.closest_points_btwn_imgs(
+            region_a_all_loops, region_b_all_loops
+        )
+        coord_origem_a = pt.invert_x_y([coord_origem_a])
+        coord_origem_b = pt.invert_x_y([coord_origem_b])
+        # aaa = it.sum_imgs(
+        #     [
+        #         region_a.route,
+        #         region_b.route,
+        #         it.points_to_img(coord_origem_a, np.zeros_like(region_a.route)),
+        #         it.points_to_img(coord_origem_b, np.zeros_like(region_a.route)),
+        #     ]
+        # )
+        graph.add_edge(
+            origem_a,
+            origem_b,
+            weight=0,
+            coord_origem=coord_origem_a[0],
+            coord_destino=coord_origem_b[0],
+            extremo_origem="e",
+        )
     return graph
 
 
@@ -1276,9 +1327,10 @@ def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
 
 def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     import os
+
     mm_per_pixel = layers[0].mm_per_pxl
     layer_height = layers[0].layer_height
-    outFile = f"arrumar_como_se_salva_nomes.gcode"
+    outFile = f"{folders.selected}.gcode"
     output = ""
     output += ";Layer height: " + str(layer_height) + "\n"
     output += ";DPI: " + str(layers[0].dpi) + "\n"
@@ -1341,64 +1393,72 @@ def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     os.chdir(folders.home)
     return
 
+
 def layers_to_Gcode_FFF(camadas: List[Layer], arquivos: System_Paths, file_name):
-    #ISSO É PARA CURA
+    # ISSO É PARA CURA
     import os
     import matplotlib.pyplot as plt
+
     os.chdir(arquivos.home)
     # img_name = arquivos.all_figs[7]
     recovered_img = np.zeros(np.multiply(camadas[0].original_img.shape, 3))
     inFile = file_name
-    i = open(inFile, 'r')
+    i = open(inFile, "r")
     coordinates = []
     extrusion = 0
-    pixel_per_mm = camadas[0].dpi/25.4
+    pixel_per_mm = camadas[0].dpi / 25.4
     this_point = []
-    last_point = [0,0]
-    desloc = [200,300]
+    last_point = [0, 0]
+    desloc = [200, 300]
     coordinates.append(last_point)
     last_e = 0
     start = False
     for linenumber, line in enumerate(i):
-        if line == ';LAYER:2\n':
+        if line == ";LAYER:2\n":
             start = True
         if start:
-            if line == ';LAYER:3\n':
+            if line == ";LAYER:3\n":
                 break
             line = line.strip()
-            if line.startswith('G1') or line.startswith('G0'):
+            if line.startswith("G1") or line.startswith("G0"):
                 # print(line.split())
                 data = line.split()
-                if data[1][0] == 'F':
+                if data[1][0] == "F":
                     adder = 1
                 else:
                     adder = 0
-                if data[1+adder][0] == 'X':
-                    x = data[1+adder][1:]
+                if data[1 + adder][0] == "X":
+                    x = data[1 + adder][1:]
                     try:
-                        x = [int(round(float(x)*pixel_per_mm))]
-                    except: 
+                        x = [int(round(float(x) * pixel_per_mm))]
+                    except:
                         x = []
-                    y = data[2+adder][1:]
-                    try: y = [int(round(float(y)*pixel_per_mm))]
-                    except: y = []
-                    try: e = [float(data[3+adder][1:])]
-                    except: e = []
+                    y = data[2 + adder][1:]
+                    try:
+                        y = [int(round(float(y) * pixel_per_mm))]
+                    except:
+                        y = []
+                    try:
+                        e = [float(data[3 + adder][1:])]
+                    except:
+                        e = []
                     if len(x) > 0 and len(y) > 0:
-                        this_point = np.subtract([*y,*x],desloc)
+                        this_point = np.subtract([*y, *x], desloc)
                         coordinates.append(this_point)
                         if len(coordinates) > 1:
                             if len(e) > 0:
                                 this_e = e[0]
-                                if data[3+adder][0] == 'E':
+                                if data[3 + adder][0] == "E":
                                     if this_e > last_e:
                                         last_e = e[0]
-                                        recovered_img = it.draw_line(recovered_img, last_point, this_point)
+                                        recovered_img = it.draw_line(
+                                            recovered_img, last_point, this_point
+                                        )
                                     else:
                                         last_e = 0
                                 else:
                                     print(data)
-                    last_point = np.subtract([*y,*x],desloc)
+                    last_point = np.subtract([*y, *x], desloc)
     i.close()
     plt.figure()
     plt.imshow(recovered_img)

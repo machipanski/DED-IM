@@ -35,12 +35,13 @@ class Island:
         self.internal_tree_route: List[Path] = []
         self.thinwalls_tree_route: List[Path] = []
         self.island_route: List[Path] = []
-        if kwargs:
-            for key, value in kwargs.items():
-                setattr(self, key, value)
         if args:
             self.name = args[0]
             self.img = args[1]
+        if kwargs:
+            for key, value in kwargs.items():
+                setattr(self, key, value)
+        return
 
 
 class Layer:

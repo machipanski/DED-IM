@@ -159,31 +159,6 @@ class ThinWallRegions:
         reduced_origins = [bottleneck.reduce_trunk_continuous(
             x, max_width, island_img
         ) for x in origin_candidates]
-        # for origin_candidate in origin_candidates:
-        #     n_trilhas_max = sem_galhos_dist / path_radius
-        #     normalized_trunk = origin_candidate * n_trilhas_max
-        #     tw_origin = np.logical_and(normalized_trunk != 0, normalized_trunk < 2)
-        #     tw_origins.append(tw_origin)
-
-        # trunk_dist = trunk * sem_galhos_dist
-        # no_large_parts = np.logical_and(
-        #     trunk_dist < 2 * path_radius, trunk_dist > 0
-        #     # trunk_dist < 3 * path_radius, trunk_dist > 0
-        #  )
-        # divided_segs, _, num = it.divide_by_connected(no_large_parts)
-        # if num > 1:
-        #     for seg in divided_segs:
-        #         if len(pt.img_to_points(seg)) > path_radius:
-        #             divided_by_large_areas.append(seg * sem_galhos_dist)
-        # elif num == 0:
-        #     pass
-        # else:
-        #     divided_by_large_areas.append(no_large_parts * sem_galhos_dist)
-
-        # Transformando cada galho em uma região fechada
-        # max_width = 2 * path_radius
-        # counter = 0
-
         processed_trunks = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [

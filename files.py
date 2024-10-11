@@ -105,27 +105,28 @@ class System_Paths:
                                 [],
                                 0,
                                 [],
-                                pontos_extremos=b_region_group_props["pontos_extremos"],
-                                linked_offset_regions=b_region_group_props[
-                                    "linked_offset_regions"
-                                ],
-                                linked_zigzag_regions=b_region_group_props[
-                                    "linked_zigzag_regions"
-                                ],
+                                # pontos_extremos=b_region_group_props["pontos_extremos"],
+                                # linked_offset_regions=b_region_group_props[
+                                #     "linked_offset_regions"
+                                # ],
+                                # linked_zigzag_regions=b_region_group_props[
+                                #     "linked_zigzag_regions"
+                                # ],
+                                **b_region_group_props,
                             )
                         )
                         for k_key, k_item in b_region_group.items():
                             setattr(cob[-1], k_key, np.array(k_item))
-                        setattr(
-                            cob[-1],
-                            "reference_points",
-                            b_region_group_props["reference_points"],
-                        )
-                        setattr(
-                            cob[-1],
-                            "reference_points_b",
-                            b_region_group_props["reference_points_b"],
-                        )
+                        # setattr(
+                        #     cob[-1],
+                        #     "reference_points",
+                        #     b_region_group_props["reference_points"],
+                        # )
+                        # setattr(
+                        #     cob[-1],
+                        #     "reference_points_b",
+                        #     b_region_group_props["reference_points_b"],
+                        # )
         f.close()
         os.chdir(self.home)
         return
@@ -309,23 +310,29 @@ class System_Paths:
                     f"/{layer_name}/{isl.name}/bridges/cross_over_bridges"
                 )
                 for reg in isl.bridges.offset_bridges:
-                    path_region = f"/{layer_name}/{isl.name}/bridges/offset_bridges/OB_{reg.name:03d}"
+                    path_region = (
+                        f"/{layer_name}/{isl.name}/bridges/offset_bridges/{reg.name}"
+                    )
                     self.create_new_hdf5_group(path_region)
                     self.save_img_hdf5(path_region, f"img", reg.img)
                     self.save_img_hdf5(path_region, f"origin", reg.origin)
                     self.save_props_hdf5(path_region, reg.__dict__)
                 for reg in isl.bridges.zigzag_bridges:
-                    path_region = f"/{layer_name}/{isl.name}/bridges/zigzag_bridges/ZB_{reg.name:03d}"
+                    path_region = (
+                        f"/{layer_name}/{isl.name}/bridges/zigzag_bridges/{reg.name}"
+                    )
                     self.create_new_hdf5_group(path_region)
                     self.save_img_hdf5(path_region, f"img", reg.img)
                     self.save_img_hdf5(path_region, f"origin", reg.origin)
+                    self.delete_img_hdf5(path_region + f"/contorno")
                     self.save_img_hdf5(path_region, f"contorno", reg.contorno)
                     self.save_props_hdf5(path_region, reg.__dict__)
                 for reg in isl.bridges.cross_over_bridges:
-                    path_region = f"/{layer_name}/{isl.name}/bridges/cross_over_bridges/CB_{reg.name:03d}"
+                    path_region = f"/{layer_name}/{isl.name}/bridges/cross_over_bridges/{reg.name}"
                     self.create_new_hdf5_group(path_region)
                     self.save_img_hdf5(path_region, f"img", reg.img)
                     self.save_img_hdf5(path_region, f"origin", reg.origin)
+                    self.delete_img_hdf5(path_region + f"/contorno")
                     self.save_img_hdf5(path_region, f"contorno", reg.contorno)
                     self.save_props_hdf5(path_region, reg.__dict__)
         return
@@ -365,9 +372,11 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/external_tree_route"
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.external_tree_route.__dict__)
+            self.delete_img_hdf5(element_path + "/sequence")
             self.save_seq_hdf5(
                 element_path, "sequence", isl.external_tree_route.sequence
             )
+            self.delete_img_hdf5(element_path + "/img")
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
         return
@@ -403,10 +412,11 @@ class System_Paths:
         try:
             local = f.get(path)
             if local.get(name):
-                local[name][...] = img.astype(bool)
+                local[name][...] = img.astype(local.get(name).dtype)
             else:
-                local.create_dataset(name, compression="gzip", data=img, dtype=type)
+                local.create_dataset(name, compression="gzip", data=img)
         except:
+            print("ERRO: não salvou imagem!")
             pass
         finally:
             f.close()

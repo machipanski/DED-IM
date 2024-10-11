@@ -35,6 +35,26 @@ def chain_to_lines(final_chain, canvas):
         color = count % 5 + 1
     return canvas
 
+def closest_points_btwn_imgs(img1, img2):
+    # Encontra os contornos das duas imagens
+    contornos1, _ = cv2.findContours(img1.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contornos2, _ = cv2.findContours(img2.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Inicializa as variáveis para armazenar a menor distância e os pontos correspondentes
+    menor_distancia = float('inf')
+    ponto1_mais_proximo = None
+    ponto2_mais_proximo = None
+    # Compara cada ponto do contorno da primeira imagem com cada ponto do contorno da segunda imagem
+    for contorno1 in contornos1:
+        for ponto1 in contorno1:
+            for contorno2 in contornos2:
+                for ponto2 in contorno2:
+                    distancia = np.linalg.norm(ponto1 - ponto2)
+                    if distancia < menor_distancia:
+                        menor_distancia = distancia
+                        ponto1_mais_proximo = ponto1
+                        ponto2_mais_proximo = ponto2
+
+    return list(ponto1_mais_proximo[0]), list(ponto2_mais_proximo[0])
 
 def comprimento_maior_que(area, comp):
     area_pts = pt.x_y_para_pontos(np.nonzero(area))
@@ -82,6 +102,15 @@ def esta_contido(a, b):
      dentro, mas se possível quero voltar à forma anterior"""
     return not (np.logical_and(a, np.logical_not(b)).any())
 
+def eliminate_duplicates(lista:List[np.ndarray]):
+    hashes = [hash(str(x)) for x in lista]
+    included = []
+    no_repetition = []
+    for i,t in enumerate(lista):
+        if not(hashes[i] in included):
+            no_repetition.append(t)
+            included.append(hashes[i])
+    return no_repetition
 
 def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:
     internal_area = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)

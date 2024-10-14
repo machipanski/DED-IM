@@ -103,13 +103,14 @@ def esta_contido(a, b):
     return not (np.logical_and(a, np.logical_not(b)).any())
 
 def eliminate_duplicates(lista:List[np.ndarray]):
-    hashes = [hash(str(x)) for x in lista]
+    list_points = [pt.img_to_points(x) for x in lista]
+    # hashes = [hash(str(x)) for x in lista]
     included = []
     no_repetition = []
     for i,t in enumerate(lista):
-        if not(hashes[i] in included):
+        if not(list_points[i] in included):
             no_repetition.append(t)
-            included.append(hashes[i])
+            included.append(list_points[i])
     return no_repetition
 
 def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:

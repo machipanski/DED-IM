@@ -1325,7 +1325,16 @@ def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
     return macroa_area_path_list
 
 
-def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
+def layers_to_Gcode(
+    layers: List[Layer],
+    folders: System_Paths,
+    vel_int,
+    vel_ext,
+    vel_thin_wall,
+    internal_tree,
+    external_tree,
+    tw_tree,
+):
     import os
 
     mm_per_pixel = layers[0].mm_per_pxl
@@ -1351,18 +1360,36 @@ def layers_to_Gcode(layers: List[Layer], folders: System_Paths):
     for n_layer, layer in enumerate(layers):
         # folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
+            pontos_int = internal_tree[n_layer]
+            pontos_ext = external_tree[n_layer]
+            pontos_tw = tw_tree[n_layer]
             seq = island.island_route
             chain = seq
             counter = 0
             flag_salto = 0
             output += "M400; Inicio; Layer" + str(n_layer + 1) + "\n"
-            output += "G1 F360; speed g1\n"
+            output += f"G1 F{vel_ext}; speed g1\n"
             output += "G1 Z" + str(layer_height) + " ; POS INICIAL\n"
+            flag_path_type = 0
+            last_flag = 0
             for i, p in enumerate(chain):
                 if p == ["a", "a"]:
                     output += "M42 P4 S255; turn off welder\n"
                     flag_salto = 1
                 else:
+                    if p in pontos_int:
+                        flag_path_type = 0
+                        vel = vel_int
+                    if p in pontos_ext:
+                        flag_path_type = 1
+                        vel = vel_ext
+                    if p in pontos_tw:
+                        flag_path_type = 2
+                        vel = vel_thin_wall
+                    if flag_path_type != last_flag:
+                        output += f"G1 F{vel}; speed g1\n"
+                        last_flag = flag_path_type
+                        print(f"trocou para {flag_path_type}")
                     if i == 1:
                         output += "M42 P4 S0; turn on welder\n"
                         output += "G4 P2000\n"

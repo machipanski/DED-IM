@@ -113,12 +113,10 @@ class Layer:
                         isl,
                         self.base_frame,
                         mt.make_mask(self, "3_4_ext"),
-                        self.path_radius_external
+                        self.path_radius_external,
                     )
                 with Timer("Conectando pontes de Crossover"):
-                    isl.external_tree_route = path_tools.connect_cross_over_bridges(
-                        isl
-                    )
+                    isl.external_tree_route = path_tools.connect_cross_over_bridges(isl)
                 isl.external_tree_route.get_img(self.base_frame)
         with Timer("salvando imagens das rotas"):
             folders.save_external_routes_hdf5(self.name, self.islands)
@@ -138,7 +136,7 @@ class Layer:
             with Timer("Conectando pontes de zigzag"):
                 isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
                 isl.internal_tree_route.get_img(self.base_frame)
-        
+
         with Timer("salvando imagens das rotas"):
             folders.save_internal_routes_hdf5(self.name, self.islands)
         return
@@ -200,7 +198,7 @@ class Layer:
         dpi: int,
         odd_layer: bool,
         layer_height: float,
-        n_camadas: int
+        n_camadas: int,
     ):
         """Usa o Path dos arquivos para importar as imagens e transforma-las em binarias,
         assim como ja cria um objeto Layer pra cada"""
@@ -233,7 +231,7 @@ class Layer:
                 self.base_frame,
                 self.path_radius_external,
                 mt.make_mask(self, "full_ext"),
-                mm_per_pxl
+                mm_per_pxl,
             )
             return [island, imgs_pack]
 

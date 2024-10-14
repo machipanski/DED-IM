@@ -49,6 +49,14 @@ def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
     fieldValues = [float(x) for x in fieldValues]
     return fieldValues
 
+def ask_parameters_Gcode():
+    """Pede os parametros para a produção, permitindo alterar o que ja esta padronizado"""
+    msg = "Gcode parameters"
+    title = "Gcode parameters"
+    fieldNames = ["vel_int", "vel_ext", "vel_thin_wall"]
+    fieldDefs = [360, 360, 360]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
 
 def ask_parameters_input():
     """Pede todos os parametros de fatiamento, permitindo alterar o que ja esta padronizado"""

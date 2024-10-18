@@ -541,12 +541,13 @@ class OffsetRegions:
                             + str(sums[np.argmax(sums)] / ideal_sum)
                             + "Bw -> bloqueado"
                         )
-                    else: 
+                    else:
                         print(
                             str(loop)
                             + " Perdendo total:"
                             + str(candidate.lost_area_sum)
-                            + "Bw -> bloqueado por limite maximo")
+                            + "Bw -> bloqueado por limite maximo"
+                        )
             if fil_region_img.any():  # and counter < 4:
                 self.regions.append(Region(counter, fil_region_img, fil_region_loops))
                 all_loops_img = np.logical_or(all_loops_img, fil_region_img)
@@ -623,7 +624,11 @@ class OffsetRegions:
                 voids, _, _ = it.divide_by_connected(thisloop.lost_area)
                 voids_sums = np.divide([np.sum(x) for x in voids], ideal_sum)
                 # AAAA = np.add(thisloop.lost_area, thisloop.trail * 2)
-                if loop_level != 0 and (any(voids_sums > void_max)) or this_counter > this_max:
+                if (
+                    loop_level != 0
+                    and (any(voids_sums > void_max))
+                    or this_counter > this_max
+                ):
                     thisloop.acceptable = 0
                 else:
                     thisloop.acceptable = 1
@@ -691,7 +696,9 @@ class Region:
         )
         return area_internal_contour, area_internal_contour_img
 
-    def make_paralel_points(self, regions, area_internal_contour_img):
+    def make_paralel_points(
+        self, regions, area_internal_contour_img, prohibited_areas, path_radius
+    ):
         ys_do_buraco = [point[0] for point in self.limmit_coords]
         xs_do_buraco = [point[1] for point in self.limmit_coords]
         for region in regions:
@@ -709,37 +716,74 @@ class Region:
                     )
                 )
                 for i in np.arange(0, len(destiny_points)):
+                    multiplier = 1
                     if (
                         destiny_points[i][0] == ys_do_buraco[0]
                         and destiny_points[i][1] <= xs_do_buraco[0]
                     ):
                         self.paralel_points[-1].lista_a.append(destiny_points[i])
+                        linha = it.draw_line(
+                            np.zeros_like(prohibited_areas),
+                            self.limmit_coords[0],
+                            destiny_points[i],
+                        )
+                        linha = mt.dilation(linha, kernel_size=path_radius * 2 + 2)
+                        if np.sum(np.logical_and(linha, prohibited_areas)) > 0:
+                            multiplier = 100
                         self.paralel_points[-1].dist_a.append(
                             pt.distance_pts(self.limmit_coords[0], destiny_points[i])
+                            * multiplier
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[1]
                         and destiny_points[i][1] <= xs_do_buraco[1]
                     ):
                         self.paralel_points[-1].lista_b.append(destiny_points[i])
+                        linha = it.draw_line(
+                            np.zeros_like(prohibited_areas),
+                            self.limmit_coords[1],
+                            destiny_points[i],
+                        )
+                        linha = mt.dilation(linha, kernel_size=path_radius * 2 + 2)
+                        if np.sum(np.logical_and(linha, prohibited_areas)) > 0:
+                            multiplier = 100
                         self.paralel_points[-1].dist_b.append(
                             pt.distance_pts(self.limmit_coords[1], destiny_points[i])
+                            * multiplier
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[2]
                         and destiny_points[i][1] >= xs_do_buraco[2]
                     ):
                         self.paralel_points[-1].lista_c.append(destiny_points[i])
+                        linha = it.draw_line(
+                            np.zeros_like(prohibited_areas),
+                            self.limmit_coords[2],
+                            destiny_points[i],
+                        )
+                        linha = mt.dilation(linha, kernel_size=path_radius * 2 + 2)
+                        if np.sum(np.logical_and(linha, prohibited_areas)) > 0:
+                            multiplier = 100
                         self.paralel_points[-1].dist_c.append(
                             pt.distance_pts(self.limmit_coords[2], destiny_points[i])
+                            * multiplier
                         )
                     if (
                         destiny_points[i][0] == ys_do_buraco[3]
                         and destiny_points[i][1] >= xs_do_buraco[3]
                     ):
                         self.paralel_points[-1].lista_d.append(destiny_points[i])
+                        linha = it.draw_line(
+                            np.zeros_like(prohibited_areas),
+                            self.limmit_coords[3],
+                            destiny_points[i],
+                        )
+                        linha = mt.dilation(linha, kernel_size=path_radius * 2 + 2)
+                        if np.sum(np.logical_and(linha, prohibited_areas)) > 0:
+                            multiplier = 100
                         self.paralel_points[-1].dist_d.append(
                             pt.distance_pts(self.limmit_coords[3], destiny_points[i])
+                            * multiplier
                         )
         return
 

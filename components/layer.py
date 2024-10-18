@@ -35,6 +35,7 @@ class Island:
         self.internal_tree_route: List[Path] = []
         self.thinwalls_tree_route: List[Path] = []
         self.island_route: List[Path] = []
+        self.prohibited_areas = []
         if args:
             self.name = args[0]
             self.img = args[1]
@@ -535,7 +536,11 @@ class Layer:
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_bridges(
-        self, n_max: float, nozzle_diam_internal: float, folders: System_Paths
+        self,
+        n_max: float,
+        nozzle_diam_internal: float,
+        folders: System_Paths,
+        n_camadas,
     ):
 
         def paralelizando(func):
@@ -566,13 +571,14 @@ class Layer:
                 rest_of_picture_f2 = folders.load_img_hdf5(
                     f"/{self.name}/{island.name}", "rest_of_picture_f2"
                 )
-                island.offsets_graph, island.offsets_mst, island.prohibited_areas = (
+                island.offsets_graph, island.offsets_mst = (
                     island.bridges.make_offset_bridges(
                         rest_of_picture_f2,
                         isl.offsets,
                         self.base_frame,
                         self.path_radius_external,
                         rest_of_picture_f2,
+                        self.prohibited_areas,
                     )
                 )
             except:
@@ -621,6 +627,8 @@ class Layer:
         for isl in self.islands:
             isl.bridges = BridgeRegions()
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/bridges")
+        if self.name == "L_000":
+            self.prohibited_areas = np.zeros_like(self.original_img)
 
         with Timer("Criando pontes de Offset"):
             make_islands_offset_bridges()
@@ -639,10 +647,25 @@ class Layer:
                 island.rest_of_picture_f3 = island.bridges.apply_bridges(
                     rest_of_picture_f2, self.base_frame
                 )
+        last_prohibited_areas = np.zeros_like(self.original_img)
+        with Timer("Gerando áreas proibidas"):
+            if not int(self.name[2:]) == n_camadas:
+                for isl in self.islands:
+                    for reg in isl.bridges.offset_bridges:
+                        last_prohibited_areas = np.logical_or(
+                            last_prohibited_areas, reg.img
+                        )
+                    for reg in isl.bridges.cross_over_bridges:
+                        last_prohibited_areas = np.logical_or(
+                            last_prohibited_areas, reg.img
+                        )
 
         with Timer("salvando imagens das regiões"):
             folders.save_bridges_hdf5(self.name, self.islands)
-        return
+            folders.save_img_hdf5(
+                f"/{self.name}", "prohibited_areas", self.prohibited_areas
+            )
+        return last_prohibited_areas
 
     def make_bridges_routes(self, folders: System_Paths):
         folders.load_islands_hdf5(self)

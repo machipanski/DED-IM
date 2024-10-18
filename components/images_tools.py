@@ -224,13 +224,13 @@ def neighborhood(group1, group2=[]):
         for area_a, area_b in itertools.combinations(group2, 2):
             atual = np.logical_or(area_a.img, area_b.img)
             _, n_labels = label(atual, return_num=True, connectivity=2)
-            if n_labels == 1:
+            if n_labels == 1 and len(area_b.route)>0:
                 areas_vizinhas_g2.append([area_a.name, area_b.name])
         areas_vizinhas_g1xg2 = []
         for area_a, area_b in itertools.product(group1, group2):
             atual = np.logical_or(area_a.img, area_b.img)
             _, n_labels = label(atual, return_num=True, connectivity=2)
-            if n_labels == 1:
+            if n_labels == 1 and len(area_b.route)>0:
                 areas_vizinhas_g1xg2.append([area_a.name, area_b.name])
         return areas_vizinhas_g1, areas_vizinhas_g2, areas_vizinhas_g1xg2
 

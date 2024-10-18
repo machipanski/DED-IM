@@ -742,16 +742,17 @@ def find_interruption_points_v2(
     for bridge in isl.bridges.zigzag_bridges:
         if not (bridge.name in zigzag_bridges_included):
             if set(bridge.linked_zigzag_regions).intersection(zigzags_included):
-                A = bridge.pontos_extremos
-                closest_a = closest_point(A[0], nova_rota)
-                closest_b = closest_point(A[1], nova_rota)
-                closest_c = closest_point(A[2], nova_rota)
-                closest_d = closest_point(A[3], nova_rota)
-                cp = [closest_a, closest_b, closest_c, closest_d]
-                cp.sort(key=lambda x: x[1])
-                cp = cp[:2]
-                cp = [x[0] for x in cp]
-                closest_points[bridge.name] = cp
+                if len(bridge.route) > 0:
+                    A = bridge.pontos_extremos
+                    closest_a = closest_point(A[0], nova_rota)
+                    closest_b = closest_point(A[1], nova_rota)
+                    closest_c = closest_point(A[2], nova_rota)
+                    closest_d = closest_point(A[3], nova_rota)
+                    cp = [closest_a, closest_b, closest_c, closest_d]
+                    cp.sort(key=lambda x: x[1])
+                    cp = cp[:2]
+                    cp = [x[0] for x in cp]
+                    closest_points[bridge.name] = cp
     special = []
     for k in closest_points.values():
         special = special + k

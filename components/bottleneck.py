@@ -428,11 +428,10 @@ class BridgeRegions:
         base_frame,
         path_radius,
         original_img,
-        # prohibited_areas,
+        prohibited_areas,
     ):
         """determina pontos de conexão entre os diferentes contornos,
         traçando uma ponte no sentido do offset da camada"""
-        prohibited_areas = np.zeros(base_frame)
         offreg: List[Region] = offsets_regions.regions
         regs_touching = []
         for region in offreg:
@@ -459,7 +458,7 @@ class BridgeRegions:
                 region.out_area_inner_contour(base_frame)
             )
         for region in internal_areas:
-            region.make_paralel_points(offreg, area_internal_contour_img)
+            region.make_paralel_points(offreg, area_internal_contour_img, prohibited_areas, path_radius)
             # encontra pontes para cada ponto extremo do contorno
         areas_graph = path_tools.make_offset_graph(offreg, regs_touching)
         offsets_paralel_mst, paralel_sequence = path_tools.regions_mst(areas_graph)
@@ -472,11 +471,8 @@ class BridgeRegions:
             path_radius,
             offreg,
         )
-        prohibited_areas = np.logical_or(
-            prohibited_areas, mt.dilation(it.sum_imgs(bridge_imgs), kernel_size=2)
-        )
         self.all_bridges = it.sum_imgs(bridge_imgs)
-        return areas_graph, offsets_paralel_mst, prohibited_areas
+        return areas_graph, offsets_paralel_mst
 
     def draw_offset_paralel_links(
         self,
@@ -587,7 +583,7 @@ class BridgeRegions:
         normalized_trunks = [trunk * normalized_distance_map for trunk in trunks]
         normalized_trunks_less_than_2wd = []
         for trunk in normalized_trunks:
-            less_than_2wd = np.logical_and(trunk > 0,trunk < 1.5* necks_max_paths)
+            less_than_2wd = np.logical_and(trunk > 0.4,trunk < 1.5* necks_max_paths)
             sep_trunks, _, num = it.divide_by_connected(less_than_2wd)
             for new_trunk in sep_trunks:
                 if len(pt.img_to_points(new_trunk)) > path_radius * 2:
@@ -670,7 +666,9 @@ class BridgeRegions:
         combinations = list(itertools.product(self.zigzag_bridges, self.offset_bridges))
         substitutions = []
         for n, [zigzag_bridge, offset_bridge] in enumerate(combinations):
-            if set(zigzag_bridge.linked_offset_regions) == set(
+            if np.equal(zigzag_bridge.contorno[0],zigzag_bridge.contorno[1]).all():
+                print("Aqui eu não deixei a parede unica virar crossover")
+            elif set(zigzag_bridge.linked_offset_regions) == set(
                 offset_bridge.linked_offset_regions
             ):
                 # se as pontes conectam os mesmos contornos, organiza a prioridade deles e paga a mais alta pra cada grupo
@@ -732,9 +730,9 @@ class BridgeRegions:
             for j, offset_bridge in enumerate(self.offset_bridges):
                 offset_bridge.name = f"OB_{j:03d}"
             counter += 1
-            prohibited_areas = np.logical_or(
-                prohibited_areas, self.cross_over_bridges[-1].img
-            )
+            # prohibited_areas = np.logical_or(
+            #     prohibited_areas, self.cross_over_bridges[-1].img
+            # )
         all_bridges = np.zeros_like(self.all_origins)
         for region in (
             self.zigzag_bridges + self.offset_bridges + self.cross_over_bridges
@@ -864,9 +862,8 @@ def close_bridge_contour(
             linha2 = labeled == 2
         elif labeled_n == 1:
             print("teste: caso de uma unica linha no entorno da origem")
-            # linha1 = labeled == 1
-            # linha2 = labeled == 1
-            return [], []
+            linha1 = labeled == 1
+            return linha1, linha1
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
             return [], []
@@ -891,45 +888,64 @@ def close_bridge_contour(
             inicios_e_fins2 = pt.x_y_para_pontos(
                 np.where(sk.find_tips(linha2.astype(np.uint8)))
             )
-        dist_1a_2 = list(
-            map(lambda x: pt.distance_pts(inicios_e_fins1[0], x), inicios_e_fins2)
-        )
-        dist_1b_2 = list(
-            map(lambda x: pt.distance_pts(inicios_e_fins1[1], x), inicios_e_fins2)
-        )
-        unique_points = []
-        for p in inicios_e_fins1 + inicios_e_fins2:
-            if p not in unique_points:
-                unique_points.append(p)
-        if len(unique_points) == 4:
-            ponto_destino_1 = inicios_e_fins2[np.argmin(dist_1a_2)]
-            ponto_destino_2 = inicios_e_fins2[np.argmin(dist_1b_2)]
-            fechamento1_pts = [inicios_e_fins1[0], ponto_destino_1]
-            fechamento2_pts = [inicios_e_fins1[1], ponto_destino_2]
-            linhatopo = it.draw_line(
-                np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1]
-            )
-            linhabaixo = it.draw_line(
-                np.zeros(base_frame), fechamento2_pts[0], fechamento2_pts[1]
-            )
-            bridge_border = it.sum_imgs([linha1, linhatopo, linha2, linhabaixo])
-            bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-        elif len(unique_points) == 2:
-            fechamento1_pts = unique_points
-            linhatopo = it.draw_line(
-                np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1]
-            )
-            linhabaixo = np.zeros_like(linhatopo)
-            bridge_border = it.sum_imgs([linha1, linhatopo])
-            bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-        elif len(unique_points) == 0:
-            if np.sum(linha1) > 0:
-                fechamento1_pts = unique_points
-                linhatopo = np.zeros_like(linha1)
-                linhabaixo = np.zeros_like(linha1)
-                bridge_border = linha1.copy()
+        if inicios_e_fins1 == inicios_e_fins2:
+            linha1 = linha2
+            pontos_fins = mt.hitmiss_ends_v2(linha1)
+            pontos_fins = pt.img_to_points(pontos_fins)
+            if len(pontos_fins) == 2:
+                linhabaixo = linhatopo = it.draw_line(np.zeros(base_frame), inicios_e_fins1[0], inicios_e_fins1[1])
+                bridge_border = it.sum_imgs([linha1, linhatopo, linha2, linhabaixo]) >= 1
                 bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-        # else:
+                bridge_img = np.logical_and(bridge_img, rest_of_picture)
+            elif len(pontos_fins) > 2:
+                bridge_border = it.draw_polyline(np.zeros(base_frame), pontos_fins, closed=True)
+                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
+                bridge_img = np.logical_and(bridge_img, rest_of_picture)
+                linhatopo = linhabaixo = []
+            else:
+                print("ai fodeu")
+        else: 
+            dist_1a_2 = list(
+                map(lambda x: pt.distance_pts(inicios_e_fins1[0], x), inicios_e_fins2)
+            )
+            dist_1b_2 = list(
+                map(lambda x: pt.distance_pts(inicios_e_fins1[1], x), inicios_e_fins2)
+            )
+            unique_points = []
+            for p in inicios_e_fins1 + inicios_e_fins2:
+                if p not in unique_points:
+                    unique_points.append(p)
+            if len(unique_points) == 4:
+                ponto_destino_1 = inicios_e_fins2[np.argmin(dist_1a_2)]
+                ponto_destino_2 = inicios_e_fins2[np.argmin(dist_1b_2)]
+                fechamento1_pts = [inicios_e_fins1[0], ponto_destino_1]
+                fechamento2_pts = [inicios_e_fins1[1], ponto_destino_2]
+                linhatopo = it.draw_line(
+                    np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1]
+                )
+                linhabaixo = it.draw_line(
+                    np.zeros(base_frame), fechamento2_pts[0], fechamento2_pts[1]
+                )
+                bridge_border = it.sum_imgs([linha1, linhatopo, linha2, linhabaixo])
+                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
+                bridge_img = np.logical_and(bridge_img, rest_of_picture)
+            elif len(unique_points) == 2:
+                fechamento1_pts = unique_points
+                linhatopo = it.draw_line(
+                    np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1]
+                )
+                linhabaixo = np.zeros_like(linhatopo)
+                bridge_border = it.sum_imgs([linha1, linhatopo])
+                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
+                bridge_img = np.logical_and(bridge_img, rest_of_picture)
+            elif len(unique_points) == 0:
+                if np.sum(linha1) > 0:
+                    fechamento1_pts = unique_points
+                    linhatopo = np.zeros_like(linha1)
+                    linhabaixo = np.zeros_like(linha1)
+                    bridge_border = linha1.copy()
+                    bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
+                    bridge_img = np.logical_and(bridge_img, rest_of_picture)
         return bridge_img, linhatopo, linhabaixo, bridge_border, linha1, linha2
 
     from components.skeleton import prune

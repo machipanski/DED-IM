@@ -207,6 +207,9 @@ class System_Paths:
                 # isinstance(item, h5py.Group)
                 layers.append(Layer(**dict(f[key].attrs)))
                 layers[-1].original_img = np.array(f.get(f"/{key}/original_img"))
+                layers[-1].prohibited_areas = np.array(
+                    f.get(f"/{key}/prohibited_areas")
+                )
         f.close()
         os.chdir(self.home)
         return layers

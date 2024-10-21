@@ -198,13 +198,8 @@ def add_routes_by_sequence_internal(
         name_of_zigzag_bridge = order_zigzag_bridges_regions[i]
         i_b_zb = island.bridges.zigzag_bridges
         i_b_zb_names = [x.name for x in i_b_zb]
-        references_a = i_b_zb[
-            i_b_zb_names.index(name_of_zigzag_bridge)
-        ].reference_points
-        distances_a = [
-            pt.distance_pts(references_a[0], int_pt),
-            pt.distance_pts(references_a[1], int_pt),
-        ]
+        references_a = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].reference_points
+        distances_a = [pt.distance_pts(references_a[0], int_pt),pt.distance_pts(references_a[1], int_pt)]
         rota_ponte = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].route
         refs = references_a
         dists = distances_a

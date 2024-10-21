@@ -1244,8 +1244,9 @@ def internal_cut(new_contour, linhas, extreme_internal_points, sentido):
         if counter % 2 == 0:
             borda_cortada[fila[i][0]][fila[i][1]] = 1
     novo_zigzag = it.sum_imgs([linhas_transversais, borda_cortada])
-    novo_zigzag_closed = mt.closing(novo_zigzag, kernel_size=2)
-    novo_zigzag_pruned, _, _ = sk.create_prune_divide_skel(novo_zigzag_closed, 10)
+    # novo_zigzag_closed = mt.closing(novo_zigzag, kernel_size=2)
+    # novo_zigzag_pruned, _, _ = sk.create_prune_divide_skel(novo_zigzag_closed, 10)
+    novo_zigzag_pruned, _, _ = sk.create_prune_divide_skel(novo_zigzag, 10)
     return novo_zigzag_pruned
 
 

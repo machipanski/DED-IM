@@ -944,7 +944,7 @@ def connect_fails_to_zigzags(
         if path_radius_internal%2 == 0:
             extension = extension+1
         interface_line = np.zeros_like(fail_img)
-        while (num_parts > 1 or np.sum(interface_line) == 0) and extension < path_radius_internal*2:
+        while (num_parts > 1 or np.sum(interface_line) == 0) and extension < path_radius_internal*2.5:
             mask_line = np.zeros([path_radius_internal + extension, path_radius_internal + extension])
             mask_line[:, int((path_radius_internal + extension)/2)] = 1
             selective_kernel = mask_line.copy()
@@ -954,12 +954,14 @@ def connect_fails_to_zigzags(
                 selective_kernel[: int((path_radius_internal+ extension)/2)] = 0
             interface_line_a = np.add(mt.dilation(fail_img.astype(np.uint8), kernel_img=selective_kernel),old_zigzag)
             interface_line = interface_line_a == 2
-            _, _, num_parts = it.divide_by_connected(interface_line)
+            _, labeled, num_parts = it.divide_by_connected(interface_line)
             extension = extension + 2
         # line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
         # dilated_route = mt.dilation(fail_img, kernel_img=mask_line)
         # fail_contact = np.add(dilated_route, fail_img.astype(np.uint8)) == 2
-        if num_parts>1:
+        if num_parts>1 and extension >= path_radius_internal*2:
+            interface_line = it.take_the_bigger_area(labeled.astype(bool))
+        else:
             interface_line = np.zeros_like(fail_img)
         return interface_line, extension
 

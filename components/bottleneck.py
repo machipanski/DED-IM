@@ -444,8 +444,8 @@ class BridgeRegions:
                 region.hierarchy += 1
             _, aaaa, num = it.divide_by_connected(
                 np.logical_or(
-                    mt.dilation(region.img, kernel_size=1),
-                    mt.dilation(other_region.img, kernel_size=1),
+                    mt.dilation(region.img, kernel_size=int(path_radius/2)),
+                    mt.dilation(other_region.img, kernel_size=int(path_radius/2)),
                 )
             )
             if num == 1:
@@ -521,18 +521,23 @@ class BridgeRegions:
                 # from components import morphology_tools as mt
                 reg_a = [x for x in offsets_regs if x.name == line[0]][0]
                 reg_b = [x for x in offsets_regs if x.name == line[1]][0]
-                union = mt.closing(
-                    it.sum_imgs([reg_a.img.astype(np.uint8), 
-                                 reg_b.img.astype(np.uint8)]), 
-                                 kernel_size=path_radius/4,
-                )
-                img = mt.erosion(union, kernel_size=path_radius/2)
-                img = mt.opening(img, kernel_size=path_radius)
-                reg_a_routes = it.sum_imgs([x.route for x in reg_a.loops])
-                reg_b_routes = it.sum_imgs([x.route for x in reg_b.loops])
-                bbb = np.add(img,it.sum_imgs([reg_a_routes,reg_b_routes]))
-                eee = bbb == 2
-                linhas_separadas, _, _ = it.divide_by_connected(eee)
+                sum = 0
+                divisor = 4
+                while sum == 0 and divisor>0:
+                    union = mt.closing(
+                        it.sum_imgs([reg_a.img.astype(np.uint8), 
+                                    reg_b.img.astype(np.uint8)]), 
+                                    kernel_size=path_radius/divisor,
+                    )
+                    img = mt.erosion(union, kernel_size=path_radius/2)
+                    img = mt.opening(img, kernel_size=path_radius)
+                    reg_a_routes = it.sum_imgs([x.route for x in reg_a.loops])
+                    reg_b_routes = it.sum_imgs([x.route for x in reg_b.loops])
+                    bbb = np.add(img,it.sum_imgs([reg_a_routes,reg_b_routes]))
+                    eee = bbb == 2
+                    linhas_separadas, _, _ = it.divide_by_connected(eee)
+                    sum = np.sum(eee)
+                    divisor = divisor-1
                 pontos_centrais = [pt.points_center(pt.img_to_points(x)) for x in linhas_separadas]
                 # pontosponte = mt.hitmiss_ends_v2(eee)
                 # _, cont_img = mt.detect_contours(img.astype(np.uint8), return_img=True)
@@ -866,7 +871,7 @@ def close_bridge_contour(
             return linha1, linha1
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
-            return [], []
+            return np.zeros_like(trunk), np.zeros_like(trunk)
         return linha1, linha2
 
     def close_area_from_lines(
@@ -901,7 +906,7 @@ def close_bridge_contour(
                 bridge_border = it.draw_polyline(np.zeros(base_frame), pontos_fins, closed=True)
                 bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
                 bridge_img = np.logical_and(bridge_img, rest_of_picture)
-                linhatopo = linhabaixo = []
+                linhatopo = linhabaixo = np.zeros_like(linha1)
             else:
                 print("ai fodeu")
         else: 
@@ -1120,7 +1125,7 @@ def adjust_bridge_end_lines(bridge_sides):
         bridge = it.fill_internal_area(bridge, np.ones_like(bridge_sides, np.uint8))
         bridge = mt.dilation(bridge, kernel_size=1)
     else:
-        return [], [[], [], []]
+        return np.zeros_like(bridge_sides), [np.zeros_like(bridge_sides), np.zeros_like(bridge_sides), np.zeros_like(bridge_sides)]
     return bridge, [linhas_do_limite, linhatopo, linhabaixo]
 
 
@@ -1324,6 +1329,7 @@ def external_cut(
     return borda_cortada, interruption_points
 
 
+#formula de transversais aqui!!!!!
 def cut_in_transversals(origens_circulos, linha_c1, linha_c2):
     transversais = []
     canvas = np.zeros_like(linha_c1)

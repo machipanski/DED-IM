@@ -851,7 +851,7 @@ class Layer:
                     f"all_zigzags",
                     isl.zigzags.all_zigzags,
                 )
-                folders.delete_img_hdf5(f"/{self.name}/{isl.name}/zigzags/macro_areas")
+                folders.delete_item_hdf5(f"/{self.name}/{isl.name}/zigzags/macro_areas")
                 folders.save_img_hdf5(
                     f"/{self.name}/{isl.name}/zigzags",
                     f"macro_areas",

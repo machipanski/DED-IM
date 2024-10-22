@@ -77,16 +77,20 @@ class Subregion:
                 shadow_img_esq[index] = np.flip(labeled_line_esq)
             shadow_img_dir_dd = shadow_img_dir == 1
             shadow_img_esq_dd = shadow_img_esq == 1
-            candidates = [shadow_img_dir_dd, shadow_img_esq_dd]
-            if len(np.add(shadow_img_dir_dd, shadow_img_esq_dd) == 2) > 0:
-                sums = [np.sum(x) for x in candidates]
-                all_ones = candidates[np.argmax(sums)]
-            else:
-                all_ones = np.logical_or(
-                    shadow_img_dir_dd.astype(int), shadow_img_esq_dd.astype(int)
-                )
-            separated, _, num = it.divide_by_connected(all_ones)
-            filtered_separated = []
+            # candidates = [shadow_img_dir_dd, shadow_img_esq_dd]
+            candidates_d, _, num = it.divide_by_connected(shadow_img_dir_dd)
+            candidates_e, _, num = it.divide_by_connected(shadow_img_esq_dd)
+            candidates = candidates_d + candidates_e
+            # if len(np.add(shadow_img_dir_dd, shadow_img_esq_dd) == 2) > 0:
+                # isolated_candidates, _, num = it.divide_by_connected(candidates)
+            sums = [np.sum(x) for x in candidates]
+            all_ones = candidates[np.argmax(sums)]
+            # else:
+            #     all_ones = np.logical_or(
+            #         shadow_img_dir_dd.astype(int), shadow_img_esq_dd.astype(int)
+            #     )
+            # separated, _, num = it.divide_by_connected(all_ones)
+            # filtered_separated = []
             # for s in separated:
             #     for index, linha in enumerate(s[0:]):
             #         labeled_line_dir = label(linha, connectivity=1)
@@ -97,17 +101,18 @@ class Subregion:
             #         filtered_separated.append(s)
             # shadows = shadows + filtered_separated
             # for s in filtered_separated:
-            for s in separated:
-                shadows.append(s)
-                img = np.logical_and(img, np.logical_not(s))
-        shadow_img = it.sum_imgs_colored(shadows)
+            # for s in separated:
+            shadows.append(all_ones)
+            img = np.logical_and(img, np.logical_not(all_ones))
+        # shadow_img = it.sum_imgs_colored(shadows)
         # areas = []
         # for d in shadows:
         #     labeled_divs, _, _ = it.divide_by_connected(d)
         #     areas = areas + labeled_divs
-        separated_after_rejoined, _, num = it.divide_by_connected(shadow_img)
-        shadows_after_rejoined = separated_after_rejoined
+        # separated_after_rejoined, _, num = it.divide_by_connected(shadow_img)
+        # shadows_after_rejoined = separated_after_rejoined
         new_shadow_img = it.sum_imgs_colored(shadows)
+        shadows_after_rejoined, labeled_shadows, num = it.divide_by_connected(new_shadow_img)
         final_areas = []
         # for i, area in enumerate(areas):
         for i, area in enumerate(shadows_after_rejoined):
@@ -187,7 +192,7 @@ class Subregion:
         shadow_img, areas = self.create_shadow_img(path_radius)
         areas = it.neighborhood_imgs(areas)
         if len(areas) == 1:
-            if np.sum(mt.opening(self.img, kernel_size=path_radius)) > 0:
+            if np.sum(mt.opening(self.img, kernel_size=path_radius*2)) > 0:
                 self.labeled_monotonic_regions = self.img
                 self.areas_somadas = self.img
                 self.regions.append(ZigZag(0, self.labeled_monotonic_regions))
@@ -388,7 +393,11 @@ class ZigZagRegions:
                 # aaaa = it.sum_imgs(separated_fail_imgs+separated_connected_fails)
                 fail_internal_zigzags = []
                 for i, fail in enumerate(connected_fails):
-                    fail_internal_zigzags.append(internal_weaving_cut(interface_lines[i], path_radius_internal, fail))
+                    try:
+                        fail_internal_zigzags.append(internal_weaving_cut(interface_lines[i], path_radius_internal, fail))
+                    except:
+                        print("falhou um weaving aqui!")
+                        pass
                 all_new_zigzags = it.image_subtract(old_zigzag.astype(bool), it.sum_imgs(interface_lines))
                 all_new_zigzags = it.sum_imgs(all_new_zigzags + fail_internal_zigzags).astype(bool)
             new_macro_areas, _, _ = it.divide_by_connected(all_new_zigzags)
@@ -664,6 +673,7 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
             n_origens = len(origens_pontos)
             adjust += 1
         return origens_pontos, line_points
+
 
     div_points, line_points = divide_in_pairs(interface_line, path_radius_internal)
     div_lines = np.zeros_like(fail)
@@ -959,10 +969,11 @@ def connect_fails_to_zigzags(
         # line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
         # dilated_route = mt.dilation(fail_img, kernel_img=mask_line)
         # fail_contact = np.add(dilated_route, fail_img.astype(np.uint8)) == 2
-        if num_parts>1 and extension >= path_radius_internal*2:
-            interface_line = it.take_the_bigger_area(labeled.astype(bool))
-        else:
-            interface_line = np.zeros_like(fail_img)
+        if num_parts>1 :
+            if extension >= path_radius_internal*2:
+                interface_line = it.take_the_bigger_area(labeled.astype(bool))
+            else:
+                interface_line = np.zeros_like(fail_img)
         return interface_line, extension
 
     contacts_imgs = []

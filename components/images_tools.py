@@ -307,10 +307,10 @@ def sum_imgs_colored(imgs_list):
     color = 1
     for img in imgs_list:
         all = np.add(img.astype(np.uint16) * color, all)
-        if color == 3:
-            color = 1
-        else:
-            color += 1
+        # if color == 3:
+        #     color = 1
+        # else:
+        color += 1
     return all
 
 

@@ -327,7 +327,7 @@ class System_Paths:
                     self.create_new_hdf5_group(path_region)
                     self.save_img_hdf5(path_region, f"img", reg.img)
                     self.save_img_hdf5(path_region, f"origin", reg.origin)
-                    self.delete_img_hdf5(path_region + f"/contorno")
+                    self.delete_item_hdf5(path_region + f"/contorno")
                     self.save_img_hdf5(path_region, f"contorno", reg.contorno)
                     self.save_props_hdf5(path_region, reg.__dict__)
                 for reg in isl.bridges.cross_over_bridges:
@@ -335,7 +335,7 @@ class System_Paths:
                     self.create_new_hdf5_group(path_region)
                     self.save_img_hdf5(path_region, f"img", reg.img)
                     self.save_img_hdf5(path_region, f"origin", reg.origin)
-                    self.delete_img_hdf5(path_region + f"/contorno")
+                    self.delete_item_hdf5(path_region + f"/contorno")
                     self.save_img_hdf5(path_region, f"contorno", reg.contorno)
                     self.save_props_hdf5(path_region, reg.__dict__)
         return
@@ -375,11 +375,11 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/external_tree_route"
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.external_tree_route.__dict__)
-            self.delete_img_hdf5(element_path + "/sequence")
+            self.delete_item_hdf5(element_path + "/sequence")
             self.save_seq_hdf5(
                 element_path, "sequence", isl.external_tree_route.sequence
             )
-            self.delete_img_hdf5(element_path + "/img")
+            self.delete_item_hdf5(element_path + "/img")
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
         return
@@ -389,7 +389,7 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
-            self.delete_img_hdf5(f"{element_path}/sequence")
+            self.delete_item_hdf5(f"{element_path}/sequence")
             self.save_seq_hdf5(
                 element_path, "sequence", isl.internal_tree_route.sequence
             )
@@ -415,6 +415,7 @@ class System_Paths:
         try:
             local = f.get(path)
             if local.get(name):
+                # self.delete_img_hdf5(path+"/"+name)
                 local[name][...] = img.astype(local.get(name).dtype)
             else:
                 local.create_dataset(name, compression="gzip", data=img)
@@ -426,12 +427,13 @@ class System_Paths:
             os.chdir(self.home)
         return
 
-    def delete_img_hdf5(self, path):
+    def delete_item_hdf5(self, path):
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
         try:
             del f[path]
         except:
+            print("ERRO: não deletou a coisa")
             pass
         finally:
             f.close()
@@ -489,10 +491,12 @@ class System_Paths:
         try:
             local = f.get(path)
             if local.get(name):
-                local[name][...] = adj_matrix
-            else:
-                local.create_dataset(name, data=adj_matrix)
+                self.delete_item_hdf5(path + "/" + name)
+                # local[name][...] = adj_matrix
+            # else:
+            local.create_dataset(name, data=adj_matrix)
         except:
+            print("ERRO: não salvou o grafo!")
             pass
         finally:
             f.close()
@@ -518,10 +522,12 @@ class System_Paths:
         try:
             local = f.get(path)
             if local.get(name):
-                local[name] = seq
-            else:
-                local.create_dataset(name, data=seq)
+                self.delete_item_hdf5(path + "/" + name)
+                # local[name] = seq
+            # else:
+            local.create_dataset(name, data=seq)
         except:
+            print("ERRO: não salvou sequencia!")
             pass
         finally:
             f.close()
@@ -532,6 +538,7 @@ class System_Paths:
         for isl in islands:
             base_path = f"/{layer_name}/{isl.name}/zigzags"
             if np.sum(isl.rest_of_picture_f3) > 0:
+                self.delete_item_hdf5(base_path)
                 self.create_new_hdf5_group(base_path)
                 self.save_props_hdf5(base_path, isl.__dict__)
                 for reg in isl.zigzags.regions:
@@ -544,11 +551,11 @@ class System_Paths:
                             f"{base_path}/{reg.name}", "route", reg.route
                         )
                     else:
-                        self.delete_img_hdf5(f"{base_path}/{reg.name}/route")
+                        self.delete_item_hdf5(f"{base_path}/{reg.name}/route")
                     if len(reg.trail) > 0:
                         self.save_img_hdf5(
                             f"{base_path}/{reg.name}", "trail", reg.trail
                         )
                     else:
-                        self.delete_img_hdf5(f"{base_path}/{reg.name}/trail")
+                        self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
         return

@@ -1,3 +1,4 @@
+from ast import List
 import itertools
 import numpy as np
 from components import path_tools
@@ -139,3 +140,27 @@ def multiple_contours_to_list(ctrs_list, minimal_seq=0):
         if len(seq) >= minimal_seq:
             list_of_contours_pts.append(seq)
     return list_of_contours_pts
+
+
+def organize_points_to_a_polygon(pts_list):
+    from math import atan2
+    """Organize points to avoid crossing lines when traced."""
+    def calculate_centroid(pts_list):
+        """Calculate the centroid of a list of points."""
+        x_coords = [point[0] for point in pts_list]
+        y_coords = [point[1] for point in pts_list]
+        centroid_x = sum(x_coords) / len(pts_list)
+        centroid_y = sum(y_coords) / len(pts_list)
+        return (centroid_x, centroid_y)
+
+    def angle_from_centroid(point, centroid):
+        """Calculate the angle of the point relative to the centroid."""
+        return atan2(point[1] - centroid[1], point[0] - centroid[0])
+
+    if len(pts_list) < 3:
+        return pts_list  # Not enough points to form a polyline
+    
+    centroid = calculate_centroid(pts_list)
+    # Sort points based on the angle from the centroid
+    sorted_points = sorted(pts_list, key=lambda point: angle_from_centroid(point, centroid))
+    return sorted_points

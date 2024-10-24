@@ -1338,22 +1338,30 @@ def cut_in_transversals(origens_circulos, linha_c1, linha_c2):
     contorno_2_lista = pt.x_y_para_pontos(np.nonzero(linha_c2))
     extremos_2 = pt.img_to_points(mt.hitmiss_ends_v2(linha_c2))
     for i, o in enumerate(origens_circulos):
-        o_vec = np.array(o) - np.array(origens_circulos[i - 1])
-        o_hat = o_vec / np.linalg.norm(o_vec)
-        angles_w_o1 = []
-        for v1 in contorno_1_lista:
-            v1_vec = np.array(v1) - np.array(o)
-            v1_hat = v1_vec / np.linalg.norm(v1_vec)
-            cos_teta1 = np.dot(o_hat, v1_hat)
-            angles_w_o1.append(abs(0 - cos_teta1))
-        transv1 = contorno_1_lista[np.argmin(angles_w_o1)]
+        if i == 0 or i == len(origens_circulos)-1 :
+            dists = [pt.distance_pts(o, x) for x in extremos_1]
+            transv1 = extremos_1[np.argmin(dists)]
+        else:
+            o_vec = np.array(o) - np.array(origens_circulos[i - 1])
+            o_hat = o_vec / np.linalg.norm(o_vec)
+            angles_w_o1 = []
+            for v1 in contorno_1_lista:
+                v1_vec = np.array(v1) - np.array(o)
+                v1_hat = v1_vec / np.linalg.norm(v1_vec)
+                cos_teta1 = np.dot(o_hat, v1_hat)
+                angles_w_o1.append(abs(0 - cos_teta1))
+            transv1 = contorno_1_lista[np.argmin(angles_w_o1)]
         angles_w_o2 = []
-        for v2 in contorno_2_lista:
-            v2_vec = np.array(v2) - np.array(o)
-            v2_hat = v2_vec / np.linalg.norm(v2_vec)
-            cos_teta2 = np.dot(o_hat, v2_hat)
-            angles_w_o2.append(abs(0 - cos_teta2))
-        transv2 = contorno_2_lista[np.argmin(angles_w_o2)]
+        if i == 0 or i == len(origens_circulos)-1 :
+            dists = [pt.distance_pts(o, x) for x in extremos_2]
+            transv2 = extremos_2[np.argmin(dists)]
+        else:
+            for v2 in contorno_2_lista:
+                v2_vec = np.array(v2) - np.array(o)
+                v2_hat = v2_vec / np.linalg.norm(v2_vec)
+                cos_teta2 = np.dot(o_hat, v2_hat)
+                angles_w_o2.append(abs(0 - cos_teta2))
+            transv2 = contorno_2_lista[np.argmin(angles_w_o2)]
         transversais.append([transv1, transv2])
         canvas = it.points_to_img([transv1], canvas)
         canvas = it.points_to_img([transv2], canvas)

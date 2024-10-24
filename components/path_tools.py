@@ -1340,6 +1340,8 @@ def layers_to_Gcode(
     vel_vazio,
     p_entre_camadas,
     layer_heights,
+    coords_substrato,
+    coords_corte,
 ):
     import os
 
@@ -1357,11 +1359,13 @@ def layers_to_Gcode(
         output += ";-------------------------\n"
         return output
 
-    def posicao_de_corte(output):
+    def posicao_de_corte(output, coords):
         output += ";-------POS de CORTE------\n"
         output += f";POS de Corte\n"
         output += f"G90\n"
-        output += f"G0 x200 Y50 F{vel_vazio}\n"
+        output += f"G0 Y{coords[0]} F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G0 x{coords[1]} F{vel_vazio}\n"
         output += f"M400\n"
         output += f"G4 P{p_entre_camadas}\n"
         output += f"G91\n"
@@ -1373,7 +1377,7 @@ def layers_to_Gcode(
         # output += f"G1 F{vel_ext}; speed g1\n"
         output += f"G90\n"
         output += f"G1 Z{layer_heights[n_layer]} ; Camada + 10mm\n"
-        output += f"G1 X{coords[1]*mm_per_pixel} Y{coords[0]*mm_per_pixel} F{vel_vazio}; POS INICIAL\n"
+        output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}; POS INICIAL\n"
         output += f"G91\n"
         return output
 
@@ -1398,6 +1402,8 @@ def layers_to_Gcode(
     base_frame = layers[0].base_frame
     for n_layer, layer in enumerate(layers):
         # folders.load_islands_hdf5(layer)
+        output = posicao_inicial(output, coords_substrato)
+        bfr = coords_substrato
         for n_island, island in enumerate(layer.islands):
             pontos_int = internal_tree[n_layer]
             pontos_ext = external_tree[n_layer]
@@ -1413,7 +1419,10 @@ def layers_to_Gcode(
                     flag_salto = 1
                 else:
                     coords = p
-                    coords = [base_frame[0] - coords[0], coords[1]]
+                    coords = [
+                        base_frame[0] - coords[0] + coords_substrato[0],
+                        coords[1] + coords_substrato[1],
+                    ]
                     if p in pontos_int:
                         flag_path_type = 0
                         vel = vel_int
@@ -1426,25 +1435,26 @@ def layers_to_Gcode(
                         flag_path_type = 2
                         vel = vel_thin_wall
                         texto_mudanca = ";----ThinWalls----\n"
-                    if i == 0:
-                        output = posicao_inicial(output, coords)
-                        output = religamento(output)
-                        bfr = coords
+                    # if i == 0:
+                    #     output = religamento(output)
+                    #     bfr = coords
                     if flag_path_type != last_flag:
                         output += f"G1 F{vel}; speed g1\n"
                         last_flag = flag_path_type
                         print(f"trocou para {flag_path_type}")
                         output += texto_mudanca
-                    if i > 0:
-                        desloc = np.subtract(coords, bfr)
-                        output += f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
-                        output += "M400\n"
-                        bfr = coords
-                        counter += 1
+                    # if i > 0:
+                    desloc = np.subtract(coords, bfr)
+                    output += (
+                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
+                    )
+                    output += "M400\n"
+                    bfr = coords
+                    counter += 1
                     if flag_salto == 1:
                         output = religamento(output)
                         flag_salto = 0
-            output = posicao_de_corte(output)
+            output = posicao_de_corte(output, coords_corte)
             output += ";____________________________________\n"
             output += "G90\n"
             output += "G0 X0 Y0\n"

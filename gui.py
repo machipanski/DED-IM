@@ -53,8 +53,8 @@ def ask_parameters_Gcode():
     """Pede os parametros para a produção, permitindo alterar o que ja esta padronizado"""
     msg = "Gcode parameters"
     title = "Gcode parameters"
-    fieldNames = ["vel_int", "vel_ext", "vel_thin_wall"]
-    fieldDefs = [360, 360, 360]  # we start with blanks for the values
+    fieldNames = ["vel_int", "vel_ext", "vel_thin_wall", "pausa_religamento(ms)", "pausa_desligamento(ms)", "vel_movimento_vazio", "pausa_entre_camadas"]
+    fieldDefs = [360, 360, 360, 1200, 700, 4000, 40000]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 

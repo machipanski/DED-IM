@@ -198,8 +198,13 @@ def add_routes_by_sequence_internal(
         name_of_zigzag_bridge = order_zigzag_bridges_regions[i]
         i_b_zb = island.bridges.zigzag_bridges
         i_b_zb_names = [x.name for x in i_b_zb]
-        references_a = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].reference_points
-        distances_a = [pt.distance_pts(references_a[0], int_pt),pt.distance_pts(references_a[1], int_pt)]
+        references_a = i_b_zb[
+            i_b_zb_names.index(name_of_zigzag_bridge)
+        ].reference_points
+        distances_a = [
+            pt.distance_pts(references_a[0], int_pt),
+            pt.distance_pts(references_a[1], int_pt),
+        ]
         rota_ponte = i_b_zb[i_b_zb_names.index(name_of_zigzag_bridge)].route
         refs = references_a
         dists = distances_a
@@ -1330,27 +1335,65 @@ def layers_to_Gcode(
     internal_tree,
     external_tree,
     tw_tree,
+    p_religamento,
+    p_desligamento,
+    vel_vazio,
+    p_entre_camadas,
+    layer_heights,
 ):
     import os
 
+    def religamento(output):
+        output += ";-------RELIGAMENTO------\n"
+        output += "M42 P4 S0\n"
+        output += f"G4 P{p_religamento}\n"
+        output += ";------------------------\n"
+        return output
+
+    def desligamento(output):
+        output += ";-------DESLIGAMENTO------\n"
+        output += "M42 P4 S255\n"
+        output += f"G4 P{p_desligamento}\n"
+        output += ";-------------------------\n"
+        return output
+
+    def posicao_de_corte(output):
+        output += ";-------POS de CORTE------\n"
+        output += f";POS de Corte\n"
+        output += f"G90\n"
+        output += f"G0 x200 Y50 F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G4 P{p_entre_camadas}\n"
+        output += f"G91\n"
+        output += ";------------------------\n"
+        return output
+
+    def posicao_inicial(output, coords):
+        output += f";_______LAYER{n_layer + 1}_____\n"
+        # output += f"G1 F{vel_ext}; speed g1\n"
+        output += f"G90\n"
+        output += f"G1 Z{layer_heights[n_layer]} ; Camada + 10mm\n"
+        output += f"G1 X{coords[1]*mm_per_pixel} Y{coords[0]*mm_per_pixel} F{vel_vazio}; POS INICIAL\n"
+        output += f"G91\n"
+        return output
+
     mm_per_pixel = layers[0].mm_per_pxl
-    layer_height = layers[0].layer_height
+    # layer_height = layers[0].layer_height
     outFile = f"{folders.selected}.gcode"
     output = ""
-    output += ";Layer height: " + str(layer_height) + "\n"
-    output += ";DPI: " + str(layers[0].dpi) + "\n"
-    output += ";Camadas: " + str(layers[0].n_camadas) + "\n"
-    output += ";void_max: " + str(layers[0].void_max) + "\n"
-    output += ";max_internal_walls: " + str(layers[0].max_internal_walls) + "\n"
-    output += ";max_external_walls: " + str(layers[0].max_external_walls) + "\n"
-    output += ";max_external_walls: " + str(layers[0].max_external_walls) + "\n"
-    output += ";path_radius: " + str(layers[0].path_radius_internal) + "\n"
-    output += ";n_max: " + str(layers[0].n_max) + "\n"
-    output += "G91\n"
-    output += "M400\n"
-    output += "M42 P4 S255; turn off welder\n"
-    output += "M400\n"
-    output += "G1 F360; speed g1\n"
+    # output += f";Layer height: {layer_height}\n"
+    output += f";DPI: {layers[0].dpi}\n"
+    output += f";Camadas: {layers[0].n_camadas}\n"
+    output += f";void_max: {layers[0].void_max}\n"
+    output += f";max_internal_walls: {layers[0].max_internal_walls}\n"
+    output += f";max_external_walls: {layers[0].max_external_walls}\n"
+    output += f";max_external_walls: {layers[0].max_external_walls}\n"
+    output += f";path_radius: {layers[0].path_radius_internal}\n"
+    output += f";n_max: {layers[0].n_max}\n"
+    output += f"G91\n"
+    output += f"M42 P4 S255; turn off welder\n"
+    output += f"G28 X0 Y0 Z0\n"
+    output += f"G1 F360; speed g1\n"
     bfr = [0, 0]
     base_frame = layers[0].base_frame
     for n_layer, layer in enumerate(layers):
@@ -1359,56 +1402,57 @@ def layers_to_Gcode(
             pontos_int = internal_tree[n_layer]
             pontos_ext = external_tree[n_layer]
             pontos_tw = tw_tree[n_layer]
-            seq = island.island_route
-            chain = seq
+            chain = island.island_route
             counter = 0
             flag_salto = 0
-            output += "M400; Inicio; Layer" + str(n_layer + 1) + "\n"
-            output += f"G1 F{vel_ext}; speed g1\n"
-            output += "G1 Z" + str(layer_height) + " ; POS INICIAL\n"
-            flag_path_type = 0
+            flag_path_type = 99
             last_flag = 0
             for i, p in enumerate(chain):
                 if p == ["a", "a"]:
-                    output += "M42 P4 S255; turn off welder\n"
+                    output = desligamento(output)
                     flag_salto = 1
                 else:
+                    coords = p
+                    coords = [base_frame[0] - coords[0], coords[1]]
                     if p in pontos_int:
                         flag_path_type = 0
                         vel = vel_int
+                        texto_mudanca = ";----Interno----\n"
                     if p in pontos_ext:
                         flag_path_type = 1
                         vel = vel_ext
+                        texto_mudanca = ";----Externo----\n"
                     if p in pontos_tw:
                         flag_path_type = 2
                         vel = vel_thin_wall
+                        texto_mudanca = ";----ThinWalls----\n"
+                    if i == 0:
+                        output = posicao_inicial(output, coords)
+                        output = religamento(output)
+                        bfr = coords
                     if flag_path_type != last_flag:
                         output += f"G1 F{vel}; speed g1\n"
                         last_flag = flag_path_type
                         print(f"trocou para {flag_path_type}")
-                    if i == 1:
-                        output += "M42 P4 S0; turn on welder\n"
-                        output += "G4 P2000\n"
-                    coords = p
-                    coords = [base_frame[0] - coords[0], coords[1]]
-                    desloc = np.subtract(coords, bfr)
-                    output += (
-                        "G1 X"
-                        + str(desloc[1] * mm_per_pixel)
-                        + " Y"
-                        + str(desloc[0] * mm_per_pixel)
-                        + "\n"
-                    )
-                    output += "M400\n"
-                    bfr = coords
-                    counter += 1
+                        output += texto_mudanca
+                    if i > 0:
+                        desloc = np.subtract(coords, bfr)
+                        output += f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
+                        output += "M400\n"
+                        bfr = coords
+                        counter += 1
                     if flag_salto == 1:
-                        output += "M42 P4 S0; turn on welder\n"
-                        output += "G4 P2000\n"
+                        output = religamento(output)
                         flag_salto = 0
-            output += "G4 P30000\n"
-    output += "G1 Z" + str(2 * layer_height) + " ; POS FINAL\n"
-    output += "M104 S0; End of Gcode\n"
+            output = posicao_de_corte(output)
+            output += ";____________________________________\n"
+            output += "G90\n"
+            output += "G0 X0 Y0\n"
+            output += "G91\n"
+            # output += f"G28 X0 Y0\n"
+    output += f"G1 Z20\n"
+    output += f"G28 X0 Y0\n"
+    output += f"M104 S0; End of Gcode\n"
     os.chdir(folders.output)
     f = open(outFile, "w")
     f.write(output)

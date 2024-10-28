@@ -1,5 +1,6 @@
 from __future__ import annotations
 from ctypes.wintypes import HSTR
+from tkinter import X
 from typing import TYPE_CHECKING, Dict, reveal_type
 import itertools
 import math
@@ -399,8 +400,10 @@ def connect_offset_bridges(
 ) -> Path:
     def integrate_bridge(todas_espirais, path_radius, pontos_extremos, base_frame):
 
-        def filtrar_pontos(y_val):
-            return [p for p in todas_espirais_points if p[0] == y_val]
+        def filtrar_pontos(y_val, x_val):
+            validos_no_y = [p for p in todas_espirais_points if p[0] == y_val]
+            validos_no_yx = [p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)]
+            return validos_no_yx
 
         def find_contacts(pontos, condicao):
             return [p for p in pontos if condicao(p[1])]
@@ -416,9 +419,14 @@ def connect_offset_bridges(
             y_da_ponte,
             int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),
         ]
+        limites_x = [min(x_pontos_extremos)-2*path_radius, max(x_pontos_extremos)+2*path_radius]
         todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-        same_y_up_inside = filtrar_pontos(y_de_cima)
-        same_y_down_inside = filtrar_pontos(y_de_baixo)
+        same_y_up_inside = filtrar_pontos(y_de_cima, limites_x)
+        if len(same_y_up_inside) < 2:
+            same_y_up_inside = filtrar_pontos(y_de_cima+1, limites_x)
+        same_y_down_inside = filtrar_pontos(y_de_baixo, limites_x)
+        if len(same_y_down_inside) < 2:
+            same_y_down_inside = filtrar_pontos(y_de_baixo-1, limites_x)
         contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
         contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
         contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
@@ -1435,9 +1443,9 @@ def layers_to_Gcode(
                         flag_path_type = 2
                         vel = vel_thin_wall
                         texto_mudanca = ";----ThinWalls----\n"
-                    # if i == 0:
-                    #     output = religamento(output)
-                    #     bfr = coords
+                    if i == 1:
+                        output = religamento(output)
+                        # bfr = coords
                     if flag_path_type != last_flag:
                         output += f"G1 F{vel}; speed g1\n"
                         last_flag = flag_path_type
@@ -1456,10 +1464,10 @@ def layers_to_Gcode(
                         flag_salto = 0
             output = posicao_de_corte(output, coords_corte)
             output += ";____________________________________\n"
-            output += "G90\n"
-            output += "G0 X0 Y0\n"
-            output += "G91\n"
-            # output += f"G28 X0 Y0\n"
+            # output += "G90\n"
+            # output += "G0 X0 Y0\n"
+            # output += "G91\n"
+            output += f"G28 X0 Y0\n"
     output += f"G1 Z20\n"
     output += f"G28 X0 Y0\n"
     output += f"M104 S0; End of Gcode\n"

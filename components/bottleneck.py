@@ -609,7 +609,7 @@ class BridgeRegions:
         norm_reduced_origins = [
             x.astype(np.float64) * normalized_distance_map for x in reduced_origins
         ]
-
+        all_bridges = np.zeros(base_frame)
         for i, candidate in enumerate(norm_reduced_origins):
             # if not (
             #     np.logical_and(trunk, galhos_soltos)

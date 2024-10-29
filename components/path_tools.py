@@ -246,35 +246,35 @@ def add_routes_by_sequence_internal(
 
 
 def connect_thin_walls(island: Island, path_radius_external):
+    new_route = Path("thin wall tree", [], [], saltos=[])
     if hasattr(island.thin_walls, "all_origins"):
-        thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
-        thinwall_path_list = []
-        for i, tw in enumerate(thinwall_list):
-            tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
-            tw_path = img_to_chain(tw.astype(np.uint8))[0]
-            one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
-            tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
-            tw_path = cut_repetition(tw_path)
-            thinwall_path_list.append(Path(i, tw_path, img=tw))
-            thinwall_path_list[-1].get_regions(island)
-        nova_rota = []
-        saltos = []
-        thinwalls_included = []
-        for tw_p in thinwall_path_list:
-            saltos.append(tw_p.sequence[-1])
-            nova_rota = nova_rota + tw_p.sequence
-            thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
-        new_regions = {
-            "offsets": [],
-            "zigzags": [],
-            "cross_over_bridges": [],
-            "offset_bridges": [],
-            "zigzag_bridges": [],
-            "thin walls": list(thinwalls_included),
-        }
-        new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
-    else:
-        new_route = Path("thin wall tree", [], [], saltos=[])
+        if sum(island.thin_walls.all_origins):
+            thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
+            thinwall_path_list = []
+            for i, tw in enumerate(thinwall_list):
+                tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
+                tw_path = img_to_chain(tw.astype(np.uint8))[0]
+                one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
+                tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
+                tw_path = cut_repetition(tw_path)
+                thinwall_path_list.append(Path(i, tw_path, img=tw))
+                thinwall_path_list[-1].get_regions(island)
+            nova_rota = []
+            saltos = []
+            thinwalls_included = []
+            for tw_p in thinwall_path_list:
+                saltos.append(tw_p.sequence[-1])
+                nova_rota = nova_rota + tw_p.sequence
+                thinwalls_included = thinwalls_included + tw_p.regions["thin walls"]
+            new_regions = {
+                "offsets": [],
+                "zigzags": [],
+                "cross_over_bridges": [],
+                "offset_bridges": [],
+                "zigzag_bridges": [],
+                "thin walls": list(thinwalls_included),
+            }
+            new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
     return new_route
 
 

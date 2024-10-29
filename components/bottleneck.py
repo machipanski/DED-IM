@@ -576,8 +576,6 @@ class BridgeRegions:
             rest_of_picture.astype(np.uint8), 4 * path_radius
         )
         self.medial_transform = sem_galhos * sem_galhos_dist
-        # all_bridges = np.zeros(base_frame)
-        # all_origins = np.zeros(base_frame)
         max_width = necks_max_paths
         counter = 0
         trunks = [pt.contour_to_list([x]) for x in trunks]
@@ -595,8 +593,6 @@ class BridgeRegions:
                     normalized_trunks_less_than_2wd.append(new_trunk.astype(float)*normalized_distance_map)
         n_trilhas_max = [(np.unique(trunk))[1] for trunk in normalized_trunks_less_than_2wd]
         all_origins = np.zeros(base_frame)
-        divided_by_large_areas = []
-        tw_origins = []
         origin_candidates = [
             normalized_trunks_less_than_2wd[i]
             for i, x in enumerate(n_trilhas_max)
@@ -611,13 +607,6 @@ class BridgeRegions:
         ]
         all_bridges = np.zeros(base_frame)
         for i, candidate in enumerate(norm_reduced_origins):
-            # if not (
-            #     np.logical_and(trunk, galhos_soltos)
-            # ).any():  # TODO aqui não precisa do galhos soltos mais!!!!
-            # n_trilhas_max = sem_galhos_dist / path_radius
-            # bridge_origin = np.logical_and(trunk != 0, trunk < max_width)
-            # if np.sum(bridge_origin > 0) > path_radius:
-            #     bridge_origin = it.take_the_bigger_area(candidate)
             try:
                 bridge_img, elementos_contorno, contorno, pontos_extremos = (
                     close_bridge_contour(

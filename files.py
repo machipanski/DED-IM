@@ -98,35 +98,10 @@ class System_Paths:
                         b_region_group = b_group.get(j_key)
                         b_region_group_props = dict(b_region_group.attrs)
                         cob.append(
-                            Bridge(
-                                j_key,
-                                [],
-                                [],
-                                [],
-                                0,
-                                [],
-                                # pontos_extremos=b_region_group_props["pontos_extremos"],
-                                # linked_offset_regions=b_region_group_props[
-                                #     "linked_offset_regions"
-                                # ],
-                                # linked_zigzag_regions=b_region_group_props[
-                                #     "linked_zigzag_regions"
-                                # ],
-                                **b_region_group_props,
-                            )
+                            Bridge(j_key, [], [], [], 0, [], **b_region_group_props)
                         )
                         for k_key, k_item in b_region_group.items():
                             setattr(cob[-1], k_key, np.array(k_item))
-                        # setattr(
-                        #     cob[-1],
-                        #     "reference_points",
-                        #     b_region_group_props["reference_points"],
-                        # )
-                        # setattr(
-                        #     cob[-1],
-                        #     "reference_points_b",
-                        #     b_region_group_props["reference_points_b"],
-                        # )
         f.close()
         os.chdir(self.home)
         return
@@ -290,172 +265,6 @@ class System_Paths:
         os.chdir(self.home)
         return
 
-    def save_bridges_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
-            if np.sum(isl.rest_of_picture_f3) > 0:
-                self.save_img_hdf5(
-                    f"/{layer_name}/{isl.name}",
-                    "rest_of_picture_f3",
-                    isl.rest_of_picture_f3,
-                )
-                self.save_img_hdf5(
-                    f"/{layer_name}/{isl.name}/bridges",
-                    "all_bridges",
-                    isl.bridges.all_bridges,
-                )
-                self.create_new_hdf5_group(
-                    f"/{layer_name}/{isl.name}/bridges/offset_bridges"
-                )
-                self.create_new_hdf5_group(
-                    f"/{layer_name}/{isl.name}/bridges/zigzag_bridges"
-                )
-                self.create_new_hdf5_group(
-                    f"/{layer_name}/{isl.name}/bridges/cross_over_bridges"
-                )
-                for reg in isl.bridges.offset_bridges:
-                    path_region = (
-                        f"/{layer_name}/{isl.name}/bridges/offset_bridges/{reg.name}"
-                    )
-                    self.create_new_hdf5_group(path_region)
-                    self.save_img_hdf5(path_region, f"img", reg.img)
-                    self.save_img_hdf5(path_region, f"origin", reg.origin)
-                    self.save_props_hdf5(path_region, reg.__dict__)
-                for reg in isl.bridges.zigzag_bridges:
-                    path_region = (
-                        f"/{layer_name}/{isl.name}/bridges/zigzag_bridges/{reg.name}"
-                    )
-                    self.create_new_hdf5_group(path_region)
-                    self.save_img_hdf5(path_region, f"img", reg.img)
-                    self.save_img_hdf5(path_region, f"origin", reg.origin)
-                    self.delete_item_hdf5(path_region + f"/contorno")
-                    self.save_img_hdf5(path_region, f"contorno", reg.contorno)
-                    self.save_props_hdf5(path_region, reg.__dict__)
-                for reg in isl.bridges.cross_over_bridges:
-                    path_region = f"/{layer_name}/{isl.name}/bridges/cross_over_bridges/{reg.name}"
-                    self.create_new_hdf5_group(path_region)
-                    self.save_img_hdf5(path_region, f"img", reg.img)
-                    self.save_img_hdf5(path_region, f"origin", reg.origin)
-                    self.delete_item_hdf5(path_region + f"/contorno")
-                    self.save_img_hdf5(path_region, f"contorno", reg.contorno)
-                    self.save_props_hdf5(path_region, reg.__dict__)
-        return
-
-    def save_bridges_routes_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
-            if np.sum(isl.rest_of_picture_f3) > 0:
-                for reg in isl.bridges.offset_bridges:
-                    region_path = (
-                        f"/{layer_name}/{isl.name}/bridges/offset_bridges/{reg.name}"
-                    )
-                    self.save_img_hdf5(region_path, "route", reg.route.astype(bool))
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_props_hdf5(region_path, reg.__dict__)
-                for reg in isl.bridges.zigzag_bridges:
-                    region_path = (
-                        f"/{layer_name}/{isl.name}/bridges/zigzag_bridges/{reg.name}"
-                    )
-                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_props_hdf5(region_path, reg.__dict__)
-                for reg in isl.bridges.cross_over_bridges:
-                    region_path = f"/{layer_name}/{isl.name}/bridges/cross_over_bridges/{reg.name}"
-                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
-                    self.save_img_hdf5(
-                        region_path, f"route_b", reg.route_b.astype(bool)
-                    )
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_img_hdf5(
-                        region_path, f"trail_b", reg.trail_b.astype(bool)
-                    )
-                    self.save_props_hdf5(region_path, reg.__dict__)
-        return
-
-    def save_external_routes_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
-            element_path = f"/{layer_name}/{isl.name}/external_tree_route"
-            self.create_new_hdf5_group(element_path)
-            self.save_props_hdf5(element_path, isl.external_tree_route.__dict__)
-            self.delete_item_hdf5(element_path + "/sequence")
-            self.save_seq_hdf5(
-                element_path, "sequence", isl.external_tree_route.sequence
-            )
-            self.delete_item_hdf5(element_path + "/img")
-            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
-            self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
-        return
-
-    def save_internal_routes_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
-            element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
-            self.create_new_hdf5_group(element_path)
-            self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
-            self.delete_item_hdf5(f"{element_path}/sequence")
-            self.save_seq_hdf5(
-                element_path, "sequence", isl.internal_tree_route.sequence
-            )
-            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
-            self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
-        return
-
-    def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
-            element_path = f"/{layer_name}/{isl.name}/thinwalls_tree_route"
-            self.create_new_hdf5_group(element_path)
-            self.save_props_hdf5(element_path, isl.thinwalls_tree_route.__dict__)
-            self.save_seq_hdf5(
-                element_path, "sequence", isl.thinwalls_tree_route.sequence
-            )
-            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
-            self.save_img_hdf5(element_path, "img", isl.thinwalls_tree_route.img)
-        return
-
-    def save_img_hdf5(self, path, name, img, type="bool"):
-        os.chdir(self.output)
-        f = h5py.File(self.save_file_name, "a")
-        try:
-            local = f.get(path)
-            if local.get(name):
-                # self.delete_img_hdf5(path+"/"+name)
-                local[name][...] = img.astype(local.get(name).dtype)
-            else:
-                local.create_dataset(name, compression="gzip", data=img)
-        except:
-            print("ERRO: não salvou imagem!")
-            pass
-        finally:
-            f.close()
-            os.chdir(self.home)
-        return
-
-    def delete_item_hdf5(self, path):
-        os.chdir(self.output)
-        f = h5py.File(self.save_file_name, "a")
-        try:
-            del f[path]
-        except:
-            print("ERRO: não deletou a coisa")
-            pass
-        finally:
-            f.close()
-            os.chdir(self.home)
-        return
-
-    def call_slicer(self, file_name: str, path_input, dpi, layer_height):
-        list_layers = []
-        os.chdir(self.slicer)
-        subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
-        camadas_imgs_names = self.list(origins=1)
-        n_camadas = len(camadas_imgs_names)
-        os.chdir(self.sliced)
-        for i, file_path in enumerate(camadas_imgs_names):
-            layer = Layer()
-            layer.make_input_img(
-                f"L_{i:03d}", file_path, dpi, i % 2, layer_height, n_camadas
-            )
-            list_layers.append(layer)
-        os.chdir(self.home)
-        return list_layers
-
     def save_layers(self, save_name, layers_list: List[Layer]):
         os.chdir(self.output)
         try:
@@ -534,7 +343,107 @@ class System_Paths:
             os.chdir(self.home)
         return
 
-    def save_zigzags_hdf5(self, layer_name, islands: List[Island]):
+    def save_regs_thinwalls_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            island_group_name = f"/{layer_name}/{isl.name}"
+            self.create_new_hdf5_group(f"{island_group_name}/thin_walls")
+            self.delete_item_hdf5(island_group_name+"rest_of_picture_f1")
+            self.save_img_hdf5(island_group_name, "rest_of_picture_f1", isl.rest_of_picture_f1)
+            if len(isl.thin_walls.regions) > 0:
+                island_tw_group_name = f"/{layer_name}/{isl.name}/thin_walls"
+                self.save_img_hdf5(island_tw_group_name, "all_thin_walls", isl.thin_walls.all_thin_walls)
+                self.save_img_hdf5(island_tw_group_name, "all_origins", isl.thin_walls.all_origins)
+                for reg in isl.thin_walls.regions:
+                    tw_group_path = f"{island_tw_group_name}/{reg.name}"
+                    self.delete_item_hdf5(tw_group_path)
+                    self.create_new_hdf5_group(tw_group_path)
+                    self.save_props_hdf5(tw_group_path, reg.__dict__)
+                    self.save_img_hdf5(tw_group_path, f"img", reg.img)
+                    self.save_img_hdf5(tw_group_path, f"origin", reg.origin)
+                    self.save_img_hdf5(tw_group_path, f"linha1", reg.elementos_contorno[0])
+                    self.save_img_hdf5(tw_group_path, f"linha2", reg.elementos_contorno[1])
+                    self.save_img_hdf5(tw_group_path, f"linhabaixo", reg.elementos_contorno[3])
+                    self.save_img_hdf5(tw_group_path, f"linhatopo", reg.elementos_contorno[2])
+        return
+
+    def save_regs_bridges_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            if np.sum(isl.rest_of_picture_f3) > 0:
+                path_island = f"/{layer_name}/{isl.name}"
+                self.save_img_hdf5(
+                    path_island, "rest_of_picture_f3", isl.rest_of_picture_f3
+                )
+                path_island_bridges = f"{path_island}/bridges"
+                self.delete_item_hdf5(f"{path_island_bridges}")
+                self.create_new_hdf5_group(f"{path_island_bridges}")
+                self.save_img_hdf5(
+                    path_island_bridges, "all_bridges", isl.bridges.all_bridges
+                )
+                self.create_new_hdf5_group(f"{path_island_bridges}/offset_bridges")
+                self.create_new_hdf5_group(f"{path_island_bridges}/zigzag_bridges")
+                self.create_new_hdf5_group(f"{path_island_bridges}/cross_over_bridges")
+                for reg in isl.bridges.offset_bridges:
+                    path_region = f"{path_island_bridges}/offset_bridges/{reg.name}"
+                    self.create_new_hdf5_group(path_region)
+                    self.save_img_hdf5(path_region, f"img", reg.img)
+                    self.save_img_hdf5(path_region, f"origin", reg.origin)
+                    self.save_props_hdf5(path_region, reg.__dict__)
+                for reg in isl.bridges.zigzag_bridges:
+                    path_region = f"{path_island_bridges}/zigzag_bridges/{reg.name}"
+                    self.create_new_hdf5_group(path_region)
+                    self.save_img_hdf5(path_region, f"img", reg.img)
+                    self.save_img_hdf5(path_region, f"origin", reg.origin)
+                    self.delete_item_hdf5(path_region + f"/contorno")
+                    self.save_img_hdf5(path_region, f"contorno", reg.contorno)
+                    self.save_props_hdf5(path_region, reg.__dict__)
+                for reg in isl.bridges.cross_over_bridges:
+                    path_region = f"{path_island_bridges}/cross_over_bridges/{reg.name}"
+                    self.create_new_hdf5_group(path_region)
+                    self.save_img_hdf5(path_region, f"img", reg.img)
+                    self.save_img_hdf5(path_region, f"origin", reg.origin)
+                    self.delete_item_hdf5(path_region + f"/contorno")
+                    self.save_img_hdf5(path_region, f"contorno", reg.contorno)
+                    self.save_props_hdf5(path_region, reg.__dict__)
+        return
+
+    def save_regs_offsets_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            path_island = f"/{layer_name}/{isl.name}"
+            if np.sum(isl.rest_of_picture_f2) > 0:
+                self.save_img_hdf5(
+                    path_island, "rest_of_picture_f2", isl.rest_of_picture_f2
+                )
+                path_island_offsets = f"{path_island}/offsets"
+                self.delete_item_hdf5(path_island_offsets)
+                self.create_new_hdf5_group(path_island_offsets)
+                self.save_img_hdf5(
+                    path_island_offsets,
+                    "all_loops",
+                    isl.offsets.all_valid_loops.astype(bool),
+                )
+                for reg in isl.offsets.regions:
+                    reg_path = f"{path_island_offsets}/Reg_{reg.name:03d}"
+                    self.create_new_hdf5_group(reg_path)
+                    self.save_props_hdf5(reg_path, reg.__dict__)
+                    self.save_img_hdf5(
+                        reg_path,
+                        "img",
+                        reg.img.astype(bool),
+                    )
+                    self.create_new_hdf5_group(f"{reg_path}/loops")
+                    for i, loop in enumerate(reg.loops):
+                        self.save_img_hdf5(
+                            f"{reg_path}/loops",
+                            f"Lp_{i:03d}",
+                            loop.route.astype(bool),
+                        )
+                        self.save_props_hdf5(
+                            f"{reg_path}/loops/Lp_{i:03d}",
+                            loop.__dict__,
+                        )
+        return
+
+    def save_regs_zigzags_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:
             base_path = f"/{layer_name}/{isl.name}/zigzags"
             if np.sum(isl.rest_of_picture_f3) > 0:
@@ -559,3 +468,117 @@ class System_Paths:
                     else:
                         self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
         return
+
+    def save_routes_bridges_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            if np.sum(isl.rest_of_picture_f3) > 0:
+                path_bridges = f"/{layer_name}/{isl.name}/bridges"
+                for reg in isl.bridges.offset_bridges:
+                    region_path = f"{path_bridges}/offset_bridges/{reg.name}"
+                    self.save_img_hdf5(region_path, "route", reg.route.astype(bool))
+                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
+                    self.save_props_hdf5(region_path, reg.__dict__)
+                for reg in isl.bridges.zigzag_bridges:
+                    region_path = f"{path_bridges}/zigzag_bridges/{reg.name}"
+                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
+                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
+                    self.save_props_hdf5(region_path, reg.__dict__)
+                for reg in isl.bridges.cross_over_bridges:
+                    region_path = f"{path_bridges}/cross_over_bridges/{reg.name}"
+                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
+                    self.save_img_hdf5(
+                        region_path, f"route_b", reg.route_b.astype(bool)
+                    )
+                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
+                    self.save_img_hdf5(
+                        region_path, f"trail_b", reg.trail_b.astype(bool)
+                    )
+                    self.save_props_hdf5(region_path, reg.__dict__)
+        return
+
+    def save_external_routes_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            element_path = f"/{layer_name}/{isl.name}/external_tree_route"
+            self.create_new_hdf5_group(element_path)
+            self.save_props_hdf5(element_path, isl.external_tree_route.__dict__)
+            self.delete_item_hdf5(element_path + "/sequence")
+            self.save_seq_hdf5(
+                element_path, "sequence", isl.external_tree_route.sequence
+            )
+            self.delete_item_hdf5(element_path + "/img")
+            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
+        return
+
+    def save_internal_routes_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
+            self.create_new_hdf5_group(element_path)
+            self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
+            self.delete_item_hdf5(f"{element_path}/sequence")
+            self.save_seq_hdf5(
+                element_path, "sequence", isl.internal_tree_route.sequence
+            )
+            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
+        return
+
+    def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):
+        for isl in islands:
+            element_path = f"/{layer_name}/{isl.name}/thinwalls_tree_route"
+            self.create_new_hdf5_group(element_path)
+            self.save_props_hdf5(element_path, isl.thinwalls_tree_route.__dict__)
+            self.save_seq_hdf5(
+                element_path, "sequence", isl.thinwalls_tree_route.sequence
+            )
+            self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
+            self.save_img_hdf5(element_path, "img", isl.thinwalls_tree_route.img)
+        return
+
+    def save_img_hdf5(self, path, name, img, type="bool"):
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "a")
+        try:
+            local = f.get(path)
+            if local.get(name):
+                # self.delete_img_hdf5(path+"/"+name)
+                local[name][...] = img.astype(local.get(name).dtype)
+            else:
+                local.create_dataset(name, compression="gzip", data=img)
+        except:
+            print("ERRO: não salvou imagem!")
+            pass
+        finally:
+            f.close()
+            os.chdir(self.home)
+        return
+
+    def delete_item_hdf5(self, path):
+        os.chdir(self.output)
+        f = h5py.File(self.save_file_name, "a")
+        try:
+            del f[path]
+            print(f"deletado: {path}")
+        except:
+            print("ERRO: não deletou a coisa")
+            pass
+        finally:
+            f.close()
+            os.chdir(self.home)
+        return
+
+    def call_slicer(self, file_name: str, path_input, dpi, layer_height):
+        list_layers = []
+        os.chdir(self.slicer)
+        subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
+        camadas_imgs_names = self.list(origins=1)
+        n_camadas = len(camadas_imgs_names)
+        os.chdir(self.sliced)
+        for i, file_path in enumerate(camadas_imgs_names):
+            layer = Layer()
+            layer.make_input_img(
+                f"L_{i:03d}", file_path, dpi, i % 2, layer_height, n_camadas
+            )
+            list_layers.append(layer)
+        os.chdir(self.home)
+        return list_layers

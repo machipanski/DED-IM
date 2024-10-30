@@ -1,7 +1,7 @@
 from __future__ import annotations
 import copy
 from typing import TYPE_CHECKING, Dict, reveal_type
-from components import images_tools as it, path_tools
+from components import images_tools as it, path_tools, points_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
 from components.offset import OffsetRegions
@@ -11,11 +11,12 @@ from timer import Timer
 import numpy as np
 import concurrent.futures
 from functools import wraps
+from components import points_tools
+from components.path_tools import Path
 
 if TYPE_CHECKING:
     from files import System_Paths
     from components.zigzag import ZigZag
-    from components.path_tools import Path
     from typing import List
 
 
@@ -70,8 +71,28 @@ class Layer:
 
     def close_final_path(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
+        # internal_trees = []
+        # external_trees = []
+        # tw_trees = []
+        folders.load_islands_hdf5(self)
         for island in self.islands:
+            folders.load_offsets_hdf5(self.name, island)
+            # folders.load_zigzags_hdf5(self.name, island)
             folders.load_island_paths_hdf5(self.name, island)
+            with Timer("Encontrando ponto de união ext-int"):
+                island.comeco_ext, island.comeco_int = (
+                    path_tools.connect_internal_external(
+                        island, self.path_radius_internal
+                    )
+                )
+                island.external_tree_route.sequence = path_tools.set_first_pt_in_seq(
+                    [list(x) for x in island.external_tree_route.sequence],
+                    island.comeco_ext,
+                )
+                island.internal_tree_route.sequence = path_tools.set_first_pt_in_seq(
+                    [list(x) for x in island.internal_tree_route.sequence],
+                    island.comeco_int,
+                )
             with Timer("Conectando ambas as partes"):
                 internal_simpl = path_tools.simplifica_retas_master(
                     island.internal_tree_route.sequence,
@@ -88,12 +109,35 @@ class Layer:
                     0.001,
                     island.thinwalls_tree_route.saltos,
                 )
-            island.island_route = external_simpl + internal_simpl + thinwalls_simpl
+            island_route_path = external_simpl + internal_simpl + thinwalls_simpl
             if self.odd_layer == 1:
                 print("layer rotacionada")
                 island.island_route = path_tools.rotate_path_odd_layer(
-                    island.island_route, self.base_frame
+                    island_route_path, self.base_frame
                 )
+
+            island_new_regions = [
+                island.internal_tree_route.regions
+                + island.external_tree_route.regions
+                + island.thinwalls_tree_route.regions
+            ]
+            island_saltos = [
+                island.internal_tree_route.saltos
+                + island.external_tree_route.saltos
+                + island.thinwalls_tree_route.saltos
+            ]
+            island.island_route = Path(
+                "island_route",
+                island_route_path,
+                island_new_regions,
+                saltos=island_saltos,
+            )
+
+            with Timer("salvando imagens das rotas"):
+                folders.save_final_routes_hdf5(self.name, self.islands)
+            # internal_trees.append([list(x) for x in island.internal_tree_route.sequence])
+            # external_trees.append([list(x) for x in island.external_tree_route.sequence])
+            # tw_trees.append([list(x) for x in island.thinwalls_tree_route.sequence])
         return
 
     def close_routes_external(self, folders: System_Paths):
@@ -104,12 +148,6 @@ class Layer:
                 folders.load_zigzags_hdf5(self.name, isl)
                 folders.load_bridges_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
-                with Timer("Encontrando ponto de união ext-int"):
-                    isl.comeco_ext, isl.comeco_int = (
-                        path_tools.connect_internal_external(
-                            isl, self.path_radius_internal
-                        )
-                    )
                 with Timer("Conectando pontes de Offset"):
                     isl.external_tree_route = path_tools.connect_offset_bridges(
                         isl,
@@ -131,6 +169,7 @@ class Layer:
             folders.load_zigzags_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
+            # folders.load_island_paths_hdf5(self.name, isl)
             with Timer("Conectando zgzags vizinhos"):
                 isl.internal_tree_route = path_tools.zigzag_imgs_to_path(
                     isl, mt.make_mask(self, "full_int"), self.path_radius_internal
@@ -138,6 +177,9 @@ class Layer:
             with Timer("Conectando pontes de zigzag"):
                 isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
                 isl.internal_tree_route.get_img(self.base_frame)
+
+            # with Timer("casando começo int com final ext"):
+            #     path_tools.set_first_pt_in_seq([list(x) for x in isl.internal_tree_route.sequence], list(isl.comeco_int))
 
         with Timer("salvando imagens das rotas"):
             folders.save_internal_routes_hdf5(self.name, self.islands)
@@ -263,7 +305,9 @@ class Layer:
             for island in self.islands:
                 island.rest_of_picture_f1 = copy.deepcopy(self.original_img)
                 for reg in island.thin_walls.regions:
-                    island.rest_of_picture_f1 = it.image_subtract(island.rest_of_picture_f1, reg.img)
+                    island.rest_of_picture_f1 = it.image_subtract(
+                        island.rest_of_picture_f1, reg.img
+                    )
                 # island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
                 # if hasattr(island, "thin_walls"):
                 #     self.rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
@@ -481,7 +525,7 @@ class Layer:
         nozzle_diam_internal: float,
         folders: System_Paths,
         n_camadas,
-        sum_prohibited_areas
+        sum_prohibited_areas,
     ):
 
         def paralelizando(func):

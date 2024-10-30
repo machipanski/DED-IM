@@ -41,7 +41,7 @@ def extreme_points(img, force_top=False):
         chull = convex_hull_image(img)
         sequence = path_tools.img_to_chain(chull)
         sequence_simpl = path_tools.simplifica_retas_master(sequence, 0.001, [])
-        sequence_simpl.remove(["a", "a"])
+        sequence_simpl.remove([0, 0])
         regyar = it.chain_to_lines(
             [[x[1], x[0]] for x in sequence_simpl], np.zeros_like(img)
         )
@@ -144,7 +144,9 @@ def multiple_contours_to_list(ctrs_list, minimal_seq=0):
 
 def organize_points_to_a_polygon(pts_list):
     from math import atan2
+
     """Organize points to avoid crossing lines when traced."""
+
     def calculate_centroid(pts_list):
         """Calculate the centroid of a list of points."""
         x_coords = [point[0] for point in pts_list]
@@ -159,8 +161,10 @@ def organize_points_to_a_polygon(pts_list):
 
     if len(pts_list) < 3:
         return pts_list  # Not enough points to form a polyline
-    
+
     centroid = calculate_centroid(pts_list)
     # Sort points based on the angle from the centroid
-    sorted_points = sorted(pts_list, key=lambda point: angle_from_centroid(point, centroid))
+    sorted_points = sorted(
+        pts_list, key=lambda point: angle_from_centroid(point, centroid)
+    )
     return sorted_points

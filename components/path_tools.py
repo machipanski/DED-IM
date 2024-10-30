@@ -330,8 +330,8 @@ def connect_cross_over_bridges(island: Island) -> Path:
         nova_rota = start_path.sequence
         saltos = []
     else:
-        start_point_ext = [island.comeco_ext[0], island.comeco_ext[1]]
-        start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_ext)
+        # start_point_ext = [island.comeco_ext[0], island.comeco_ext[1]]
+        # start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_ext)
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
         stop = 0
@@ -374,24 +374,35 @@ def connect_cross_over_bridges(island: Island) -> Path:
 
 def connect_internal_external(island: Island, path_radius_internal):
     # internal = it.sum_imgs([z.route for z in island.zigzags.regions]).astype(np.uint8)
-    filling = island.zigzags.all_zigzags.astype(np.uint8)
+    # filling = island.zigzags.all_zigzags.astype(np.uint8)
+    filling = island.internal_tree_route.get_img(island.img.shape)
     most_external = island.offsets.regions[0].route.astype(np.uint8)
-    offset = int(path_radius_internal * 2)
+    dilation_kernel = int(path_radius_internal * 2)
+    # dilation_kernel = int(path_radius_internal * 3)
     h_starts = []
-    while len(h_starts) == 0:
-        offset = offset + 1
-        hy, hx = np.where(filling[offset:] & most_external[:-offset])
-        h_starts = [(x, y) for x, y in zip(hx, hy)]
-        print(offset)
-    canvas = np.zeros_like(filling)
-    for x, y in h_starts:
-        canvas[y, x] = 1
-    candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
-    if not candidates_external:
-        candidates_external = pt.x_y_para_pontos(np.nonzero(most_external))
-    chosen_external = random.choice(candidates_external)
-    internal_pts = pt.x_y_para_pontos(np.nonzero(filling))
-    chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
+    # while len(h_starts) == 0:
+    touching = np.zeros_like(island.img)
+    while np.sum(touching) == 0:
+        aaa = it.sum_imgs([filling, mt.dilation(most_external, kernel_size=dilation_kernel)])
+        touching = aaa ==2
+        dilation_kernel = dilation_kernel + 2
+        # hy, hx = np.where(filling[dilation_kernel:] & most_external[:-dilation_kernel])
+        # h_starts = [(x, y) for x, y in zip(hx, hy)]
+        # print(dilation_kernel)
+    # canvas = np.zeros_like(filling)
+    # for x, y in h_starts:
+    #     canvas[y, x] = 1
+    # candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
+    # if not candidates_external:
+    #     candidates_external = pt.x_y_para_pontos(np.nonzero(most_external))
+    # candidates_external = pt.img_to_points(touching)
+    # chosen_external = random.choice(candidates_external)
+    # internal_pts = pt.x_y_para_pontos(np.nonzero(filling))
+    # chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
+    candidates_internal = pt.img_to_points(touching)
+    chosen_internal = random.choice(candidates_internal)
+    external_pts = [list(x) for x in island.external_tree_route.sequence]
+    chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
     return chosen_external, chosen_internal
 
 
@@ -415,18 +426,13 @@ def connect_offset_bridges(
         y_de_cima = y_da_ponte - path_radius
         y_de_baixo = y_da_ponte + path_radius
         x_pontos_extremos = [x[1] for x in pontos_extremos]
-        midle_point = [
-            y_da_ponte,
-            int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),
-        ]
+        midle_point = [y_da_ponte,int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2)]
         limites_x = [min(x_pontos_extremos)-2*path_radius, max(x_pontos_extremos)+2*path_radius]
         todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
         same_y_up_inside = filtrar_pontos(y_de_cima, limites_x)
-        if len(same_y_up_inside) < 2:
-            same_y_up_inside = filtrar_pontos(y_de_cima+1, limites_x)
+        if len(same_y_up_inside) < 2:same_y_up_inside = filtrar_pontos(y_de_cima+1, limites_x)
         same_y_down_inside = filtrar_pontos(y_de_baixo, limites_x)
-        if len(same_y_down_inside) < 2:
-            same_y_down_inside = filtrar_pontos(y_de_baixo-1, limites_x)
+        if len(same_y_down_inside) < 2:same_y_down_inside = filtrar_pontos(y_de_baixo-1, limites_x)
         contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
         contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
         contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
@@ -436,19 +442,13 @@ def connect_offset_bridges(
         ponto_esq_baixo = closest_to_center(contact_eb)
         ponto_dir_baixo = closest_to_center(contact_db)
         linha_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
-        linha_baixo = it.draw_line(
-            np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
-        )
-        retangulo = it.draw_polyline(
-            np.zeros(base_frame),
-            [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
-            1,
-        )
+        linha_baixo = it.draw_line(np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo)
+        retangulo = it.draw_polyline(np.zeros(base_frame),[ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],1)
         retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
         new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
         new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
-        A, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
-        return A
+        cleaned_new_todas_espirais, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
+        return cleaned_new_todas_espirais
 
     def integrate_contact(todas_espirais, path_radius, bridge: Bridge, base_frame):
         route = bridge.route
@@ -500,8 +500,8 @@ def connect_zigzag_bridges(island: Island):
         nova_rota = start_path.sequence
         saltos = []
     else:
-        start_point_int = [island.comeco_int[0], island.comeco_int[1]]
-        start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_int)
+        # start_point_int = [island.comeco_int[0], island.comeco_int[1]]
+        # start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_int)
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
         stop = 0
@@ -1144,7 +1144,7 @@ def organize_points_cw(pts, origin=[]):
 def rotate_path_odd_layer(coords, base_frame):
     new_coords = []
     for p in coords:
-        if p == ["a", "a"]:
+        if p == [0, 0]:
             new_coords.append(p)
         else:
             (y, x) = p
@@ -1244,6 +1244,7 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     if len(seq_pts) == 0:
         return []
     sequence = seq_pts.copy()
+    saltos = [list(x) for x in saltos]
     segmentos = np.array_split(sequence, np.where([(x in saltos) for x in sequence])[0])
     approx_seq = []
     for s in segmentos:
@@ -1257,7 +1258,8 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
             pass
         else:
             approx_seq += approx_seg
-            approx_seq += [["a", "a"]]
+            # approx_seq += [["a", "a"]]
+            approx_seq += [[0,0]]
     return approx_seq
 
 
@@ -1320,14 +1322,15 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
 
 def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
     macroa_area_path_list = []
-    _, min_n_pixels_img = mt.detect_contours(mask_full_int, return_img=True)
-    min_n_pixels = np.sum(min_n_pixels_img)
+    # _, min_n_pixels_img = mt.detect_contours(mask_full_int, return_img=True)
+    # min_n_pixels = np.sum(min_n_pixels_img)
     for i, ma in enumerate(isl.zigzags.macro_areas):
-        ma, _, _ = sk.create_prune_divide_skel(ma, path_radius_internal)
-        ma = one_pixel_wide(ma)
-        zigzag_path = img_to_chain(
-            ma.astype(np.uint8), isl.zigzags.regions[0].img, min_n_pixels
-        )
+        # ma, _, _ = sk.create_prune_divide_skel(ma, path_radius_internal)
+        # ma = one_pixel_wide(ma)
+        # zigzag_path = img_to_chain(
+        #     ma.astype(np.uint8), isl.zigzags.regions[0].img, min_n_pixels
+        # )
+        zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
         if len(zigzag_path) > 0:
             macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
             macroa_area_path_list[-1].get_regions(isl)
@@ -1340,9 +1343,6 @@ def layers_to_Gcode(
     vel_int,
     vel_ext,
     vel_thin_wall,
-    internal_tree,
-    external_tree,
-    tw_tree,
     p_religamento,
     p_desligamento,
     vel_vazio,
@@ -1408,21 +1408,27 @@ def layers_to_Gcode(
     output += f"G1 F360; speed g1\n"
     bfr = [0, 0]
     base_frame = layers[0].base_frame
+
     for n_layer, layer in enumerate(layers):
         # folders.load_islands_hdf5(layer)
         output = posicao_inicial(output, coords_substrato)
         bfr = coords_substrato
+        folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
-            pontos_int = internal_tree[n_layer]
-            pontos_ext = external_tree[n_layer]
-            pontos_tw = tw_tree[n_layer]
-            chain = island.island_route
+            folders.load_island_paths_hdf5(layer.name, island)
+            # pontos_int = internal_tree[n_layer]
+            # pontos_ext = external_tree[n_layer]
+            # pontos_tw = tw_tree[n_layer]
+            pontos_int = [list(x) for x in island.internal_tree_route.sequence]
+            pontos_ext = [list(x) for x in island.external_tree_route.sequence]
+            pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
+            chain = [list(x) for x in island.island_route.sequence]
             counter = 0
             flag_salto = 0
             flag_path_type = 99
             last_flag = 0
             for i, p in enumerate(chain):
-                if p == ["a", "a"]:
+                if p == [0, 0]:
                     output = desligamento(output)
                     flag_salto = 1
                 else:

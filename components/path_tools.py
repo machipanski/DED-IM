@@ -13,7 +13,7 @@ from components import morphology_tools as mt
 from components import images_tools as it
 from components import skeleton as sk
 from cv2 import boundingRect, arcLength, approxPolyDP
-from scipy.spatial import distance_matrix
+from scipy.spatial import distance_matrix, distance
 
 if TYPE_CHECKING:
     from components.zigzag import ZigZag
@@ -1410,6 +1410,7 @@ def layers_to_Gcode(
     base_frame = layers[0].base_frame
 
     for n_layer, layer in enumerate(layers):
+        soma_do_deslocamento = 0
         # folders.load_islands_hdf5(layer)
         output = posicao_inicial(output, coords_substrato)
         bfr = coords_substrato
@@ -1459,6 +1460,8 @@ def layers_to_Gcode(
                         output += texto_mudanca
                     # if i > 0:
                     desloc = np.subtract(coords, bfr)
+                    dist = distance.euclidean(coords, bfr)
+                    soma_do_deslocamento += dist
                     output += (
                         f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
                     )
@@ -1474,6 +1477,8 @@ def layers_to_Gcode(
             # output += "G0 X0 Y0\n"
             # output += "G91\n"
             output += f"G28 X0 Y0\n"
+            print(f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm")
+            print(f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n")
     output += f"G1 Z20\n"
     output += f"G28 X0 Y0\n"
     output += f"M104 S0; End of Gcode\n"

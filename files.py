@@ -24,17 +24,19 @@ if TYPE_CHECKING:
 class System_Paths:
     """Mantem a organizaçao dos caminhos dentro da pasta do programa para evitar carregar coisas que ele nao processa"""
 
-    def __init__(self, home):
+    def __init__(self, home: str):
+        """Initializes the System_Paths object with the home directory."""
         self.home = home
         self.input = self.home + "/input"
         self.output = self.home + "/output"
         self.slicer = self.home + "/slicing-with-images"
         self.sliced = self.home + "/input/sliced"
-        self.layers = []
+        self.layers: List[Layer] = []
         self.selected = ""
         self.save_file_name = ""
 
-    def create_hdf5_file(self, name):
+    def create_hdf5_file(self, name: str) -> str:
+        """Creates a new HDF5 file with the given name in the output directory."""
         os.chdir(self.output)
         save_file = h5py.File(f"{name}.hdf5", "a")
         save_file_name = save_file.name
@@ -42,7 +44,8 @@ class System_Paths:
         self.save_file_name = f"{name}.hdf5"
         return save_file_name
 
-    def create_new_hdf5_group(self, path) -> str:
+    def create_new_hdf5_group(self, path: str) -> str:
+        """Creates a new HDF5 group with the given path in the current HDF5 file."""
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
         if not (f.get(path)):
@@ -54,13 +57,15 @@ class System_Paths:
         os.chdir(self.home)
         return group_name
 
-    def load_hdf5_file(self, save_file_name) -> h5py.File:
+    def load_hdf5_file(self, save_file_name: str) -> h5py.File:
+        """Loads the HDF5 file with the given name."""
         os.chdir(self.output)
         save_file = h5py.File(save_file_name, "a")
         os.chdir(self.home)
         return save_file
 
     def list(self, origins=0, layers=0, isles=0):
+        """Lists files in the specified directories."""
         list = []
         if origins == 1:
             os.chdir(self.sliced)
@@ -74,7 +79,8 @@ class System_Paths:
         os.chdir(self.home)
         return list
 
-    def load_bridges_hdf5(self, layer_name, island: Island) -> None:
+    def load_bridges_hdf5(self, layer_name: str, island: Island) -> None:
+        """Loads bridge data from the HDF5 file for the given layer and island."""
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         bridges_group = f.get(f"/{layer_name}/{island.name}/bridges")
@@ -106,7 +112,8 @@ class System_Paths:
         os.chdir(self.home)
         return
 
-    def load_graph_hdf5(self, path, name) -> np.array:
+    def load_graph_hdf5(self, path: str, name: str) -> np.array:
+        """Loads a graph from the HDF5 file."""
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         try:
@@ -120,7 +127,7 @@ class System_Paths:
             G_loaded = nx.from_numpy_array(adj_matrix)
         return G_loaded
 
-    def load_img_hdf5(self, path, name) -> np.array:
+    def load_img_hdf5(self, path: str, name: str) -> np.array:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         try:
@@ -150,7 +157,7 @@ class System_Paths:
         os.chdir(self.home)
         return
 
-    def load_island_paths_hdf5(self, layer_name, island: Island) -> None:
+    def load_island_paths_hdf5(self, layer_name: str, island: Island) -> None:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         island_group = f.get(f"/{layer_name}/{island.name}")

@@ -20,6 +20,7 @@ def chain_to_lines(final_chain, canvas):
     color = 1
     count = 0
     chain = final_chain.copy()
+    chain = pt.invert_x_y(chain)
     first = chain[0]
     last = chain[-1]
     end_p = chain.pop()

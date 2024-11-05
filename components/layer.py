@@ -71,73 +71,38 @@ class Layer:
 
     def close_final_path(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
-        # internal_trees = []
-        # external_trees = []
-        # tw_trees = []
-        folders.load_islands_hdf5(self)
         for island in self.islands:
             folders.load_offsets_hdf5(self.name, island)
-            # folders.load_zigzags_hdf5(self.name, island)
             folders.load_island_paths_hdf5(self.name, island)
+            itr = island.internal_tree_route
+            etr = island.external_tree_route
+            twtr = island.thinwalls_tree_route
             with Timer("Encontrando ponto de união ext-int"):
-                island.comeco_ext, island.comeco_int = (
-                    path_tools.connect_internal_external(
-                        island, self.path_radius_internal
-                    )
-                )
-                island.external_tree_route.sequence = path_tools.set_first_pt_in_seq(
-                    [list(x) for x in island.external_tree_route.sequence],
-                    island.comeco_ext,
-                )
-                island.internal_tree_route.sequence = path_tools.set_first_pt_in_seq(
-                    [list(x) for x in island.internal_tree_route.sequence],
-                    island.comeco_int,
-                )
+                island.comeco_ext, island.comeco_int = (path_tools.connect_internal_external(island, self.path_radius_internal))
+                etr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in etr.sequence], island.comeco_ext)
+                itr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in itr.sequence], island.comeco_int)
+            island_route_path_for_img = etr.sequence + itr.sequence + twtr.sequence
+            island_island_route_img = it.points_to_img(island_route_path_for_img, np.zeros(self.base_frame))
+
             with Timer("Conectando ambas as partes"):
-                internal_simpl = path_tools.simplifica_retas_master(
-                    island.internal_tree_route.sequence,
-                    0.0002,
-                    island.internal_tree_route.saltos,
-                )
-                external_simpl = path_tools.simplifica_retas_master(
-                    island.external_tree_route.sequence,
-                    0.0002,
-                    island.external_tree_route.saltos,
-                )
-                thinwalls_simpl = path_tools.simplifica_retas_master(
-                    island.thinwalls_tree_route.sequence,
-                    0.001,
-                    island.thinwalls_tree_route.saltos,
-                )
+                internal_simpl = path_tools.simplifica_retas_master(itr.sequence, 0.0002, itr.saltos)
+                external_simpl = path_tools.simplifica_retas_master(etr.sequence, 0.0002, etr.saltos)
+                thinwalls_simpl = path_tools.simplifica_retas_master(twtr.sequence, 0.001, twtr.saltos)
             island_route_path = external_simpl + internal_simpl + thinwalls_simpl
+            island_island_route_img = it.chain_to_lines(island_route_path, np.zeros(self.base_frame))
             if self.odd_layer == 1:
                 print("layer rotacionada")
-                island.island_route = path_tools.rotate_path_odd_layer(
-                    island_route_path, self.base_frame
-                )
+                etr.sequence = path_tools.rotate_path_odd_layer(external_simpl, self.base_frame)
+                itr.sequence = path_tools.rotate_path_odd_layer(internal_simpl, self.base_frame)
+                twtr.sequence = path_tools.rotate_path_odd_layer(thinwalls_simpl, self.base_frame)
+                island_route_path = path_tools.rotate_path_odd_layer(island_route_path,self.base_frame)
+                island_island_route_img = it.chain_to_lines(island_route_path, np.zeros([self.base_frame[1], self.base_frame[0]]))
+            island_new_regions = [itr.regions + etr.regions + twtr.regions]
+            island_saltos = [itr.saltos + etr.saltos + twtr.saltos]
+            island.island_route = Path("island_route",island_route_path,island_new_regions,saltos=island_saltos,img=island_island_route_img,)
 
-            island_new_regions = [
-                island.internal_tree_route.regions
-                + island.external_tree_route.regions
-                + island.thinwalls_tree_route.regions
-            ]
-            island_saltos = [
-                island.internal_tree_route.saltos
-                + island.external_tree_route.saltos
-                + island.thinwalls_tree_route.saltos
-            ]
-            island.island_route = Path(
-                "island_route",
-                island_route_path,
-                island_new_regions,
-                saltos=island_saltos,
-            )
-
-            with Timer("salvando imagens das rotas"):
-                folders.save_final_routes_hdf5(self.name, self.islands)
-            # internal_trees.append([list(x) for x in island.internal_tree_route.sequence])
-            # external_trees.append([list(x) for x in island.external_tree_route.sequence])
-            # tw_trees.append([list(x) for x in island.thinwalls_tree_route.sequence])
+        with Timer("salvando imagens das rotas"):
+            folders.save_final_routes_hdf5(self.name, self.islands)
         return
 
     def close_routes_external(self, folders: System_Paths):

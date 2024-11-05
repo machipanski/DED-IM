@@ -170,29 +170,33 @@ class System_Paths:
                 "external_tree_route",
                 list(etr_group.get("sequence")),
                 saltos=list(etr_group.get("saltos")),
+                img= self.load_img_hdf5(f"/{layer_name}/{island.name}/external_tree_route","img")
             )
-            island.external_tree_route.img = list(etr_group.get("img"))
+            # island.external_tree_route.img = list(etr_group.get("img"))
         if itr_group:
             island.internal_tree_route = Path(
                 "internal_tree_route",
                 list(itr_group.get("sequence")),
                 saltos=list(itr_group.get("saltos")),
+                img= self.load_img_hdf5(f"/{layer_name}/{island.name}/internal_tree_route","img")
             )
-            island.internal_tree_route.img = list(itr_group.get("img"))
+            # island.internal_tree_route.img = list(itr_group.get("img"))
         if twtr_group:
             island.thinwalls_tree_route = Path(
                 "thinwalls_tree_route",
                 list(twtr_group.get("sequence")),
                 saltos=list(twtr_group.get("saltos")),
+                img= self.load_img_hdf5(f"/{layer_name}/{island.name}/thinwalls_tree_route","img")
             )
-            island.thinwalls_tree_route.img = list(twtr_group.get("img"))
+            # island.thinwalls_tree_route.img = list(twtr_group.get("img"))
         if isltr_group:
             island.island_route = Path(
                 "island_route",
                 list(isltr_group.get("sequence")),
                 saltos=list(isltr_group.get("saltos")),
+                img= self.load_img_hdf5(f"/{layer_name}/{island.name}/island_route","img")
             )
-            island.external_tree_route.img = list(isltr_group.get("img"))
+            # island.island_route.img = list(isltr_group.get("img"))
         f.close()
         os.chdir(self.home)
         return
@@ -564,9 +568,10 @@ class System_Paths:
             self.delete_item_hdf5(element_path + "/img")
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.island_route.img)
+            print(isl.island_route.sequence)
         return
 
-    save_final_routes_hdf5
+    # save_final_routes_hdf5
 
     def save_internal_routes_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:

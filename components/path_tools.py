@@ -254,7 +254,9 @@ def connect_thin_walls(island: Island, path_radius_external):
             for i, tw in enumerate(thinwall_list):
                 tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_external)
                 tw_path = img_to_chain(tw.astype(np.uint8))[0]
-                one_of_the_tips = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(tw)))[0]
+                one_of_the_tips = pt.x_y_para_pontos(
+                    np.nonzero(mt.hitmiss_ends_v2(tw))
+                )[0]
                 tw_path = set_first_pt_in_seq(tw_path, one_of_the_tips)
                 tw_path = cut_repetition(tw_path)
                 thinwall_path_list.append(Path(i, tw_path, img=tw))
@@ -383,8 +385,10 @@ def connect_internal_external(island: Island, path_radius_internal):
     # while len(h_starts) == 0:
     touching = np.zeros_like(island.img)
     while np.sum(touching) == 0:
-        aaa = it.sum_imgs([filling, mt.dilation(most_external, kernel_size=dilation_kernel)])
-        touching = aaa ==2
+        aaa = it.sum_imgs(
+            [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
+        )
+        touching = aaa == 2
         dilation_kernel = dilation_kernel + 2
         # hy, hx = np.where(filling[dilation_kernel:] & most_external[:-dilation_kernel])
         # h_starts = [(x, y) for x, y in zip(hx, hy)]
@@ -413,11 +417,16 @@ def connect_offset_bridges(
 
         def filtrar_pontos(y_val, x_val):
             validos_no_y = [p for p in todas_espirais_points if p[0] == y_val]
-            validos_no_yx = [p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)]
+            validos_no_yx = [
+                p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)
+            ]
             return validos_no_yx
 
         def find_contacts(pontos, condicao):
-            return [p for p in pontos if condicao(p[1])]
+            contacts = [p for p in pontos if condicao(p[1])]
+            if len(contacts) == 0:
+                contacts = pontos
+            return contacts
 
         def closest_to_center(pontos):
             return pontos[np.argmin([pt.distance_pts(midle_point, p) for p in pontos])]
@@ -426,13 +435,25 @@ def connect_offset_bridges(
         y_de_cima = y_da_ponte - path_radius
         y_de_baixo = y_da_ponte + path_radius
         x_pontos_extremos = [x[1] for x in pontos_extremos]
-        midle_point = [y_da_ponte,int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2)]
-        limites_x = [min(x_pontos_extremos)-2*path_radius, max(x_pontos_extremos)+2*path_radius]
+        midle_point = [
+            y_da_ponte,
+            int((x_pontos_extremos[0] + x_pontos_extremos[1]) / 2),
+        ]
+        limites_x = [
+            min(x_pontos_extremos) - 2 * path_radius,
+            max(x_pontos_extremos) + 2 * path_radius,
+        ]
         todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
         same_y_up_inside = filtrar_pontos(y_de_cima, limites_x)
-        if len(same_y_up_inside) < 2:same_y_up_inside = filtrar_pontos(y_de_cima+1, limites_x)
+        if len(same_y_up_inside) < 2:
+            same_y_up_inside = filtrar_pontos(y_de_cima + 1, limites_x)
+            if len(same_y_up_inside) < 2:
+                same_y_up_inside = filtrar_pontos(y_de_cima + 2, limites_x)
         same_y_down_inside = filtrar_pontos(y_de_baixo, limites_x)
-        if len(same_y_down_inside) < 2:same_y_down_inside = filtrar_pontos(y_de_baixo-1, limites_x)
+        if len(same_y_down_inside) < 2:
+            same_y_down_inside = filtrar_pontos(y_de_baixo - 1, limites_x)
+            if len(same_y_down_inside) < 2:
+                same_y_down_inside = filtrar_pontos(y_de_baixo - 2, limites_x)
         contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
         contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
         contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
@@ -442,12 +463,20 @@ def connect_offset_bridges(
         ponto_esq_baixo = closest_to_center(contact_eb)
         ponto_dir_baixo = closest_to_center(contact_db)
         linha_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
-        linha_baixo = it.draw_line(np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo)
-        retangulo = it.draw_polyline(np.zeros(base_frame),[ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],1)
+        linha_baixo = it.draw_line(
+            np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
+        )
+        retangulo = it.draw_polyline(
+            np.zeros(base_frame),
+            [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
+            1,
+        )
         retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
         new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
         new_todas_espirais = it.sum_imgs([new_todas_espirais, linha_baixo, linha_cima])
-        cleaned_new_todas_espirais, _, _ = sk.create_prune_divide_skel(new_todas_espirais, path_radius)
+        cleaned_new_todas_espirais, _, _ = sk.create_prune_divide_skel(
+            new_todas_espirais, path_radius
+        )
         return cleaned_new_todas_espirais
 
     def integrate_contact(todas_espirais, path_radius, bridge: Bridge, base_frame):
@@ -1244,6 +1273,7 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     if len(seq_pts) == 0:
         return []
     sequence = seq_pts.copy()
+    # sequence = pt.invert_x_y(sequence)
     saltos = [list(x) for x in saltos]
     segmentos = np.array_split(sequence, np.where([(x in saltos) for x in sequence])[0])
     approx_seq = []
@@ -1259,7 +1289,7 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
         else:
             approx_seq += approx_seg
             # approx_seq += [["a", "a"]]
-            approx_seq += [[0,0]]
+            approx_seq += [[0, 0]]
     return approx_seq
 
 
@@ -1411,15 +1441,14 @@ def layers_to_Gcode(
 
     for n_layer, layer in enumerate(layers):
         soma_do_deslocamento = 0
-        # folders.load_islands_hdf5(layer)
         output = posicao_inicial(output, coords_substrato)
         bfr = coords_substrato
         folders.load_islands_hdf5(layer)
+        # print(f"nome: {layer.name}")
         for n_island, island in enumerate(layer.islands):
+            print(f"nome: {layer.name}/{island.name}")
             folders.load_island_paths_hdf5(layer.name, island)
-            # pontos_int = internal_tree[n_layer]
-            # pontos_ext = external_tree[n_layer]
-            # pontos_tw = tw_tree[n_layer]
+            aaa = island.island_route.img
             pontos_int = [list(x) for x in island.internal_tree_route.sequence]
             pontos_ext = [list(x) for x in island.external_tree_route.sequence]
             pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
@@ -1428,16 +1457,15 @@ def layers_to_Gcode(
             flag_salto = 0
             flag_path_type = 99
             last_flag = 0
+            print(chain)
             for i, p in enumerate(chain):
                 if p == [0, 0]:
                     output = desligamento(output)
                     flag_salto = 1
                 else:
                     coords = p
-                    coords = [
-                        base_frame[0] - coords[0] + coords_substrato[0],
-                        coords[1] + coords_substrato[1],
-                    ]
+                    coords = [base_frame[0] - coords[0] + coords_substrato[0],
+                              coords[1] + coords_substrato[1]]
                     if p in pontos_int:
                         flag_path_type = 0
                         vel = vel_int
@@ -1452,19 +1480,15 @@ def layers_to_Gcode(
                         texto_mudanca = ";----ThinWalls----\n"
                     if i == 1:
                         output = religamento(output)
-                        # bfr = coords
                     if flag_path_type != last_flag:
                         output += f"G1 F{vel}; speed g1\n"
                         last_flag = flag_path_type
                         print(f"trocou para {flag_path_type}")
                         output += texto_mudanca
-                    # if i > 0:
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
                     soma_do_deslocamento += dist
-                    output += (
-                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
-                    )
+                    output += (f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n")
                     output += "M400\n"
                     bfr = coords
                     counter += 1
@@ -1473,12 +1497,14 @@ def layers_to_Gcode(
                         flag_salto = 0
             output = posicao_de_corte(output, coords_corte)
             output += ";____________________________________\n"
-            # output += "G90\n"
-            # output += "G0 X0 Y0\n"
-            # output += "G91\n"
             output += f"G28 X0 Y0\n"
             print(f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm")
             print(f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n")
+            # os.chdir(folders.output)
+            # f = open(f"{layer.name}_{outFile}", "w")
+            # f.write(output)
+            # f.close()
+            # os.chdir(folders.home)
     output += f"G1 Z20\n"
     output += f"G28 X0 Y0\n"
     output += f"M104 S0; End of Gcode\n"

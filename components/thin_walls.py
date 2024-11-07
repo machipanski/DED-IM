@@ -155,7 +155,7 @@ class ThinWallRegions:
             normalized_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width
         ]
         reduced_origins = [
-            bottleneck.reduce_trunk_continuous(x, max_width, island_img)
+            bottleneck.restore_continuous_trunk(x, max_width, island_img)
             for x in origin_candidates
         ]
 

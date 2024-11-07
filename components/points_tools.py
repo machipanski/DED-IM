@@ -168,3 +168,15 @@ def organize_points_to_a_polygon(pts_list):
         pts_list, key=lambda point: angle_from_centroid(point, centroid)
     )
     return sorted_points
+
+def intersects(s0,s1):
+    '''Retorna True se cruzam as linhas. in the format [(y0,x0),(y1,x1)]'''
+    dx0 = s0[1][1]-s0[0][1]
+    dx1 = s1[1][1]-s1[0][1]
+    dy0 = s0[1][0]-s0[0][0]
+    dy1 = s1[1][0]-s1[0][0]
+    p0 = dy1*(s1[1][1]-s0[0][1]) - dx1*(s1[1][0]-s0[0][0])
+    p1 = dy1*(s1[1][1]-s0[1][1]) - dx1*(s1[1][0]-s0[1][0])
+    p2 = dy0*(s0[1][1]-s1[0][1]) - dx0*(s0[1][0]-s1[0][0])
+    p3 = dy0*(s0[1][1]-s1[1][1]) - dx0*(s0[1][0]-s1[1][0])
+    return (p0*p1<=0) & (p2*p3<=0)

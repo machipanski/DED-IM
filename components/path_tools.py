@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 from ctypes.wintypes import HSTR
 from tkinter import X
 from typing import TYPE_CHECKING, Dict, reveal_type
@@ -1050,91 +1051,100 @@ def make_zigzag_graph(zigzag_regions, zigzags_bridges, base_frame):
     return graph, pos_zigzag_nodes
 
 
-def make_a_chain(
-    im,
-    div_point,
-    path_radius,
-    odd_layer,
-    original_size,
-    factor_epilson,
-    cross_over_bridges=[],
-    zigzag_bridges=[],
-):
-    saltos = []
-    canvas = np.zeros_like(im)
-    canvas[div_point[0], div_point[1]] = 1
-    corte = mt.dilation(canvas, kernel_size=path_radius)
-    im = np.logical_and(im, np.logical_not(corte))
-    acrescimo = 1
-    flagOk = 0
-    while flagOk == 0:
-        proximos = mt.dilation(canvas, kernel_size=(path_radius + acrescimo))
-        pontos = np.add(im, proximos)
-        pontos = pontos == 2
-        candidates = pt.x_y_para_pontos(np.nonzero(pontos))
-        if len(candidates) > 2:
-            points = pt.most_distant(candidates)
-            flagOk = 1
-        elif len(candidates) == 2:
-            points = candidates
-            flagOk = 1
-        else:
-            acrescimo += 1
-            print("nope")
-    [start, end] = points
-    # CONSTRUCTION OF HORIZONTAL EDGES
+# def make_a_chain(
+#     im,
+#     div_point,
+#     path_radius,
+#     odd_layer,
+#     original_size,
+#     factor_epilson,
+#     cross_over_bridges=[],
+#     zigzag_bridges=[],
+# ):
+#     saltos = []
+#     canvas = np.zeros_like(im)
+#     canvas[div_point[0], div_point[1]] = 1
+#     corte = mt.dilation(canvas, kernel_size=path_radius)
+#     im = np.logical_and(im, np.logical_not(corte))
+#     acrescimo = 1
+#     flagOk = 0
+#     while flagOk == 0:
+#         proximos = mt.dilation(canvas, kernel_size=(path_radius + acrescimo))
+#         pontos = np.add(im, proximos)
+#         pontos = pontos == 2
+#         candidates = pt.x_y_para_pontos(np.nonzero(pontos))
+#         if len(candidates) > 2:
+#             points = pt.most_distant(candidates)
+#             flagOk = 1
+#         elif len(candidates) == 2:
+#             points = candidates
+#             flagOk = 1
+#         else:
+#             acrescimo += 1
+#             print("nope")
+#     [start, end] = points
+#     # CONSTRUCTION OF HORIZONTAL EDGES
+#     G = img_to_graph(im)
+#     if cross_over_bridges:
+#         for b in cross_over_bridges:
+#             if odd_layer:
+#                 print("antes: ", b.interruption_points)
+#                 canvas_interruptions = np.zeros(original_size)
+#                 for p in b.interruption_points:
+#                     canvas_interruptions[p[0], p[1]] = 1
+#                 canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
+#                 b.interruption_points = pt.x_y_para_pontos(
+#                     np.nonzero(canvas_interruptions)
+#                 )
+#             print("depois: ", b.interruption_points)
+#             G.add_edge(
+#                 tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
+#                 tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
+#                 weight=0.1,
+#             )
+#             saltos.append(b.interruption_points)
+#     if zigzag_bridges:
+#         for b in zigzag_bridges:
+#             if odd_layer:
+#                 print("antes: ", b.interruption_points)
+#                 canvas_interruptions = np.zeros(original_size)
+#                 for p in b.interruption_points:
+#                     canvas_interruptions[p[0], p[1]] = 1
+#                 canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
+#                 b.interruption_points = pt.x_y_para_pontos(
+#                     np.nonzero(canvas_interruptions)
+#                 )
+#             print("depois: ", b.interruption_points)
+#             G.add_edge(
+#                 tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
+#                 tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
+#                 weight=0.1,
+#             )
+#             saltos.append(b.interruption_points)
+#     # pos = dict(zip(G.nodes(), G.nodes()))  # map node names to coordinates
+#     path = nx.shortest_path(G, source=tuple(np.flip(start)), target=tuple(np.flip(end)))
+#     chain = simplifica_retas_master(path, np.zeros_like(im), factor_epilson)
+#     novos_saltos = []
+#     if saltos:
+#         saltos_unpack = saltos
+#         chain_unpack = list(map(lambda x: x[0], chain))
+#         for segment in saltos_unpack:
+#             for p in segment:
+#                 p_invert = [p[1], p[0]]
+#                 if not (p_invert in chain_unpack):
+#                     novos_saltos.append(pt.closest_point(p_invert, chain_unpack)[0])
+#                 else:
+#                     novos_saltos.append(p_invert)
+    # return chain, G, novos_saltos
+def make_a_chain(image, start_point) -> list:
+    im = copy.deepcopy(image)
+    disconection = start_point
+    im[disconection[0],disconection[1]] = 0
+    [start, end] = pt.img_to_points(sk.find_tips(im.astype(bool)))
     G = img_to_graph(im)
-    if cross_over_bridges:
-        for b in cross_over_bridges:
-            if odd_layer:
-                print("antes: ", b.interruption_points)
-                canvas_interruptions = np.zeros(original_size)
-                for p in b.interruption_points:
-                    canvas_interruptions[p[0], p[1]] = 1
-                canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
-                b.interruption_points = pt.x_y_para_pontos(
-                    np.nonzero(canvas_interruptions)
-                )
-            print("depois: ", b.interruption_points)
-            G.add_edge(
-                tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
-                tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
-                weight=0.1,
-            )
-            saltos.append(b.interruption_points)
-    if zigzag_bridges:
-        for b in zigzag_bridges:
-            if odd_layer:
-                print("antes: ", b.interruption_points)
-                canvas_interruptions = np.zeros(original_size)
-                for p in b.interruption_points:
-                    canvas_interruptions[p[0], p[1]] = 1
-                canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
-                b.interruption_points = pt.x_y_para_pontos(
-                    np.nonzero(canvas_interruptions)
-                )
-            print("depois: ", b.interruption_points)
-            G.add_edge(
-                tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
-                tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
-                weight=0.1,
-            )
-            saltos.append(b.interruption_points)
-    # pos = dict(zip(G.nodes(), G.nodes()))  # map node names to coordinates
     path = nx.shortest_path(G, source=tuple(np.flip(start)), target=tuple(np.flip(end)))
-    chain = simplifica_retas_master(path, np.zeros_like(im), factor_epilson)
-    novos_saltos = []
-    if saltos:
-        saltos_unpack = saltos
-        chain_unpack = list(map(lambda x: x[0], chain))
-        for segment in saltos_unpack:
-            for p in segment:
-                p_invert = [p[1], p[0]]
-                if not (p_invert in chain_unpack):
-                    novos_saltos.append(pt.closest_point(p_invert, chain_unpack)[0])
-                else:
-                    novos_saltos.append(p_invert)
-    return chain, G, novos_saltos
+    path = path[1:-1]
+    return path
 
 
 def make_a_chain_open_segment(im, ext_point) -> list:

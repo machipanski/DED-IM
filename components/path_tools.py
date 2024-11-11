@@ -329,6 +329,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
     cross_overs_included = set(start_path.regions["cross_over_bridges"])
     offset_bridges_included = set(start_path.regions["offset_bridges"])
     bridges_number = len(island.bridges.cross_over_bridges)
+    all_its = []
     if bridges_number == 0:
         nova_rota = start_path.sequence
         saltos = []
@@ -348,6 +349,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 offssets_included,
                 order_crossover_regions,
             )
+            all_its = all_its + interruption_points
             if len(interruption_points) > 0:
                 nova_rota, cross_overs_included, offssets_included, saltos = (
                     add_routes_by_sequence(
@@ -370,20 +372,16 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
+    nova_rota = set_first_pt_in_seq(nova_rota, random.choice(all_its))
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
     # aaa = new_route.get_img()
     return new_route
 
 
 def connect_internal_external(island: Island, path_radius_internal):
-    # internal = it.sum_imgs([z.route for z in island.zigzags.regions]).astype(np.uint8)
-    # filling = island.zigzags.all_zigzags.astype(np.uint8)
     filling = island.internal_tree_route.get_img(island.img.shape)
     most_external = island.offsets.regions[0].route.astype(np.uint8)
     dilation_kernel = int(path_radius_internal * 2)
-    # dilation_kernel = int(path_radius_internal * 3)
-    h_starts = []
-    # while len(h_starts) == 0:
     touching = np.zeros_like(island.img)
     while np.sum(touching) == 0:
         aaa = it.sum_imgs(
@@ -391,19 +389,6 @@ def connect_internal_external(island: Island, path_radius_internal):
         )
         touching = aaa == 2
         dilation_kernel = dilation_kernel + 2
-        # hy, hx = np.where(filling[dilation_kernel:] & most_external[:-dilation_kernel])
-        # h_starts = [(x, y) for x, y in zip(hx, hy)]
-        # print(dilation_kernel)
-    # canvas = np.zeros_like(filling)
-    # for x, y in h_starts:
-    #     canvas[y, x] = 1
-    # candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
-    # if not candidates_external:
-    #     candidates_external = pt.x_y_para_pontos(np.nonzero(most_external))
-    # candidates_external = pt.img_to_points(touching)
-    # chosen_external = random.choice(candidates_external)
-    # internal_pts = pt.x_y_para_pontos(np.nonzero(filling))
-    # chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
     candidates_internal = pt.img_to_points(touching)
     chosen_internal = random.choice(candidates_internal)
     external_pts = [list(x) for x in island.external_tree_route.sequence]
@@ -925,6 +910,80 @@ def img_to_graph(im):
     G.add_edges_from(negative_diagonal_edges, weight=1)
     return G
 
+def img_to_graph_com_distancias(im):
+    # hy, hx = np.where(np.logical_and(im[1:],im[:-1]))  # horizontal edge start positions
+    # h_units = np.array([hx, hy]).T
+    # h_starts = [tuple(n) for n in h_units]
+    # h_ends = [
+    #     tuple(n) for n in h_units + (0, 1)
+    # ]  # end positions = start positions shifted by vector (1,0)
+    # horizontal_edges = list(zip(h_starts, h_ends))
+    # values_starts = [im[x[1]][x[0]] for x in h_starts]
+    # values_ends = [im[x[1]][x[0]] for x in h_ends]
+    # difs_in_edges = [abs(pt) for pt in np.subtract(values_starts,values_ends)]
+    # # horizontal_edges_weights = zip(difs_in_edges)
+    # # CONSTRUCTION OF VERTICAL EDGES
+    # vy, vx = np.where(np.logical_and(im[:, 1:],im[:, :-1]))  # vertical edge start positions
+    # v_units = np.array([vx, vy]).T
+    # v_starts = [tuple(n) for n in v_units]
+    # v_ends = [
+    #     tuple(n) for n in v_units + (1, 0)
+    # ]  # end positions = start positions shifted by vector (0,1)
+    # vertical_edges = zip(v_starts, v_ends)
+    # # CONSTRUCTION OF POSITIVE DIAGONAL EDGES
+    # pdy, pdx = np.where(
+    #     np.logical_and(im[1:][:, 1:],im[:-1][:, :-1])
+    # )  # vertical edge start positions
+    # pd_units = np.array([pdx, pdy]).T
+    # pd_starts = [tuple(n) for n in pd_units]
+    # pd_ends = [
+    #     tuple(n) for n in pd_units + (1, 1)
+    # ]  # end positions = start positions shifted by vector (1,1)
+    # positive_diagonal_edges = zip(pd_starts, pd_ends)
+    # # CONSTRUCTION OF NEGATIVE DIAGONAL EDGES
+    # ndy, ndx = np.where(
+    #     np.logical_and(im[:-1][:, 1:],im[1:][:, :-1])
+    # )  # vertical edge start positions
+    # ndx = ndx + 1
+    # nd_units = np.array([ndx, ndy]).T
+    # nd_starts = [tuple(n) for n in nd_units]
+    # nd_ends = [
+    #     tuple(n) for n in nd_units + (-1, 1)
+    # ]  # end positions = start positions shifted by vector (-1,1)
+    # negative_diagonal_edges = zip(nd_starts, nd_ends)
+    # G = nx.Graph()
+    # for i,st in enumerate(h_starts):
+    #      G.add_edges_from(list(horizontal_edges)[0], weight=difs_in_edges[i])
+    # G.add_edges_from(horizontal_edges, weight=difs_in_edges)
+    # G.add_edges_from(vertical_edges, weight=1)
+    # G.add_edges_from(positive_diagonal_edges, weight=1)
+    # G.add_edges_from(negative_diagonal_edges, weight=1)
+
+    image_array = np.array(im)
+    # Create an empty graph
+    G = nx.Graph()
+    # Get the dimensions of the image
+    rows, cols = image_array.shape
+    # Define the offsets for the 8-neighborhood
+    offsets = [(-1, -1), (-1, 0), (-1, 1),
+
+               (0, -1),          (0, 1),
+
+               (1, -1), (1, 0), (1, 1)]
+    # Add nodes for each non-zero pixel
+    for i in range(rows):
+        for j in range(cols):
+            if image_array[i, j] != 0:
+                G.add_node((i, j), value=image_array[i, j])
+                # Connect to neighbors
+                for dy, dx in offsets:
+                    ni, nj = i + dy, j + dx
+                    # Check if the neighbor is within bounds and is non-zero
+                    if 0 <= ni < rows and 0 <= nj < cols and image_array[ni, nj] != 0:
+                        weight = abs(image_array[i, j] - image_array[ni, nj])
+                        G.add_edge((i, j), (ni, nj), weight=weight)
+    return G 
+
 
 def intersection_points_w_rectangle(border, spiral, idx=0):
     # intersection = np.add(border, spiral)
@@ -1135,11 +1194,11 @@ def make_zigzag_graph(zigzag_regions, zigzags_bridges, base_frame):
 #                     novos_saltos.append(pt.closest_point(p_invert, chain_unpack)[0])
 #                 else:
 #                     novos_saltos.append(p_invert)
-    # return chain, G, novos_saltos
+# return chain, G, novos_saltos
 def make_a_chain(image, start_point) -> list:
     im = copy.deepcopy(image)
     disconection = start_point
-    im[disconection[0],disconection[1]] = 0
+    im[disconection[0], disconection[1]] = 0
     [start, end] = pt.img_to_points(sk.find_tips(im.astype(bool)))
     G = img_to_graph(im)
     path = nx.shortest_path(G, source=tuple(np.flip(start)), target=tuple(np.flip(end)))
@@ -1280,26 +1339,28 @@ def set_first_pt_in_seq(seq, first_point):
 
 
 def simplifica_retas_master(seq_pts, factor_epilson, saltos):
-    if len(seq_pts) == 0:
-        return []
+    # if len(seq_pts) == 0:
+    #     return []
     sequence = seq_pts.copy()
-    # sequence = pt.invert_x_y(sequence)
-    saltos = [list(x) for x in saltos]
-    segmentos = np.array_split(sequence, np.where([(x in saltos) for x in sequence])[0])
     approx_seq = []
-    for s in segmentos:
-        candidates = []
-        candidates.append(factor_epilson * arcLength(s, False))
-        candidates.append(factor_epilson * arcLength(s, True))
-        epsilon = candidates[np.argmax(candidates)]
-        approx_seg = approxPolyDP(np.ascontiguousarray(s), epsilon, False)
-        approx_seg = [list(x[0]) for x in approx_seg]
-        if approx_seg is None:
-            pass
-        else:
-            approx_seq += approx_seg
-            # approx_seq += [["a", "a"]]
-            approx_seq += [[0, 0]]
+    if len(sequence) > 0:
+        saltos = [list(x) for x in saltos]
+        segmentos = np.array_split(
+            sequence, np.where([(x in saltos) for x in sequence])[0]
+        )
+        for s in segmentos:
+            candidates = []
+            candidates.append(factor_epilson * arcLength(s, False))
+            candidates.append(factor_epilson * arcLength(s, True))
+            epsilon = candidates[np.argmax(candidates)]
+            approx_seg = approxPolyDP(np.ascontiguousarray(s), epsilon, False)
+            approx_seg = [list(x[0]) for x in approx_seg]
+            if approx_seg is None:
+                pass
+            else:
+                approx_seq += approx_seg
+                # approx_seq += [["a", "a"]]
+                approx_seq += [[0, 0]]
     return approx_seq
 
 
@@ -1360,21 +1421,22 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
     return borda_cortada
 
 
-def zigzag_imgs_to_path(isl: Island, mask_full_int, path_radius_internal):
-    macroa_area_path_list = []
-    # _, min_n_pixels_img = mt.detect_contours(mask_full_int, return_img=True)
-    # min_n_pixels = np.sum(min_n_pixels_img)
+def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
+    path_list = []
     for i, ma in enumerate(isl.zigzags.macro_areas):
-        # ma, _, _ = sk.create_prune_divide_skel(ma, path_radius_internal)
-        # ma = one_pixel_wide(ma)
-        # zigzag_path = img_to_chain(
-        #     ma.astype(np.uint8), isl.zigzags.regions[0].img, min_n_pixels
-        # )
         zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
         if len(zigzag_path) > 0:
-            macroa_area_path_list.append(Path(i, zigzag_path[0], img=ma))
-            macroa_area_path_list[-1].get_regions(isl)
-    return macroa_area_path_list
+            path_list.append(Path(i, zigzag_path[0], img=ma))
+            path_list[-1].get_regions(isl)
+    if path_list == []:
+        for i, zb in enumerate(isl.bridges.zigzag_bridges):
+            zigzag_b_path = img_to_chain(
+                zb.astype(np.uint8), isl.bridges.zigzag_bridges[0].img
+            )
+            if len(zigzag_b_path) > 0:
+                path_list.append(Path(i, zigzag_b_path[0], img=zb))
+                path_list[-1].get_regions(isl)
+    return path_list
 
 
 def layers_to_Gcode(
@@ -1474,8 +1536,10 @@ def layers_to_Gcode(
                     flag_salto = 1
                 else:
                     coords = p
-                    coords = [base_frame[0] - coords[0] + coords_substrato[0],
-                              coords[1] + coords_substrato[1]]
+                    coords = [
+                        base_frame[0] - coords[0] + coords_substrato[0],
+                        coords[1] + coords_substrato[1],
+                    ]
                     if p in pontos_int:
                         flag_path_type = 0
                         vel = vel_int
@@ -1498,7 +1562,9 @@ def layers_to_Gcode(
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
                     soma_do_deslocamento += dist
-                    output += (f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n")
+                    output += (
+                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
+                    )
                     output += "M400\n"
                     bfr = coords
                     counter += 1
@@ -1508,8 +1574,12 @@ def layers_to_Gcode(
             output = posicao_de_corte(output, coords_corte)
             output += ";____________________________________\n"
             output += f"G28 X0 Y0\n"
-            print(f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm")
-            print(f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n")
+            print(
+                f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm"
+            )
+            print(
+                f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n"
+            )
             # os.chdir(folders.output)
             # f = open(f"{layer.name}_{outFile}", "w")
             # f.write(output)

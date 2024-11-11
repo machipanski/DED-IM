@@ -398,8 +398,11 @@ class ZigZagRegions:
                     except:
                         print("falhou um weaving aqui!")
                         pass
-                all_new_zigzags = it.image_subtract(old_zigzag.astype(bool), it.sum_imgs(interface_lines))
-                all_new_zigzags = it.sum_imgs(all_new_zigzags + fail_internal_zigzags).astype(bool)
+                if len(interface_lines) > 0:
+                    all_new_zigzags = it.image_subtract(old_zigzag.astype(bool), it.sum_imgs(interface_lines))
+                    all_new_zigzags = it.sum_imgs(all_new_zigzags + fail_internal_zigzags).astype(bool)
+                else:
+                    all_new_zigzags = old_zigzag
             new_macro_areas, _, _ = it.divide_by_connected(all_new_zigzags)
         else:
             all_new_zigzags = np.zeros(base_frame)
@@ -718,6 +721,7 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
             crossings = crossings + crossings_pts
         div_lines = np.logical_or(div_lines, thisdiv)
     new_zigzags = []
+    ends_distances = []
     new_zigzag = np.zeros_like(interface_line)
     if not ([] in extreme_points):
         all_bordacortada_medicao = []
@@ -735,13 +739,25 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
             crossings.remove(extreme_points[3])
         for zig_zag_zag_zig in [0, 1]:
             bordacortada = internal_oscilatory_cut(fail_ctr,crossings,extreme_points,zig_zag_zag_zig,fail)
-            # TODO ver isso aqui, não produz duas opções,...
-            new_zigzags.append(np.logical_or(bordacortada, div_lines))
-            # new_zigzag = np.logical_and(new_zigzag, np.logical_not(fail_inside_divs))
-            # bordacortada_medicao = np.logical_and(bordacortada, np.logical_not(interface_line))
-            # all_bordacortada_medicao.append(bordacortada_medicao)
-        # sums = [np.sum(all_bordacortada_medicao[0]),np.sum(all_bordacortada_medicao[1])]
-        sums = [np.sum(new_zigzags[0]),np.sum(new_zigzags[1])]
+            zigzag_candidate = np.logical_or(bordacortada, div_lines)
+            _, _, n = it.divide_by_connected(zigzag_candidate)
+            if n > 1:
+                extreme_points = [
+                    extreme_points[0],
+                    extreme_points[2],
+                    extreme_points[1],
+                    extreme_points[3],
+                ]
+                print("sequncia corrigida, b e c trocado")
+                bordacortada = internal_oscilatory_cut(
+                    fail_ctr,crossings,extreme_points,zig_zag_zag_zig,fail
+                )
+                zigzag_candidate = np.logical_or(bordacortada, div_lines)
+            ends = mt.hitmiss_ends_v2(zigzag_candidate)
+            aaaaaa = it.sum_imgs([ends, interface_line])
+            if np.sum(aaaaaa>=2)>0:
+                new_zigzags.append(zigzag_candidate)
+        sums = [np.sum(x) for x in new_zigzags]
         new_zigzag = np.add(new_zigzag, new_zigzags[np.argmax(sums)])
     return new_zigzag
 
@@ -1000,6 +1016,11 @@ def connect_fails_to_zigzags(
             new_fail = copy.deepcopy(fail_img)
             new_fail[:, : contact_xs[0]] = 0  # zera tudo antes
             new_fail[:, (contact_xs[1] + 1) :] = 0  # zera tudo depois
+            line_kernel = disk(path_radius_internal)
+            line_image = np.zeros_like(line_kernel)
+            center_row = path_radius_internal  # Linha do centro
+            line_image[center_row, :] = 1  # Preenche a linha do centro
+            new_fail = mt.opening(new_fail, kernel_img=line_image)
             pts_fail_contact = pt.img_to_points(new_fail)
             pts_fail_contact = sorted(pts_fail_contact, key=lambda x: x[1])
             pts_fail_contact_extremes = [pts_fail_contact[0], pts_fail_contact[-1]]

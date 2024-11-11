@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+import random
 from typing import TYPE_CHECKING, Dict, reveal_type
 from components import images_tools as it, path_tools, points_tools
 from components import morphology_tools as mt
@@ -13,6 +14,7 @@ import concurrent.futures
 from functools import wraps
 from components import points_tools
 from components.path_tools import Path
+from cv2 import imread
 
 if TYPE_CHECKING:
     from files import System_Paths
@@ -78,28 +80,77 @@ class Layer:
             etr = island.external_tree_route
             twtr = island.thinwalls_tree_route
             with Timer("Encontrando ponto de união ext-int"):
-                island.comeco_ext, island.comeco_int = (path_tools.connect_internal_external(island, self.path_radius_internal))
-                etr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in etr.sequence], island.comeco_ext)
-                itr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in itr.sequence], island.comeco_int)
-            island_route_path_for_img = etr.sequence + itr.sequence + twtr.sequence
-            island_island_route_img = it.points_to_img(island_route_path_for_img, np.zeros(self.base_frame))
+                if etr.sequence == []:
+                    pass
+                else:
+                    if itr.sequence == []:
+                        # from components import points_tools as pt
+                        # most_external = island.offsets.regions[0].route.astype(np.uint8)
+                        # most_external_pts = pt.img_to_points(most_external)
+                        # island.comeco_ext = random.choice(most_external_pts)
+                        # etr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in etr.sequence], island.comeco_ext)
+                        # island.comeco_int = []
+                        pass
+                    else:
+                        island.comeco_ext, island.comeco_int = (
+                            path_tools.connect_internal_external(
+                                island, self.path_radius_internal
+                            )
+                        )
+                        etr.sequence = path_tools.set_first_pt_in_seq(
+                            [list(x) for x in etr.sequence], island.comeco_ext
+                        )
+                        itr.sequence = path_tools.set_first_pt_in_seq(
+                            [list(x) for x in itr.sequence], island.comeco_int
+                        )
+                        island_route_path_for_img = (
+                            etr.sequence + itr.sequence + twtr.sequence
+                        )
+                        island_island_route_img = it.points_to_img(
+                            island_route_path_for_img, np.zeros(self.base_frame)
+                        )
 
-            with Timer("Conectando ambas as partes"):
-                internal_simpl = path_tools.simplifica_retas_master(itr.sequence, 0.0002, itr.saltos)
-                external_simpl = path_tools.simplifica_retas_master(etr.sequence, 0.0002, etr.saltos)
-                thinwalls_simpl = path_tools.simplifica_retas_master(twtr.sequence, 0.001, twtr.saltos)
-            island_route_path = external_simpl + internal_simpl + thinwalls_simpl
-            island_island_route_img = it.chain_to_lines(island_route_path, np.zeros(self.base_frame))
-            if self.odd_layer == 1:
-                print("layer rotacionada")
-                etr.sequence = path_tools.rotate_path_odd_layer(external_simpl, self.base_frame)
-                itr.sequence = path_tools.rotate_path_odd_layer(internal_simpl, self.base_frame)
-                twtr.sequence = path_tools.rotate_path_odd_layer(thinwalls_simpl, self.base_frame)
-                island_route_path = path_tools.rotate_path_odd_layer(island_route_path,self.base_frame)
-                island_island_route_img = it.chain_to_lines(island_route_path, np.zeros([self.base_frame[1], self.base_frame[0]]))
-            island_new_regions = [itr.regions + etr.regions + twtr.regions]
-            island_saltos = [itr.saltos + etr.saltos + twtr.saltos]
-            island.island_route = Path("island_route",island_route_path,island_new_regions,saltos=island_saltos,img=island_island_route_img,)
+            with Timer("Conectando todas as partes"):
+                internal_simpl = path_tools.simplifica_retas_master(
+                    itr.sequence, 0.0002, itr.saltos
+                )
+                external_simpl = path_tools.simplifica_retas_master(
+                    etr.sequence, 0.0002, etr.saltos
+                )
+                thinwalls_simpl = path_tools.simplifica_retas_master(
+                    twtr.sequence, 0.001, twtr.saltos
+                )
+                island_route_path = external_simpl + internal_simpl + thinwalls_simpl
+                island_island_route_img = it.chain_to_lines(
+                    island_route_path, np.zeros(self.base_frame)
+                )
+                if self.odd_layer == 1:
+                    print("layer rotacionada")
+                    etr.sequence = path_tools.rotate_path_odd_layer(
+                        external_simpl, self.base_frame
+                    )
+                    itr.sequence = path_tools.rotate_path_odd_layer(
+                        internal_simpl, self.base_frame
+                    )
+                    twtr.sequence = path_tools.rotate_path_odd_layer(
+                        thinwalls_simpl, self.base_frame
+                    )
+                    island_route_path = path_tools.rotate_path_odd_layer(
+                        island_route_path, self.base_frame
+                    )
+                    island_island_route_img = it.chain_to_lines(
+                        island_route_path,
+                        np.zeros([self.base_frame[1], self.base_frame[0]]),
+                    )
+                island_new_regions = [itr.regions + etr.regions + twtr.regions]
+                island_saltos = [itr.saltos + etr.saltos + twtr.saltos]
+                island.island_route = Path(
+                    "island_route",
+                    island_route_path,
+                    island_new_regions,
+                    saltos=island_saltos,
+                    img=island_island_route_img,
+                )
 
         with Timer("salvando imagens das rotas"):
             folders.save_final_routes_hdf5(self.name, self.islands)
@@ -136,13 +187,16 @@ class Layer:
             folders.load_thin_walls_hdf5(self.name, isl)
             # folders.load_island_paths_hdf5(self.name, isl)
             with Timer("Conectando zgzags vizinhos"):
-                isl.internal_tree_route = path_tools.zigzag_imgs_to_path(
+                isl.internal_tree_route = path_tools.start_internal_route(
                     isl, mt.make_mask(self, "full_int"), self.path_radius_internal
                 )
-            with Timer("Conectando pontes de zigzag"):
-                isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
-                isl.internal_tree_route.get_img(self.base_frame)
-
+            if isl.internal_tree_route != []:
+                with Timer("Conectando pontes de zigzag"):
+                    isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
+                    isl.internal_tree_route.get_img(self.base_frame)
+            else:
+                print("rotas internas inexistentes")
+                isl.internal_tree_route = Path("0", [], [])
             # with Timer("casando começo int com final ext"):
             #     path_tools.set_first_pt_in_seq([list(x) for x in isl.internal_tree_route.sequence], list(isl.comeco_int))
 
@@ -191,7 +245,8 @@ class Layer:
                 hdf5_file_name = file_name.replace(".pgm", "")
                 hdf5_file_name = hdf5_file_name.replace("/", "")
                 layer = Layer()
-                layer.make_input_img("L_000", path_input, dpi, 0, layer_height, 1)
+                img = imread(path_input, 0)
+                layer.make_input_img("L_000", img, dpi, 0, layer_height, 1)
                 list_layers = [layer]
             for layer in list_layers:
                 divide_islands(layer)
@@ -203,7 +258,7 @@ class Layer:
     def make_input_img(
         self,
         name: str,
-        img_path: str,
+        img,
         dpi: int,
         odd_layer: bool,
         layer_height: float,
@@ -212,15 +267,15 @@ class Layer:
         """Usa o Path dos arquivos para importar as imagens e transforma-las em binarias,
         assim como ja cria um objeto Layer pra cada"""
         self.name = name
-        img = it.read_img_add_border(img_path)
+        img_w_b = it.img_add_border(img)
         if odd_layer:
-            img = it.rotate_img_cw(img)
+            img_w_b = it.rotate_img_cw(img_w_b)
             self.odd_layer = 1
         self.dpi = dpi
-        self.base_frame = img.shape
+        self.base_frame = img_w_b.shape
         self.n_camadas = n_camadas
         self.layer_height = layer_height
-        self.original_img = img
+        self.original_img = img_w_b
         return
 
     def make_thin_walls(

@@ -254,12 +254,11 @@ def neighborhood_imgs(areas):
     return areas
 
 
-def read_img_add_border(img_name: str) -> np.ndarray:
+def img_add_border(img:np.ndarray):
     """Há momentos em que algumas operações morfológicas sofrem alterações
     quando os pixels estão no limite da imagem
     para evitar essas distorções, são adicionados alguns pixels no imagem"""
     # print(os.chdir())
-    img = cv2.imread(img_name, 0)
     img_w_border = np.zeros(np.add(img.shape, [int(20) * 4, int(20) * 4]))
     x_offset = y_offset = int(20) * 2
     img_w_border[

@@ -1,7 +1,7 @@
 from __future__ import annotations
 from email.headerregistry import Group
 from typing import TYPE_CHECKING
-from networkx import bridges
+# from networkx import bridges
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Region
 from components.thin_walls import ThinWallRegions, ThinWall
@@ -16,6 +16,7 @@ import numpy as np
 import networkx as nx
 import h5py
 from components.path_tools import Path
+from cv2 import imread
 
 if TYPE_CHECKING:
     from typing import List
@@ -626,7 +627,7 @@ class System_Paths:
             del f[path]
             print(f"deletado: {path}")
         except:
-            print("ERRO: não deletou a coisa")
+            # print("ERRO: não deletou a coisa")
             pass
         finally:
             f.close()
@@ -641,10 +642,12 @@ class System_Paths:
         n_camadas = len(camadas_imgs_names)
         os.chdir(self.sliced)
         for i, file_path in enumerate(camadas_imgs_names):
-            layer = Layer()
-            layer.make_input_img(
-                f"L_{i:03d}", file_path, dpi, i % 2, layer_height, n_camadas
-            )
+            img = imread(file_path, 0)
+            if np.sum(img) > 0:
+                layer = Layer()
+                layer.make_input_img(
+                    f"L_{i:03d}", img, dpi, i % 2, layer_height, n_camadas
+                )
             list_layers.append(layer)
         os.chdir(self.home)
         return list_layers

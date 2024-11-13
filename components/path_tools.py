@@ -372,7 +372,8 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
-    nova_rota = set_first_pt_in_seq(nova_rota, random.choice(all_its))
+    if len(all_its)>0:
+        nova_rota = set_first_pt_in_seq(nova_rota, random.choice(all_its))
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
     # aaa = new_route.get_img()
     return new_route
@@ -1518,11 +1519,34 @@ def layers_to_Gcode(
         folders.load_islands_hdf5(layer)
         # print(f"nome: {layer.name}")
         for n_island, island in enumerate(layer.islands):
-            print(f"nome: {layer.name}/{island.name}")
             folders.load_island_paths_hdf5(layer.name, island)
+            folders.load_island_paths_hdf5(layer.name, island)
+            itr = [list(x) for x in island.internal_tree_route.sequence]
+            etr = [list(x) for x in island.external_tree_route.sequence]
+            twtr = [list(x) for x in island.thinwalls_tree_route.sequence]
+            itr_img = it.points_to_img(itr, np.zeros(layer.base_frame))
+            etr_img = it.points_to_img(etr, np.zeros(layer.base_frame))
+            twtr_img = it.points_to_img(twtr, np.zeros(layer.base_frame))
+            folders.load_bridges_hdf5(layer.name, island)
+            print(f"nome: {layer.name}/{island.name}")
             aaa = island.island_route.img
-            pontos_int = [list(x) for x in island.internal_tree_route.sequence]
-            pontos_ext = [list(x) for x in island.external_tree_route.sequence]
+            A = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
+            pts_crossover = []
+            for x in A:
+                pts_crossover = pts_crossover + x
+            if n_layer % 2:
+                etr = rotate_path_odd_layer(etr, layer.base_frame)
+                itr = rotate_path_odd_layer(itr, layer.base_frame)
+                twtr = rotate_path_odd_layer(twtr, layer.base_frame)
+                itr_img = it.points_to_img(itr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+                etr_img = it.points_to_img(etr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+                twtr_img = it.points_to_img(twtr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+                aaaa = it.points_to_img(pts_crossover, np.zeros(layer.base_frame))
+                pts_crossover = rotate_path_odd_layer(pts_crossover, layer.base_frame)
+                aaaa = it.points_to_img(pts_crossover, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+            pontos_int = [list(x) for x in itr] + pts_crossover
+            pontos_ext = [list(x) for x in etr]
+            pontos_ext = [coord for coord in pontos_ext if coord not in pts_crossover]
             pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
             chain = [list(x) for x in island.island_route.sequence]
             counter = 0
@@ -1586,7 +1610,8 @@ def layers_to_Gcode(
             # f.close()
             # os.chdir(folders.home)
     output += f"G1 Z20\n"
-    output += f"G28 X0 Y0\n"
+    output += f"G28 X0\n"
+    output += f"G28 Y0\n"
     output += f"M104 S0; End of Gcode\n"
     os.chdir(folders.output)
     f = open(outFile, "w")

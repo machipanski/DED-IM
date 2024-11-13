@@ -1021,17 +1021,18 @@ def connect_fails_to_zigzags(
             center_row = path_radius_internal  # Linha do centro
             line_image[center_row, :] = 1  # Preenche a linha do centro
             new_fail = mt.opening(new_fail, kernel_img=line_image)
-            pts_fail_contact = pt.img_to_points(new_fail)
-            pts_fail_contact = sorted(pts_fail_contact, key=lambda x: x[1])
-            pts_fail_contact_extremes = [pts_fail_contact[0], pts_fail_contact[-1]]
-            canvas = np.zeros_like(old_zigzag)
-            canvas = it.draw_line(zigzag_contact, *pts_fail_contact_extremes)
-            canvas = it.draw_line(canvas, pts_zigzag_contact_extremes[0], pts_fail_contact_extremes[0])
-            canvas = it.draw_line(canvas, pts_zigzag_contact_extremes[1], pts_fail_contact_extremes[1])
-            _, connected_fail = mt.detect_contours(np.logical_or(new_fail, canvas),return_img=True, only_external=True)
-            connected_fail = it.fill_internal_area(connected_fail, np.ones_like(canvas))
-            connected_fails.append(it.sum_imgs([connected_fail, zigzag_contact]))
-            all_connected_fails = np.logical_or(connected_fails, connected_fail)
+            if np.sum(new_fail)>0:
+                pts_fail_contact = pt.img_to_points(new_fail)
+                pts_fail_contact = sorted(pts_fail_contact, key=lambda x: x[1])
+                pts_fail_contact_extremes = [pts_fail_contact[0], pts_fail_contact[-1]]
+                canvas = np.zeros_like(old_zigzag)
+                canvas = it.draw_line(zigzag_contact, *pts_fail_contact_extremes)
+                canvas = it.draw_line(canvas, pts_zigzag_contact_extremes[0], pts_fail_contact_extremes[0])
+                canvas = it.draw_line(canvas, pts_zigzag_contact_extremes[1], pts_fail_contact_extremes[1])
+                _, connected_fail = mt.detect_contours(np.logical_or(new_fail, canvas),return_img=True, only_external=True)
+                connected_fail = it.fill_internal_area(connected_fail, np.ones_like(canvas))
+                connected_fails.append(it.sum_imgs([connected_fail, zigzag_contact]))
+                all_connected_fails = np.logical_or(connected_fails, connected_fail)
         else:
             pass
     eroded_connected_fails = []

@@ -210,6 +210,8 @@ class Bridge:
                 new_zigzag = internal_cut(
                     new_contour_pts, linhas_transversais, extreme_internal_points, 0
                 )
+                new_zigzag = np.logical_or(new_zigzag, linhas_limitrofes)
+                new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 5)
         else:
             new_zigzag = origin
         inicio_e_fim = oscilatory_start_and_end(new_zigzag, self.pontos_extremos)
@@ -651,52 +653,6 @@ class BridgeRegions:
                 if x <= necks_max_paths
             ]
 
-        def reduce_origin(candidate):
-            """Determina inicio e fim para cada trunk, então vai reduzindo as margens até englobar todos os estrangulamentos dele"""
-            t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
-            if len(t_ends) == 0:  # se for um ciclo fechado
-                start_pnt = random.choice(pt.x_y_para_pontos(np.nonzero(candidate)))
-                origin_chain = pt.invert_x_y(
-                    path_tools.make_a_chain(candidate.astype(bool), start_pnt)
-                )
-                new_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
-                origin_chain = path_tools.set_first_pt_in_seq(origin_chain,new_ends[0])
-                origin_chain_img = it.points_to_img(
-                    origin_chain, np.zeros_like(candidate)
-                )
-                candidate = np.multiply(candidate, origin_chain_img)
-            else:  # se for um trunk aberto
-                start_pnt = []
-                origin_chain = pt.invert_x_y(
-                    path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
-                )
-                
-            reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
-            ends = pt.img_to_points(sk.find_tips(reduced_origin.astype(bool)))
-            new_origin = origin_chain.copy()
-            count_up = 0
-            count_down = -1
-            start_flag = 0
-            end_flag = 0
-            while not (start_flag and end_flag):
-                current_pt_1 = origin_chain[count_up]
-                current_pt_2 = origin_chain[count_down]
-                if current_pt_1 in ends:
-                    start_flag = 1
-                else:
-                    new_origin.remove(current_pt_1)
-                    count_up += 1
-                if current_pt_2 in ends:
-                    end_flag = 1
-                else:
-                    new_origin.remove(current_pt_2)
-                    count_down -= 1
-            reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
-            _,_,n = it.divide_by_connected(reduced_origin)
-            if n>1:
-                print("POBREMAAAA")
-            return reduced_origin * norm_dist_map, origin_chain[0]
-
         def close_bridges(norm_reduced_origins, initial_points):
             self.all_bridges = np.zeros(base_frame)
             self.all_origins = np.zeros(base_frame)
@@ -755,7 +711,7 @@ class BridgeRegions:
         norm_trunks, norm_dist_map = separate_trunks()
         minus_bigger_than_2wd = break_too_big_parts(norm_trunks, norm_dist_map)
         origin_candidates = separate_truks_with_botlenecks(minus_bigger_than_2wd)
-        reduced = [reduce_origin(x) for x in origin_candidates]
+        reduced = [reduce_origin(x, necks_max_paths, norm_dist_map) for x in origin_candidates]
         norm_reduced_origins = [y[0] for y in reduced]
         initial_points = [x[1] for x in reduced]
         close_bridges(norm_reduced_origins, initial_points)
@@ -1045,12 +1001,6 @@ def close_bridge_contour(
                 if p not in unique_points:
                     unique_points.append(p)
             if len(unique_points) == 4:
-                # dist_1a_2 = list(map(lambda x: pt.distance_pts(inicios_e_fins1[0], x), inicios_e_fins2))
-                # dist_1b_2 = list(map(lambda x: pt.distance_pts(inicios_e_fins1[1], x), inicios_e_fins2))
-                # ponto_destino_1 = inicios_e_fins2[np.argmin(dist_1a_2)]
-                # ponto_destino_2 = inicios_e_fins2[np.argmin(dist_1b_2)]
-                # fechamento1_pts = [inicios_e_fins1[0], ponto_destino_1]
-                # fechamento2_pts = [inicios_e_fins1[1], ponto_destino_2]
                 extreme_points = [
                     inicios_e_fins1[0],
                     inicios_e_fins1[1],
@@ -1067,8 +1017,6 @@ def close_bridge_contour(
                         inicios_e_fins2[0],
                         inicios_e_fins2[1],
                     ]
-                # linhatopo = it.draw_line(np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1])
-                # linhabaixo = it.draw_line(np.zeros(base_frame), fechamento2_pts[0], fechamento2_pts[1])
                 linhatopo = it.draw_line(
                     np.zeros(base_frame), extreme_points[0], extreme_points[2]
                 )
@@ -1719,3 +1667,48 @@ def oscilatory_start_and_end(new_zigzag, pontos_extremos):
         np.nonzero(mt.hitmiss_ends_v2(new_zigzag.astype(bool)))
     )
     return fins_da_rota
+
+def reduce_origin(candidate, necks_max_paths, norm_dist_map):
+    """Determina inicio e fim para cada trunk, então vai reduzindo as margens até englobar todos os estrangulamentos dele"""
+    t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
+    if len(t_ends) == 0:  # se for um ciclo fechado
+        start_pnt = random.choice(pt.x_y_para_pontos(np.nonzero(candidate)))
+        origin_chain = pt.invert_x_y(
+            path_tools.make_a_chain(candidate.astype(bool), start_pnt)
+        )
+        new_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
+        origin_chain = path_tools.set_first_pt_in_seq(origin_chain,new_ends[0])
+        origin_chain_img = it.points_to_img(
+            origin_chain, np.zeros_like(candidate)
+        )
+        candidate = np.multiply(candidate, origin_chain_img)
+    else:  # se for um trunk aberto
+        start_pnt = []
+        origin_chain = pt.invert_x_y(
+            path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
+        )
+    reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
+    ends = pt.img_to_points(sk.find_tips(reduced_origin.astype(bool)))
+    new_origin = origin_chain.copy()
+    count_up = 0
+    count_down = -1
+    start_flag = 0
+    end_flag = 0
+    while not (start_flag and end_flag):
+        current_pt_1 = origin_chain[count_up]
+        current_pt_2 = origin_chain[count_down]
+        if current_pt_1 in ends:
+            start_flag = 1
+        else:
+            new_origin.remove(current_pt_1)
+            count_up += 1
+        if current_pt_2 in ends:
+            end_flag = 1
+        else:
+            new_origin.remove(current_pt_2)
+            count_down -= 1
+    reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
+    _,_,n = it.divide_by_connected(reduced_origin)
+    if n>1:
+        print("POBREMAAAA")
+    return reduced_origin * norm_dist_map, origin_chain[0]

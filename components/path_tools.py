@@ -249,7 +249,7 @@ def add_routes_by_sequence_internal(
 def connect_thin_walls(island: Island, path_radius_external):
     new_route = Path("thin wall tree", [], [], saltos=[])
     if hasattr(island.thin_walls, "all_origins"):
-        if sum(island.thin_walls.all_origins):
+        if np.sum(island.thin_walls.all_origins):
             thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
             thinwall_path_list = []
             for i, tw in enumerate(thinwall_list):

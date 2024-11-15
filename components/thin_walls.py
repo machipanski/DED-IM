@@ -82,61 +82,44 @@ class ThinWallRegions:
             try:
                 bridge_img, elementos_contorno, contorno, pontos_extremos = (
                     bottleneck.close_bridge_contour(
-                        reduced_continuous_origin,
+                        reduced_continuous_origin[0],
                         base_frame,
                         max_width,
                         island_img,
                         mask,
                         path_radius,
                         sem_galhos,
+                        reduced_continuous_origin[1],
                     )
                 )
                 if np.sum(bridge_img) > 0:
-                    y_mark = np.where(reduced_continuous_origin)[1][
-                        np.round(len(np.where(reduced_continuous_origin)))
+                    y_mark = np.where(reduced_continuous_origin[0])[1][
+                        np.round(len(np.where(reduced_continuous_origin[0])))
                     ]
-                    x_mark = np.where(reduced_continuous_origin)[0][
-                        np.round(len(np.where(reduced_continuous_origin)))
+                    x_mark = np.where(reduced_continuous_origin[0])[0][
+                        np.round(len(np.where(reduced_continuous_origin[0])))
                     ]
                     origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
                     region = ThinWall(
                         f"TW_{i:03d}",
                         bridge_img,
-                        reduced_continuous_origin,
-                        reduced_continuous_origin,
+                        reduced_continuous_origin[0],
+                        reduced_continuous_origin[0],
                         n_trilhas_max,
                         origin_mark,
                         elementos_contorno,
                         pontos_extremos,
                     )
-                    # tw_group_path = f"{layer_name}/{island_name}/thin_walls/TW_{i:03d}"
-                    # new_groups.append([tw_group_path])
-                    # [linha1, linha2, linhatopo, linhabaixo] = elementos_contorno
-                    # new_tw_imgs.append([tw_group_path, "img", bridge_img])
-                    # new_linha1s.append([tw_group_path, "linha1", linha1])
-                    # new_linha2s.append([tw_group_path, "linha2", linha2])
-                    # new_linhatopos.append([tw_group_path, "linhatopo", linhatopo])
-                    # new_linhabaixos.append([tw_group_path, "linhabaixo", linhabaixo])
-                    # new_origins.append([tw_group_path, "origin", reduced_continuous_origin])
                     print("OK: fechou contorno")
             except Exception:
                 print("\033[3#m" + "Erro: nao fechou contorno" + "\033[0m")
                 region = ThinWall([], [], [], [], 0, [], [], [])
             return region
 
-        # Criando o MAT
-        # new_tw_imgs = []
-        # new_linha1s = []
-        # new_linha2s = []
-        # new_linhatopos = []
-        # new_linhabaixos = []
-        # new_origins = []
-        # new_groups = []
         new_medial_transforms = []
         sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
             island_img.astype(np.uint8), 2 * path_radius
         )
-        # TODO:Achar o melhor size para o serviço
         new_medial_transforms.append(
             [
                 f"{layer_name}/{island_name}",
@@ -144,7 +127,6 @@ class ThinWallRegions:
                 sem_galhos * sem_galhos_dist,
             ]
         )
-        # Dividindo partes do esquelet que podem ser paredes finas
         max_width = 2
         trunks = [pt.contour_to_list([x]) for x in trunks]
         trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
@@ -155,7 +137,7 @@ class ThinWallRegions:
             normalized_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width
         ]
         reduced_origins = [
-            bottleneck.restore_continuous_trunk(x, max_width, island_img)
+            bottleneck.reduce_origin(x, max_width, island_img)
             for x in origin_candidates
         ]
 
@@ -168,35 +150,14 @@ class ThinWallRegions:
             for l in concurrent.futures.as_completed(results):
                 processed_trunks.append(l.result())
         processed_trunks = list(filter(lambda x: x != [], processed_trunks))
-        # processed_trunks = list(filter(lambda x: sum(x.img) != 0, processed_trunks))
         processed_trunks.sort(key=lambda x: x.name)
-        self.regions = processed_trunks
-        # Produzindo as imagens de resumo
+        
+        self.regions = [x for x in processed_trunks]
         self.all_thin_walls = np.zeros_like(island_img)
         self.all_origins = np.zeros_like(island_img)
         for tw in self.regions:
             self.all_thin_walls = np.logical_or(self.all_thin_walls, tw.img)
             self.all_origins = np.logical_or(self.all_origins, tw.origin)
-        # img_packs = {
-        #     "groups": new_groups,
-        #     "tw_img": new_tw_imgs,
-        #     "mat": new_medial_transforms,
-        #     "l1": new_linha1s,
-        #     "l2": new_linha2s,
-        #     "lt": new_linhatopos,
-        #     "lb": new_linhabaixos,
-        #     "origins": new_origins,
-        #     "all_tw": [
-        #         f"/{layer_name}/{island_name}/thin_walls",
-        #         "all_thin_walls",
-        #         all_thin_walls,
-        #     ],
-        #     "all_tw_origins": [
-        #         f"/{layer_name}/{island_name}/thin_walls",
-        #         "all_origins",
-        #         all_origins,
-        #     ],
-        # }
         return
 
     def apply_thin_walls(self, folders: System_Paths, original, base_frame):

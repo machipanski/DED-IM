@@ -103,6 +103,7 @@ class Layer:
                         itr.sequence = path_tools.set_first_pt_in_seq(
                             [list(x) for x in itr.sequence], island.comeco_int
                         )
+                        twtr.sequence = [list(x) for x in twtr.sequence]
                         island_route_path_for_img = (
                             etr.sequence + itr.sequence + twtr.sequence
                         )

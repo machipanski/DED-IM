@@ -303,10 +303,13 @@ class Bridge:
                 new_zigzag = internal_cut(new_contour, linhas_transversais, extreme_internal_points, 0)
                 new_zigzag = np.logical_or(new_zigzag, linhas_limitrofes)
             new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 5)
-            inicio_e_fim = oscilatory_start_and_end(new_zigzag, self.pontos_extremos)
+            # inicio_e_fim = oscilatory_start_and_end(new_zigzag, self.pontos_extremos)
             self.route = new_zigzag.astype(bool)
             self.trail = mt.dilation(self.route, kernel_size=path_radius)
-            self.reference_points = inicio_e_fim
+            # self.reference_points = inicio_e_fim
+            self.reference_points = pt.x_y_para_pontos(
+                np.nonzero(mt.hitmiss_ends_v2(new_zigzag))
+            )
             new_zigzag_b = internal_cut(
                 new_contour, linhas_transversais, extreme_internal_points, 1
             )
@@ -324,13 +327,16 @@ class Bridge:
                     new_contour, linhas_transversais, extreme_internal_points, 1
                 )
                 new_zigzag_b = np.logical_or(new_zigzag_b, linhas_limitrofes)
-            inicio_e_fim_b = oscilatory_start_and_end(
-                new_zigzag_b, self.pontos_extremos
-            )
+            # inicio_e_fim_b = oscilatory_start_and_end(
+            #     new_zigzag_b, self.pontos_extremos
+            # )
             new_zigzag_b, _, _ = sk.create_prune_divide_skel(new_zigzag_b, 5)
             self.route_b = new_zigzag_b.astype(bool)
             self.trail_b = mt.dilation(self.route_b, kernel_size=path_radius)
-            self.reference_points_b = inicio_e_fim_b
+            # self.reference_points_b = inicio_e_fim_b
+            self.reference_points_b = pt.x_y_para_pontos(
+                np.nonzero(mt.hitmiss_ends_v2(new_zigzag_b))
+            )
         else:
             self.route = self.origin
             self.route_b = self.route

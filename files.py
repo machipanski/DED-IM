@@ -341,15 +341,22 @@ class System_Paths:
             os.chdir(self.home)
         return
 
-    def save_props_hdf5(self, path, dict) -> None:
+    def save_props_hdf5(self, path, dict, **kwargs) -> None:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
         local = f.get(path)
-        for key, value in dict.items():
-            try:
-                local.attrs[key] = value
-            except:
-                pass
+        if kwargs:
+            for key, value in kwargs.items():
+                try:
+                    local.attrs[key] = value
+                except:
+                    pass
+        else:
+            for key, value in dict.items():
+                try:
+                    local.attrs[key] = value
+                except:
+                    pass
         f.close()
         os.chdir(self.home)
         return
@@ -547,7 +554,6 @@ class System_Paths:
             self.delete_item_hdf5(element_path)
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.external_tree_route.__dict__)
-            # self.delete_item_hdf5(element_path + "/sequence")
             self.save_seq_hdf5(
                 element_path, "sequence", isl.external_tree_route.sequence
             )

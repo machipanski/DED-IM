@@ -160,7 +160,6 @@ def add_routes_by_sequence(
             for y in [x.regions["offsets"] for x in island.external_tree_route]
         ]
         linked_offset_seq = island.external_tree_route[A.index(True)].sequence
-        # layer.external_tree_route[0].img
         pt_close_to_start, _ = pt.closest_point(
             refs[np.argmax(dists)], linked_offset_seq
         )
@@ -334,8 +333,6 @@ def connect_cross_over_bridges(island: Island) -> Path:
         nova_rota = start_path.sequence
         saltos = []
     else:
-        # start_point_ext = [island.comeco_ext[0], island.comeco_ext[1]]
-        # start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_ext)
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
         stop = 0
@@ -372,15 +369,14 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
-    if len(all_its)>0:
-        nova_rota = set_first_pt_in_seq(nova_rota, random.choice(all_its))
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
     # aaa = new_route.get_img()
     return new_route
 
 
 def connect_internal_external(island: Island, path_radius_internal):
-    filling = island.internal_tree_route.get_img(island.img.shape)
+    # filling = island.internal_tree_route.get_img(island.img.shape)
+    filling = island.zigzags.all_zigzags
     most_external = island.offsets.regions[0].route.astype(np.uint8)
     dilation_kernel = int(path_radius_internal * 2)
     touching = np.zeros_like(island.img)
@@ -392,8 +388,10 @@ def connect_internal_external(island: Island, path_radius_internal):
         dilation_kernel = dilation_kernel + 2
     candidates_internal = pt.img_to_points(touching)
     chosen_internal = random.choice(candidates_internal)
-    external_pts = [list(x) for x in island.external_tree_route.sequence]
+    external_pts = pt.img_to_points(most_external)
     chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
+    # island.external_tree_route = Path(f"external_tree_route", [])
+    # island.internal_tree_route = Path(f"internal_tree_route", [])
     return chosen_external, chosen_internal
 
 
@@ -502,6 +500,10 @@ def connect_offset_bridges(
     for i, rota in enumerate(rotas_isoladas):
         if lens[i] > 2 * circunf:
             lista_de_rotas.append(Path(i, rota))
+            lista_de_rotas[-1].sequence = set_first_pt_in_seq(
+                lista_de_rotas[-1].sequence,
+                list(island.comeco_ext),
+            )
             lista_de_rotas[-1].get_img(base_frame)
             lista_de_rotas[-1].get_regions(island)
     return lista_de_rotas
@@ -911,6 +913,7 @@ def img_to_graph(im):
     G.add_edges_from(negative_diagonal_edges, weight=1)
     return G
 
+
 def img_to_graph_com_distancias(im):
     # hy, hx = np.where(np.logical_and(im[1:],im[:-1]))  # horizontal edge start positions
     # h_units = np.array([hx, hy]).T
@@ -966,11 +969,7 @@ def img_to_graph_com_distancias(im):
     # Get the dimensions of the image
     rows, cols = image_array.shape
     # Define the offsets for the 8-neighborhood
-    offsets = [(-1, -1), (-1, 0), (-1, 1),
-
-               (0, -1),          (0, 1),
-
-               (1, -1), (1, 0), (1, 1)]
+    offsets = [(-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1)]
     # Add nodes for each non-zero pixel
     for i in range(rows):
         for j in range(cols):
@@ -983,7 +982,7 @@ def img_to_graph_com_distancias(im):
                     if 0 <= ni < rows and 0 <= nj < cols and image_array[ni, nj] != 0:
                         weight = abs(image_array[i, j] - image_array[ni, nj])
                         G.add_edge((i, j), (ni, nj), weight=weight)
-    return G 
+    return G
 
 
 def intersection_points_w_rectangle(border, spiral, idx=0):
@@ -1428,6 +1427,9 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
         zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
         if len(zigzag_path) > 0:
             path_list.append(Path(i, zigzag_path[0], img=ma))
+            path_list[-1].sequence = set_first_pt_in_seq(
+                path_list[-1].sequence, list(isl.comeco_int)
+            )
             path_list[-1].get_regions(isl)
     if path_list == []:
         for i, zb in enumerate(isl.bridges.zigzag_bridges):
@@ -1436,6 +1438,9 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
             )
             if len(zigzag_b_path) > 0:
                 path_list.append(Path(i, zigzag_b_path[0], img=zb))
+                path_list[-1].sequence = set_first_pt_in_seq(
+                    path_list[-1].sequence, list(isl.comeco_int)
+                )
                 path_list[-1].get_regions(isl)
     return path_list
 
@@ -1530,7 +1535,9 @@ def layers_to_Gcode(
             folders.load_bridges_hdf5(layer.name, island)
             print(f"nome: {layer.name}/{island.name}")
             aaa = island.island_route.img
-            A = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
+            A1 = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
+            A2 = [pt.img_to_points(x.route_b) for x in island.bridges.cross_over_bridges]
+            A = A1 + A2
             pts_crossover = []
             for x in A:
                 pts_crossover = pts_crossover + x
@@ -1538,12 +1545,20 @@ def layers_to_Gcode(
                 etr = rotate_path_odd_layer(etr, layer.base_frame)
                 itr = rotate_path_odd_layer(itr, layer.base_frame)
                 twtr = rotate_path_odd_layer(twtr, layer.base_frame)
-                itr_img = it.points_to_img(itr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
-                etr_img = it.points_to_img(etr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
-                twtr_img = it.points_to_img(twtr, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+                itr_img = it.points_to_img(
+                    itr, np.zeros(pt.invert_x_y([layer.base_frame])[0])
+                )
+                etr_img = it.points_to_img(
+                    etr, np.zeros(pt.invert_x_y([layer.base_frame])[0])
+                )
+                twtr_img = it.points_to_img(
+                    twtr, np.zeros(pt.invert_x_y([layer.base_frame])[0])
+                )
                 aaaa = it.points_to_img(pts_crossover, np.zeros(layer.base_frame))
                 pts_crossover = rotate_path_odd_layer(pts_crossover, layer.base_frame)
-                aaaa = it.points_to_img(pts_crossover, np.zeros(pt.invert_x_y([layer.base_frame])[0]))
+                aaaa = it.points_to_img(
+                    pts_crossover, np.zeros(pt.invert_x_y([layer.base_frame])[0])
+                )
             pontos_int = [list(x) for x in itr] + pts_crossover
             pontos_ext = [list(x) for x in etr]
             pontos_ext = [coord for coord in pontos_ext if coord not in pts_crossover]

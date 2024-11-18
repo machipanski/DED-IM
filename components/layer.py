@@ -71,6 +71,23 @@ class Layer:
             self.mm_per_pxl: float = 0
             self.islands: List[Island]
 
+    def islands_path_starts(self, folders: System_Paths):
+        folders.load_islands_hdf5(self)
+        for island in self.islands:
+            folders.load_offsets_hdf5(self.name, island)
+            folders.load_zigzags_hdf5(self.name, island)
+            with Timer("Encontrando ponto de união ext-int"):
+                if hasattr(island.zigzags, "regions"):
+                    if hasattr(island.offsets, "regions"):
+                        island.comeco_ext, island.comeco_int = (
+                            path_tools.connect_internal_external(
+                                island, self.path_radius_internal
+                            )
+                        )
+                with Timer("salvando imagens das rotas"):
+                    folders.save_props_hdf5(f"/{self.name}/{island.name}", island.__dict__, comeco_ext=island.comeco_ext, comeco_int=island.comeco_int)
+        return
+
     def close_final_path(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
         for island in self.islands:
@@ -84,25 +101,10 @@ class Layer:
                     pass
                 else:
                     if itr.sequence == []:
-                        # from components import points_tools as pt
-                        # most_external = island.offsets.regions[0].route.astype(np.uint8)
-                        # most_external_pts = pt.img_to_points(most_external)
-                        # island.comeco_ext = random.choice(most_external_pts)
-                        # etr.sequence = path_tools.set_first_pt_in_seq([list(x) for x in etr.sequence], island.comeco_ext)
-                        # island.comeco_int = []
                         pass
                     else:
-                        island.comeco_ext, island.comeco_int = (
-                            path_tools.connect_internal_external(
-                                island, self.path_radius_internal
-                            )
-                        )
-                        etr.sequence = path_tools.set_first_pt_in_seq(
-                            [list(x) for x in etr.sequence], island.comeco_ext
-                        )
-                        itr.sequence = path_tools.set_first_pt_in_seq(
-                            [list(x) for x in itr.sequence], island.comeco_int
-                        )
+                        itr.sequence = [list(x) for x in itr.sequence]
+                        etr.sequence = [list(x) for x in etr.sequence]
                         twtr.sequence = [list(x) for x in twtr.sequence]
                         island_route_path_for_img = (
                             etr.sequence + itr.sequence + twtr.sequence
@@ -186,7 +188,6 @@ class Layer:
             folders.load_zigzags_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
-            # folders.load_island_paths_hdf5(self.name, isl)
             with Timer("Conectando zgzags vizinhos"):
                 isl.internal_tree_route = path_tools.start_internal_route(
                     isl, mt.make_mask(self, "full_int"), self.path_radius_internal
@@ -198,9 +199,6 @@ class Layer:
             else:
                 print("rotas internas inexistentes")
                 isl.internal_tree_route = Path("0", [], [])
-            # with Timer("casando começo int com final ext"):
-            #     path_tools.set_first_pt_in_seq([list(x) for x in isl.internal_tree_route.sequence], list(isl.comeco_int))
-
         with Timer("salvando imagens das rotas"):
             folders.save_internal_routes_hdf5(self.name, self.islands)
         return

@@ -76,6 +76,7 @@ class Layer:
         for island in self.islands:
             folders.load_offsets_hdf5(self.name, island)
             folders.load_zigzags_hdf5(self.name, island)
+            folders.load_bridges_hdf5(self.name, island)
             with Timer("Encontrando ponto de união ext-int"):
                 if hasattr(island.zigzags, "regions"):
                     if hasattr(island.offsets, "regions"):
@@ -327,18 +328,6 @@ class Layer:
                     island.rest_of_picture_f1 = it.image_subtract(
                         island.rest_of_picture_f1, reg.img
                     )
-                # island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
-                # if hasattr(island, "thin_walls"):
-                #     self.rest_of_picture_f1 = island.thin_walls.apply_thin_walls(
-                #         folders, island_img, self.base_frame
-                #     )
-                # else:
-                #     self.rest_of_picture_f1 = island.img
-                # folders.save_img_hdf5(
-                #     f"{self.name}/{island.name}",
-                #     "rest_of_picture_f1",
-                #     self.rest_of_picture_f1,
-                # )
 
         with Timer("salvando imagens das regiões"):
             folders.save_regs_thinwalls_hdf5(self.name, self.islands)
@@ -516,11 +505,8 @@ class Layer:
             isl.offsets.make_routes_o(
                 self.base_frame,
                 mt.make_mask(self, "full_ext"),
-                mt.make_mask(self, "double_ext"),
-                [],
                 self.path_radius_external,
                 amendment_size,
-                folders,
             )
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
@@ -634,6 +620,9 @@ class Layer:
         if self.name == "L_000":
             self.prohibited_areas = np.zeros_like(self.original_img)
 
+        if self.name == 'L_039':
+            print("pausa")
+
         with Timer("Criando pontes de Offset"):
             make_islands_offset_bridges()
 
@@ -676,18 +665,19 @@ class Layer:
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
-            isl.bridges.make_routes_b(
-                isl.offsets.regions,
-                self.path_radius_external,
-                self.path_radius_internal,
-                self.base_frame,
-                isl.rest_of_picture_f2,
-                self.odd_layer,
-                isl.offsets.all_valid_loops,
-            )
-        with Timer("salvando imagens das rotas"):
-            folders.save_routes_bridges_hdf5(self.name, self.islands)
-            folders.save_props_hdf5(f"/{self.name}", self.__dict__)
+            if hasattr(isl,"bridges"):
+                isl.bridges.make_routes_b(
+                    isl.offsets.regions,
+                    self.path_radius_external,
+                    self.path_radius_internal,
+                    self.base_frame,
+                    isl.rest_of_picture_f2,
+                    self.odd_layer,
+                    isl.offsets.all_valid_loops,
+                )
+            with Timer("salvando imagens das rotas"):
+                folders.save_routes_bridges_hdf5(self.name, self.islands)
+                folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_zigzags(self, folders: System_Paths):
 

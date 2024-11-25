@@ -87,30 +87,6 @@ class Path:
                         self.regions["thin walls"].append(tw.name)
         return
 
-
-# def connect_internal_external(layer):
-#     def start_candidates(internal, external, path_radius):
-#         hy, hx = np.where(internal[int(path_radius*2)+1:] & external[:-(int(path_radius*2)+1)])  # horizontal edge start positions
-#         h_units = np.array([hx, hy]).T
-#         h_starts = [tuple(n) for n in h_units]
-#         canvas = np.zeros_like(internal)
-#         for p in h_starts:
-#             canvas[p[1], p[0]] = 1
-#         candidates_external = pt.x_y_para_pontos(np.nonzero(canvas))
-#         if len(candidates_external) == 0:
-#             chosen_external = random.choice(pt.x_y_para_pontos(np.nonzero(external)))
-#         else:
-#             chosen_external = random.choice(candidates_external)
-#         internal_pts = pt.x_y_para_pontos(np.nonzero(internal))
-#         chosen_internal, _ = pt.closest_point(chosen_external, internal_pts)
-#         return chosen_external, chosen_internal
-
-#     internal = it.sum_imgs([z.route for z in layer.zigzags.regions])
-#     external = layer.offsets.regions[0].route
-#     comeco_ext, comeco_int = start_candidates(internal.astype(np.uint8), external.astype(np.uint8), layer.path_radius_internal)
-#     return comeco_ext, comeco_int
-
-
 def add_routes_by_sequence(
     nova_rota,
     island: Island,
@@ -375,23 +351,31 @@ def connect_cross_over_bridges(island: Island) -> Path:
 
 
 def connect_internal_external(island: Island, path_radius_internal):
-    # filling = island.internal_tree_route.get_img(island.img.shape)
     filling = island.zigzags.all_zigzags
-    most_external = island.offsets.regions[0].route.astype(np.uint8)
-    dilation_kernel = int(path_radius_internal * 2)
-    touching = np.zeros_like(island.img)
-    while np.sum(touching) == 0:
-        aaa = it.sum_imgs(
-            [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
-        )
-        touching = aaa == 2
-        dilation_kernel = dilation_kernel + 2
-    candidates_internal = pt.img_to_points(touching)
-    chosen_internal = random.choice(candidates_internal)
-    external_pts = pt.img_to_points(most_external)
-    chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
-    # island.external_tree_route = Path(f"external_tree_route", [])
-    # island.internal_tree_route = Path(f"internal_tree_route", [])
+    if np.sum(filling) > 0:
+        most_external = island.offsets.regions[0].route.astype(np.uint8)
+        dilation_kernel = int(path_radius_internal * 2)
+        touching = np.zeros_like(island.img)
+        while np.sum(touching) == 0:
+            aaa = it.sum_imgs(
+                [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
+            )
+            touching = aaa == 2
+            dilation_kernel = dilation_kernel + 2
+        candidates_internal = pt.img_to_points(touching)
+        chosen_internal = random.choice(candidates_internal)
+        external_pts = pt.img_to_points(most_external)
+        chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
+    elif hasattr(island, "bridges"):
+        filling = [x.route for x in island.bridges.zigzag_bridges]
+        if len(filling) > 0:
+            filling = it.sum_imgs(filling)
+            print("FAZER A PARTE QUE TEM SÓ PONTES DE ZZ")
+        else:
+            most_external = island.offsets.regions[0].route.astype(np.uint8)
+            external_pts = pt.img_to_points(most_external)
+            chosen_external = random.choice(external_pts)
+            chosen_internal = []
     return chosen_external, chosen_internal
 
 
@@ -518,8 +502,6 @@ def connect_zigzag_bridges(island: Island):
         nova_rota = start_path.sequence
         saltos = []
     else:
-        # start_point_int = [island.comeco_int[0], island.comeco_int[1]]
-        # start_path.sequence = set_first_pt_in_seq(start_path.sequence, start_point_int)
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
         stop = 0
@@ -741,8 +723,6 @@ def find_points_of_contact(
             while np.sum(interface) == 0:
                 grow = grow + 1
                 interface = dilate_and_search(a1, a2, grow)
-                # if grow > 4*path_radius_internal:
-                #     interface = vert_connection(a1, a2)
             separated, _, num = it.divide_by_connected(interface)
             if num > 1:
                 sums = [np.sum(x) for x in separated]
@@ -915,54 +895,6 @@ def img_to_graph(im):
 
 
 def img_to_graph_com_distancias(im):
-    # hy, hx = np.where(np.logical_and(im[1:],im[:-1]))  # horizontal edge start positions
-    # h_units = np.array([hx, hy]).T
-    # h_starts = [tuple(n) for n in h_units]
-    # h_ends = [
-    #     tuple(n) for n in h_units + (0, 1)
-    # ]  # end positions = start positions shifted by vector (1,0)
-    # horizontal_edges = list(zip(h_starts, h_ends))
-    # values_starts = [im[x[1]][x[0]] for x in h_starts]
-    # values_ends = [im[x[1]][x[0]] for x in h_ends]
-    # difs_in_edges = [abs(pt) for pt in np.subtract(values_starts,values_ends)]
-    # # horizontal_edges_weights = zip(difs_in_edges)
-    # # CONSTRUCTION OF VERTICAL EDGES
-    # vy, vx = np.where(np.logical_and(im[:, 1:],im[:, :-1]))  # vertical edge start positions
-    # v_units = np.array([vx, vy]).T
-    # v_starts = [tuple(n) for n in v_units]
-    # v_ends = [
-    #     tuple(n) for n in v_units + (1, 0)
-    # ]  # end positions = start positions shifted by vector (0,1)
-    # vertical_edges = zip(v_starts, v_ends)
-    # # CONSTRUCTION OF POSITIVE DIAGONAL EDGES
-    # pdy, pdx = np.where(
-    #     np.logical_and(im[1:][:, 1:],im[:-1][:, :-1])
-    # )  # vertical edge start positions
-    # pd_units = np.array([pdx, pdy]).T
-    # pd_starts = [tuple(n) for n in pd_units]
-    # pd_ends = [
-    #     tuple(n) for n in pd_units + (1, 1)
-    # ]  # end positions = start positions shifted by vector (1,1)
-    # positive_diagonal_edges = zip(pd_starts, pd_ends)
-    # # CONSTRUCTION OF NEGATIVE DIAGONAL EDGES
-    # ndy, ndx = np.where(
-    #     np.logical_and(im[:-1][:, 1:],im[1:][:, :-1])
-    # )  # vertical edge start positions
-    # ndx = ndx + 1
-    # nd_units = np.array([ndx, ndy]).T
-    # nd_starts = [tuple(n) for n in nd_units]
-    # nd_ends = [
-    #     tuple(n) for n in nd_units + (-1, 1)
-    # ]  # end positions = start positions shifted by vector (-1,1)
-    # negative_diagonal_edges = zip(nd_starts, nd_ends)
-    # G = nx.Graph()
-    # for i,st in enumerate(h_starts):
-    #      G.add_edges_from(list(horizontal_edges)[0], weight=difs_in_edges[i])
-    # G.add_edges_from(horizontal_edges, weight=difs_in_edges)
-    # G.add_edges_from(vertical_edges, weight=1)
-    # G.add_edges_from(positive_diagonal_edges, weight=1)
-    # G.add_edges_from(negative_diagonal_edges, weight=1)
-
     image_array = np.array(im)
     # Create an empty graph
     G = nx.Graph()
@@ -1069,14 +1001,6 @@ def make_offset_graph(filtered_regions, regs_touching):
         )
         coord_origem_a = pt.invert_x_y([coord_origem_a])
         coord_origem_b = pt.invert_x_y([coord_origem_b])
-        # aaa = it.sum_imgs(
-        #     [
-        #         region_a.route,
-        #         region_b.route,
-        #         it.points_to_img(coord_origem_a, np.zeros_like(region_a.route)),
-        #         it.points_to_img(coord_origem_b, np.zeros_like(region_a.route)),
-        #     ]
-        # )
         graph.add_edge(
             origem_a,
             origem_b,
@@ -1110,91 +1034,6 @@ def make_zigzag_graph(zigzag_regions, zigzags_bridges, base_frame):
     return graph, pos_zigzag_nodes
 
 
-# def make_a_chain(
-#     im,
-#     div_point,
-#     path_radius,
-#     odd_layer,
-#     original_size,
-#     factor_epilson,
-#     cross_over_bridges=[],
-#     zigzag_bridges=[],
-# ):
-#     saltos = []
-#     canvas = np.zeros_like(im)
-#     canvas[div_point[0], div_point[1]] = 1
-#     corte = mt.dilation(canvas, kernel_size=path_radius)
-#     im = np.logical_and(im, np.logical_not(corte))
-#     acrescimo = 1
-#     flagOk = 0
-#     while flagOk == 0:
-#         proximos = mt.dilation(canvas, kernel_size=(path_radius + acrescimo))
-#         pontos = np.add(im, proximos)
-#         pontos = pontos == 2
-#         candidates = pt.x_y_para_pontos(np.nonzero(pontos))
-#         if len(candidates) > 2:
-#             points = pt.most_distant(candidates)
-#             flagOk = 1
-#         elif len(candidates) == 2:
-#             points = candidates
-#             flagOk = 1
-#         else:
-#             acrescimo += 1
-#             print("nope")
-#     [start, end] = points
-#     # CONSTRUCTION OF HORIZONTAL EDGES
-#     G = img_to_graph(im)
-#     if cross_over_bridges:
-#         for b in cross_over_bridges:
-#             if odd_layer:
-#                 print("antes: ", b.interruption_points)
-#                 canvas_interruptions = np.zeros(original_size)
-#                 for p in b.interruption_points:
-#                     canvas_interruptions[p[0], p[1]] = 1
-#                 canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
-#                 b.interruption_points = pt.x_y_para_pontos(
-#                     np.nonzero(canvas_interruptions)
-#                 )
-#             print("depois: ", b.interruption_points)
-#             G.add_edge(
-#                 tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
-#                 tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
-#                 weight=0.1,
-#             )
-#             saltos.append(b.interruption_points)
-#     if zigzag_bridges:
-#         for b in zigzag_bridges:
-#             if odd_layer:
-#                 print("antes: ", b.interruption_points)
-#                 canvas_interruptions = np.zeros(original_size)
-#                 for p in b.interruption_points:
-#                     canvas_interruptions[p[0], p[1]] = 1
-#                 canvas_interruptions = it.rotate_img_ccw(canvas_interruptions)
-#                 b.interruption_points = pt.x_y_para_pontos(
-#                     np.nonzero(canvas_interruptions)
-#                 )
-#             print("depois: ", b.interruption_points)
-#             G.add_edge(
-#                 tuple([b.interruption_points[0][1], b.interruption_points[0][0]]),
-#                 tuple([b.interruption_points[1][1], b.interruption_points[1][0]]),
-#                 weight=0.1,
-#             )
-#             saltos.append(b.interruption_points)
-#     # pos = dict(zip(G.nodes(), G.nodes()))  # map node names to coordinates
-#     path = nx.shortest_path(G, source=tuple(np.flip(start)), target=tuple(np.flip(end)))
-#     chain = simplifica_retas_master(path, np.zeros_like(im), factor_epilson)
-#     novos_saltos = []
-#     if saltos:
-#         saltos_unpack = saltos
-#         chain_unpack = list(map(lambda x: x[0], chain))
-#         for segment in saltos_unpack:
-#             for p in segment:
-#                 p_invert = [p[1], p[0]]
-#                 if not (p_invert in chain_unpack):
-#                     novos_saltos.append(pt.closest_point(p_invert, chain_unpack)[0])
-#                 else:
-#                     novos_saltos.append(p_invert)
-# return chain, G, novos_saltos
 def make_a_chain(image, start_point) -> list:
     im = copy.deepcopy(image)
     disconection = start_point

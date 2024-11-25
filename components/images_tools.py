@@ -135,7 +135,7 @@ def final_mapping(layer: Layer, folders: System_Paths):
         folders.load_zigzags_hdf5(layer.name, isl)
         if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
             regions_imgs.append(
-                sum_imgs_colored([reg.img for reg in isl.zigzags.regions]).astype(
+                sum_imgs_colored([reg.img for reg in isl.zigzags.regions], limited=True).astype(
                     np.uint16
                 )
                 * 101
@@ -301,16 +301,16 @@ def rotate_img_ccw(img: np.ndarray) -> np.ndarray:
     return cv2.rotate(img.astype(np.uint8), cv2.ROTATE_90_COUNTERCLOCKWISE)
 
 
-def sum_imgs_colored(imgs_list):
+def sum_imgs_colored(imgs_list, limited=False):
     """recieves a list of images and add returns a lebeled version of them"""
     all = np.zeros_like(imgs_list[0], np.uint16)
     color = 1
     for img in imgs_list:
         all = np.add(img.astype(np.uint16) * color, all)
-        # if color == 3:
-        #     color = 1
-        # else:
-        color += 1
+        if limited and color == 3:
+            color = 1
+        else:
+            color += 1
     return all
 
 

@@ -56,15 +56,6 @@ class Subregion:
         """O conceito da imagem de sombras é uma operação de labeling para cada linha dos dois lados
         dessa forma conseguimeos ver as "sombras" se iluminarmos a mesma imagem nos dois sentidos
         """
-
-        # def largura_ok(img, path_radius):
-        #     points = pt.img_to_points(img)
-        #     xs = [x[1] for x in points]
-        #     dif = max(xs) - min(xs)
-        #     if dif > 6 * path_radius:
-        #         return True
-        #     return False
-
         img = copy.deepcopy(self.img)
         shadows = []
         while np.sum(img) > 0:
@@ -77,44 +68,16 @@ class Subregion:
                 shadow_img_esq[index] = np.flip(labeled_line_esq)
             shadow_img_dir_dd = shadow_img_dir == 1
             shadow_img_esq_dd = shadow_img_esq == 1
-            # candidates = [shadow_img_dir_dd, shadow_img_esq_dd]
             candidates_d, _, num = it.divide_by_connected(shadow_img_dir_dd)
             candidates_e, _, num = it.divide_by_connected(shadow_img_esq_dd)
             candidates = candidates_d + candidates_e
-            # if len(np.add(shadow_img_dir_dd, shadow_img_esq_dd) == 2) > 0:
-                # isolated_candidates, _, num = it.divide_by_connected(candidates)
             sums = [np.sum(x) for x in candidates]
             all_ones = candidates[np.argmax(sums)]
-            # else:
-            #     all_ones = np.logical_or(
-            #         shadow_img_dir_dd.astype(int), shadow_img_esq_dd.astype(int)
-            #     )
-            # separated, _, num = it.divide_by_connected(all_ones)
-            # filtered_separated = []
-            # for s in separated:
-            #     for index, linha in enumerate(s[0:]):
-            #         labeled_line_dir = label(linha, connectivity=1)
-            #         shadow_img_dir[index] = labeled_line_dir
-            #     if len(np.unique(shadow_img_dir)) > 2:
-            #         filtered_separated.append(shadow_img_dir == 1)
-            #     else:
-            #         filtered_separated.append(s)
-            # shadows = shadows + filtered_separated
-            # for s in filtered_separated:
-            # for s in separated:
             shadows.append(all_ones)
             img = np.logical_and(img, np.logical_not(all_ones))
-        # shadow_img = it.sum_imgs_colored(shadows)
-        # areas = []
-        # for d in shadows:
-        #     labeled_divs, _, _ = it.divide_by_connected(d)
-        #     areas = areas + labeled_divs
-        # separated_after_rejoined, _, num = it.divide_by_connected(shadow_img)
-        # shadows_after_rejoined = separated_after_rejoined
         new_shadow_img = it.sum_imgs_colored(shadows)
         shadows_after_rejoined, labeled_shadows, num = it.divide_by_connected(new_shadow_img)
         final_areas = []
-        # for i, area in enumerate(areas):
         for i, area in enumerate(shadows_after_rejoined):
             final_areas.append(ShadowArea(i, area))
             shadow_img = it.sum_imgs_colored([x.img for x in final_areas])
@@ -613,30 +576,6 @@ def cut_in_lines(img, path_radius, var_path_width=0):
                     lines[y][x] = 1
     return lines, n_lines, internal_border_img, contours, new_path_radius
 
-
-# def integrate_fails_to_zigzags(old_zigzag, separated_connected_fails, path_radius_internal):
-#     all_new_zigzags = copy.deepcopy(old_zigzag)
-#     for fail in separated_connected_fails:
-#         try:
-#             num_parts = 99
-#             extension = 0
-#             while num_parts > 1 and extension < 10:
-#                 mask_line = np.zeros([5 + extension, 5 + extension])
-#                 mask_line[:, 2 + extension] = 1
-#                 interface_line_a = np.add(
-#                     mt.dilation(fail.astype(np.uint8), kernel_img=mask_line),
-#                     old_zigzag,
-#                 )
-#                 interface_line = interface_line_a == 2
-#                 _, _, num_parts = it.divide_by_connected(interface_line)
-#                 extension = extension + 2
-#             line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
-#             if line_points == []:
-#                 break
-#         except:
-#             pass
-#     return all_new_zigzags
-
 def internal_weaving_cut(interface_line, path_radius_internal, fail):
     def divide_in_pairs(interface_line, path_radius):
         line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
@@ -1065,87 +1004,3 @@ def connect_fails_to_zigzags(
     for fail in separated:
         new_conections.append(np.logical_and(fail, old_zigzag))
     return separated, new_conections
-            # linhas[:, : contact_xs[0]] = 0  # zera tudo antes
-            # linhas[:, (contact_xs[1] + 1) :] = 0  # zera tudo depois
-            # linhas, _, _ = it.divide_by_connected(linhas)
-            # dif_fail_contacts, _, cont_num = it.divide_by_connected(fail_contact)
-            # if cont_num > 1:
-            #     sums = []
-            #     distances = []
-            #     for cont in dif_fail_contacts:
-            #         pt.closest_line
-            #         if len(np.unique(np.nonzero(cont)[0])) > 5:
-            #             sums.append(0)
-            #         else:
-            #             sums.append(np.sum(cont))
-            #     fail_contact = dif_fail_contacts[np.argmax(sums)]
-            # contacts_imgs.append(fail_contact)
-            # linhas_pts = [pt.img_to_points(x) for x in linhas]
-            # linha_antiga, _ = pt.closest_line(pts_fail_contact_extremes[0], linhas_pts)
-            # linha_antiga = it.points_to_img(linha_antiga, np.zeros_like(fail_img))
-            # linha_antiga[: (contact_ys[0] - path_radius_internal - 5), :] = 0
-            # linha_antiga[(contact_ys[1] + path_radius_internal + 5) :, :] = (0)
-            # zigzag_contact_lines_imgs.append(linha_antiga)
-            # pts_linha = pt.img_to_points(linha_antiga)
-            # pts_linha = sorted(pts_linha, key=lambda x: x[1])
-            # pts_linha_extremes = [pts_linha[0], pts_linha[-1]]
-            # zigzag_contact_lines_pts.append(pts_linha_extremes)
-            # for polig, fail in itertools.product(poligons, separated_fail_imgs):
-
-            # atual = np.logical_or(polig.astype(bool), fail.astype(bool))
-            # _, n_labels = label(atual, return_num=True)
-            # if n_labels == 1:
-            #     polygon_xs = [x[1] for x in pt.img_to_points(polig)]
-            #     polygon_xs = [np.min(polygon_xs), np.max(polygon_xs)]
-            #     fail[:, : polygon_xs[0]] = 0  # zera tudo antes
-            #     fail[:, (polygon_xs[1] + 1) :] = 0  # zera tudo depois
-                # connected_fail_area_imgs.append(np.logical_or(fail, polig))
-        # else:
-            # contacts_imgs.append(np.zeros_like(fail_contact))
-            # contacts_pts.append([])
-            # zigzag_contact_lines_imgs.append(np.zeros_like(fail_contact))
-            # zigzag_contact_lines_pts.append([])
-            # pass
-
-    # criacao do poligono que conecta a falha ao ziguezague
-    # all_new_fails = np.zeros_like(old_zigzag)
-    # poligons = []
-    # for j, pts in enumerate(contacts_pts):
-    #     poligons.append(make_conection_polygon(j))
-    # connected_fail_area_imgs = []
-    # for polig, fail in itertools.product(poligons, separated_fail_imgs):
-    #     atual = np.logical_or(polig.astype(bool), fail.astype(bool))
-    #     _, n_labels = label(atual, return_num=True)
-    #     if n_labels == 1:
-    #         polygon_xs = [x[1] for x in pt.img_to_points(polig)]
-    #         polygon_xs = [np.min(polygon_xs), np.max(polygon_xs)]
-    #         fail[:, : polygon_xs[0]] = 0  # zera tudo antes
-    #         fail[:, (polygon_xs[1] + 1) :] = 0  # zera tudo depois
-    #         connected_fail_area_imgs.append(np.logical_or(fail, polig))
-
-    # for fail in separated_connected_fails:
-        # try:
-            # num_parts = 99
-            # extension = 0
-            # while num_parts > 1 and extension < 10:
-            #     mask_line = np.zeros([5 + extension, 5 + extension])
-            #     mask_line[:, 2 + extension] = 1
-            #     interface_line_a = np.add(
-            #         mt.dilation(fail.astype(np.uint8), kernel_img=mask_line),
-            #         old_zigzag,
-            #     )
-            #     interface_line = interface_line_a == 2
-            #     _, _, num_parts = it.divide_by_connected(interface_line)
-            #     extension = extension + 2
-            # line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
-            # if line_points == []:
-                # break
-        # except:
-            # pass
-
-    # return (
-    #     contacts_imgs,
-    #     contacts_pts,
-    #     zigzag_contact_lines_imgs,
-    #     zigzag_contact_lines_pts,
-    # )

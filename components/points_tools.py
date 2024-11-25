@@ -180,11 +180,3 @@ def intersects(s0,s1):
     p2 = dy0*(s0[1][1]-s1[0][1]) - dx0*(s0[1][0]-s1[0][0])
     p3 = dy0*(s0[1][1]-s1[1][1]) - dx0*(s0[1][0]-s1[1][0])
     return (p0*p1<=0) & (p2*p3<=0)
-
-# def has_repeated_points(coordinates):
-#     seen = set()
-#     for point in coordinates:
-#         if point in seen:
-#             return True  # Found a duplicate
-#         seen.add(point)
-#     return False  # No duplicates found

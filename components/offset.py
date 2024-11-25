@@ -1,12 +1,6 @@
 from __future__ import annotations
 import itertools
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from files import System_Paths
-    from typing import List
-    from components.layer import Layer
 from components import morphology_tools as mt, path_tools
 from components import images_tools as it
 from components import points_tools as pt
@@ -18,6 +12,12 @@ from skimage.feature import peak_local_max
 from skimage.segmentation import watershed
 import concurrent.futures
 from components import skeleton as sk
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from files import System_Paths
+    from typing import List
+    from components.layer import Layer
+
 
 
 class Area:
@@ -406,13 +406,10 @@ class OffsetRegions:
         self,
         base_frame,
         mask_full,
-        mask_double,
-        prohibited_areas,
         path_radius,
         amendment_size,
-        folders: System_Paths,
     ):
-        prohibited_areas = np.zeros_like(prohibited_areas)
+        prohibited_areas = np.zeros(base_frame)
 
         def make_offset_route(region):
             route = np.zeros(base_frame)
@@ -432,15 +429,9 @@ class OffsetRegions:
                 )
             reparos = mt.find_failures(route, np.zeros_like(route))
             route = np.logical_or(reparos, route)
-            route = mt.closing(
-                route, kernel_size=1
-            )  # cv2.morphologyEx(route.astype(np.uint8), cv2.MORPH_CLOSE, disk(1))
-            region.route, _, _ = sk.create_prune_divide_skel(
-                route, path_radius
-            )  # pcv.morphology.skeletonize(route.astype(np.uint8))
-            region.trail = mt.dilation(
-                route, kernel_img=mask_full
-            )  # cv2.dilate(route.astype(np.uint8), mask_full)
+            route = mt.closing(route, kernel_size=1)
+            region.route, _, _ = sk.create_prune_divide_skel(route, path_radius)
+            region.trail = mt.dilation(route, kernel_img=mask_full)
             region.next_prohibited_area = next_prohibited_area
             return region
 

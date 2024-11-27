@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, Dict, reveal_type
 import itertools
 import math
 import random
+
+from networkx import bridges
 import numpy as np
 import networkx as nx
 import skimage
@@ -303,12 +305,8 @@ def connect_cross_over_bridges(island: Island) -> Path:
     offssets_included = set(start_path.regions["offsets"])
     cross_overs_included = set(start_path.regions["cross_over_bridges"])
     offset_bridges_included = set(start_path.regions["offset_bridges"])
-    bridges_number = len(island.bridges.cross_over_bridges)
     all_its = []
-    if bridges_number == 0:
-        nova_rota = start_path.sequence
-        saltos = []
-    else:
+    if hasattr(island, "bridges"):
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
         stop = 0
@@ -338,6 +336,9 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 rota_antiga = nova_rota
             else:
                 stop = 1
+    else:
+        nova_rota = start_path.sequence
+        saltos = []
     new_regions = {
         "offsets": list(offssets_included),
         "zigzags": [],
@@ -460,24 +461,25 @@ def connect_offset_bridges(
     todas_espirais_img = np.zeros(base_frame)
     for region in island.offsets.regions:
         todas_espirais_img = np.logical_or(todas_espirais_img, region.route)
-    for bridge in island.bridges.offset_bridges:
-        pontos_extremos = pt.x_y_para_pontos(
-            np.nonzero(mt.hitmiss_ends_v2(bridge.origin))
-        )
-        if bridge.type == "common_offset_bridge":
-            todas_espirais_img = integrate_bridge(
-                todas_espirais_img,
-                path_radius_external,
-                pontos_extremos,
-                base_frame,
+    if hasattr(island, "bridges"):
+        for bridge in island.bridges.offset_bridges:
+            pontos_extremos = pt.x_y_para_pontos(
+                np.nonzero(mt.hitmiss_ends_v2(bridge.origin))
             )
-        elif bridge.type == "contact_offset_bridge":
-            todas_espirais_img = integrate_contact(
-                todas_espirais_img,
-                path_radius_external,
-                bridge,
-                base_frame,
-            )
+            if bridge.type == "common_offset_bridge":
+                todas_espirais_img = integrate_bridge(
+                    todas_espirais_img,
+                    path_radius_external,
+                    pontos_extremos,
+                    base_frame,
+                )
+            elif bridge.type == "contact_offset_bridge":
+                todas_espirais_img = integrate_contact(
+                    todas_espirais_img,
+                    path_radius_external,
+                    bridge,
+                    base_frame,
+                )
     rotas_isoladas = img_to_chain(todas_espirais_img.astype(np.uint8))
     lens = [len(x) for x in rotas_isoladas]
     circunf = 2 * 3.14 * path_radius_external
@@ -1180,7 +1182,7 @@ def set_first_pt_in_seq(seq, first_point):
 def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     # if len(seq_pts) == 0:
     #     return []
-    sequence = seq_pts.copy()
+    sequence = [list(x) for x in seq_pts]
     approx_seq = []
     if len(sequence) > 0:
         saltos = [list(x) for x in saltos]
@@ -1262,25 +1264,27 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
 
 def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
     path_list = []
-    for i, ma in enumerate(isl.zigzags.macro_areas):
-        zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
-        if len(zigzag_path) > 0:
-            path_list.append(Path(i, zigzag_path[0], img=ma))
-            path_list[-1].sequence = set_first_pt_in_seq(
-                path_list[-1].sequence, list(isl.comeco_int)
-            )
-            path_list[-1].get_regions(isl)
-    if path_list == []:
-        for i, zb in enumerate(isl.bridges.zigzag_bridges):
-            zigzag_b_path = img_to_chain(
-                zb.astype(np.uint8), isl.bridges.zigzag_bridges[0].img
-            )
-            if len(zigzag_b_path) > 0:
-                path_list.append(Path(i, zigzag_b_path[0], img=zb))
+    if hasattr(isl,"zigzags"):
+        for i, ma in enumerate(isl.zigzags.macro_areas):
+            zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
+            if len(zigzag_path) > 0:
+                path_list.append(Path(i, zigzag_path[0], img=ma))
                 path_list[-1].sequence = set_first_pt_in_seq(
                     path_list[-1].sequence, list(isl.comeco_int)
                 )
                 path_list[-1].get_regions(isl)
+    else:
+        if hasattr(isl,"bridges"):
+            for i, zb in enumerate(isl.bridges.zigzag_bridges):
+                zigzag_b_path = img_to_chain(
+                    zb.astype(np.uint8), isl.bridges.zigzag_bridges[0].img
+                )
+                if len(zigzag_b_path) > 0:
+                    path_list.append(Path(i, zigzag_b_path[0], img=zb))
+                    path_list[-1].sequence = set_first_pt_in_seq(
+                        path_list[-1].sequence, list(isl.comeco_int)
+                    )
+                    path_list[-1].get_regions(isl)
     return path_list
 
 
@@ -1374,12 +1378,13 @@ def layers_to_Gcode(
             folders.load_bridges_hdf5(layer.name, island)
             print(f"nome: {layer.name}/{island.name}")
             aaa = island.island_route.img
-            A1 = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
-            A2 = [pt.img_to_points(x.route_b) for x in island.bridges.cross_over_bridges]
-            A = A1 + A2
             pts_crossover = []
-            for x in A:
-                pts_crossover = pts_crossover + x
+            if hasattr(island, "bridge"):
+                A1 = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
+                A2 = [pt.img_to_points(x.route_b) for x in island.bridges.cross_over_bridges]
+                A = A1 + A2
+                for x in A:
+                    pts_crossover = pts_crossover + x
             if n_layer % 2:
                 etr = rotate_path_odd_layer(etr, layer.base_frame)
                 itr = rotate_path_odd_layer(itr, layer.base_frame)
@@ -1422,14 +1427,18 @@ def layers_to_Gcode(
                         flag_path_type = 0
                         vel = vel_int
                         texto_mudanca = ";----Interno----\n"
-                    if p in pontos_ext:
+                    elif p in pontos_ext:
                         flag_path_type = 1
                         vel = vel_ext
                         texto_mudanca = ";----Externo----\n"
-                    if p in pontos_tw:
+                    elif p in pontos_tw:
                         flag_path_type = 2
                         vel = vel_thin_wall
                         texto_mudanca = ";----ThinWalls----\n"
+                    else:
+                        flag_path_type = 3
+                        vel = vel_ext
+                        texto_mudanca = ";----perdido----\n"
                     if i == 1:
                         output = religamento(output)
                     if flag_path_type != last_flag:

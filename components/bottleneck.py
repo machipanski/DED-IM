@@ -127,43 +127,47 @@ class Bridge:
     def make_internal_border(
         self, internal, filled_external_borders, eroded, origin_axis
     ):
+        def make_closest_path_to(
+            internal_borders, original_line, start_orig, end_orig, internal_extreme
+        ):
+            distance_map = np.multiply(
+                internal_borders, distance_transform_edt(np.logical_not(original_line))
+            )
+            internal_borders_pts = pt.img_to_points(internal_borders)
+            start_ci, _ = pt.closest_point(start_orig, internal_extreme)
+            internal_extreme.remove(start_ci)
+            end_ci, _ = pt.closest_point(end_orig, internal_extreme)
+            internal_extreme.remove(end_ci)
+            G = path_tools.img_to_graph_com_distancias(distance_map)
+            _, path1 = nx.bidirectional_dijkstra(G, tuple(start_ci), tuple(end_ci))
+            linha_ci = it.points_to_img(path1, np.zeros_like(internal_borders))
+            return linha_ci
+
         internal = np.logical_or(internal, origin_axis)
-        _, internal_borders = mt.detect_contours(
-            internal, return_img=True
-        )
+        _, internal_borders = mt.detect_contours(internal, return_img=True)
         internal_borders = np.logical_and(internal_borders, filled_external_borders)
         _, labeled, labeled_n = it.divide_by_connected(internal_borders)
         linha_ci1 = np.zeros_like(self.img)
         linha_ci2 = np.zeros_like(self.img)
         if labeled_n == 1:
-            distance_map_c1 = np.multiply(
-                internal_borders,
-                distance_transform_edt(np.logical_not(self.contorno[0])),
-            )
-            start_ci1, _ = pt.closest_point(
-                self.pontos_extremos[0], pt.img_to_points(internal_borders)
-            )
-            end_ci1, _ = pt.closest_point(
-                self.pontos_extremos[1], pt.img_to_points(internal_borders)
-            )
-            G = path_tools.img_to_graph_com_distancias(distance_map_c1)
-
-            distance_map_c2 = np.multiply(
-                internal_borders,
-                distance_transform_edt(np.logical_not(self.contorno[1])),
-            )
-            start_ci2, _ = pt.closest_point(
-                self.pontos_extremos[3], pt.img_to_points(internal_borders)
-            )
-            end_ci2, _ = pt.closest_point(
-                self.pontos_extremos[2], pt.img_to_points(internal_borders)
-            )
-            H = path_tools.img_to_graph_com_distancias(distance_map_c2)
-            _, path1 = nx.bidirectional_dijkstra(G, tuple(start_ci1), tuple(end_ci1))
-            linha_ci1 = it.points_to_img(path1, np.zeros_like(internal_borders))
-            _, path2 = nx.bidirectional_dijkstra(H, tuple(start_ci2), tuple(end_ci2))
-            linha_ci2 = it.points_to_img(path2, np.zeros_like(internal_borders))
-
+            internal_extreme = pt.img_to_points(mt.hitmiss_ends_v2(internal_borders))
+            linha_ci1 = make_closest_path_to(
+                    internal_borders,
+                    self.contorno[0],
+                    self.pontos_extremos[0],
+                    self.pontos_extremos[1],
+                    internal_extreme,
+                )
+            if len(internal_extreme) >= 2:
+                linha_ci2 = make_closest_path_to(
+                    internal_borders,
+                    self.contorno[1],
+                    self.pontos_extremos[2],
+                    self.pontos_extremos[3],
+                    internal_extreme,
+                )
+            else:
+                linha_ci2 = linha_ci1
         elif labeled_n > 2:
             sums = []
             for l in np.arange(0, labeled_n):
@@ -192,6 +196,10 @@ class Bridge:
         linha_ci1, _, _ = sk.create_prune_divide_skel(linha_ci1, 1)
         linha_ci2 = np.logical_and(eroded, linha_ci2)
         linha_ci2, _, _ = sk.create_prune_divide_skel(linha_ci2, 1)
+        if np.sum(linha_ci1) == 0:
+            print("jsnsdjfs")
+        if np.sum(linha_ci2) == 0:
+            print("jsnsdjfs")
         return linha_ci1, linha_ci2
 
     def find_center(self, base_frame):
@@ -1498,8 +1506,9 @@ def reduce_origin(candidate, necks_max_paths, norm_dist_map):
             new_origin.remove(current_pt_2)
             count_down -= 1
     reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
-    _, _, n = it.divide_by_connected(reduced_origin)
+    separated, _, n = it.divide_by_connected(reduced_origin)
     if n > 1:
+        reduced_origin = it.take_the_bigger_area(reduced_origin)
         print("POBREMAAAA")
     return reduced_origin * norm_dist_map, origin_chain[0]
 
@@ -1605,64 +1614,123 @@ def make_zigzag_bridge_route(
 
 def make_cross_over_route(region: Bridge, path_radius, rest_of_picture, base_frame):
 
-    def crossover_zigzag(new_contour, linhas_transversais, linhas_limitrofes, extr_int_pts, sentido):
-        new_zigzag = internal_cut(new_contour, linhas_transversais, extr_int_pts, sentido)
-        new_zigzag = np.logical_or(new_zigzag, linhas_limitrofes)
+    def crossover_zigzag(
+        new_contour,
+        new_contour_img,
+        linhas_transversais,
+        linhas_limitrofes,
+        extr_int_pts,
+        sentido,
+    ):
+        cutted_border = internal_cut(
+            new_contour, linhas_transversais, extr_int_pts, sentido
+        )
+        new_zigzag = np.logical_or(cutted_border, linhas_limitrofes)
         _, _, n = it.divide_by_connected(new_zigzag)
         if n > 1:
-            extr_int_pts = [extr_int_pts[0],extr_int_pts[2],extr_int_pts[1],extr_int_pts[3]]
+            extr_int_pts = [
+                extr_int_pts[0],
+                extr_int_pts[2],
+                extr_int_pts[1],
+                extr_int_pts[3],
+            ]
             print("sequncia corrigida, b e c trocado")
-            new_zigzag = internal_cut(new_contour, linhas_transversais, extr_int_pts, sentido)
+            new_zigzag = internal_cut(
+                new_contour, linhas_transversais, extr_int_pts, sentido
+            )
             new_zigzag = np.logical_or(new_zigzag, linhas_limitrofes)
-        new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 5)
+        new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 2)
         _, _, n = it.divide_by_connected(mt.hitmiss_ends_v2(new_zigzag))
-        
         if n <= 1:
             cccc = mt.closing(new_zigzag, kernel_size=1)
             ddd, _, _ = sk.create_prune_divide_skel(cccc, 1)
             _, eee, n = it.divide_by_connected(mt.hitmiss_ends_v2(ddd))
             if n > 1:
                 new_zigzag = ddd
+        # common = it.sum_imgs([new_contour_img, cutted_border])
+        # cutted_border_b = np.logical_and(new_contour_img, np.logical_not(cutted_border))
+        # new_zigzag_b = np.logical_or(cutted_border_b, linhas_limitrofes)
+        # new_zigzag_b = np.logical_or(new_zigzag_b, linhas_transversais)
+        # new_zigzag_b, _, _ = sk.create_prune_divide_skel(new_zigzag_b, 5)
         return new_zigzag
-    
+
     eroded = mt.erosion(region.img, kernel_size=path_radius)
     rest_pict_eroded = mt.erosion(rest_of_picture, kernel_size=path_radius)
     origin_axis = np.logical_and(region.origin, eroded)
-    if np.sum(origin_axis) > 0:
+    _,_,n = it.divide_by_connected(origin_axis)
+    if np.sum(origin_axis) > 0 and n == 1:
         _, _, n_divisions = it.divide_by_connected(origin_axis)
         if n_divisions > 1:
             origin_axis, eroded = connect_origin_parts(region.origin, eroded)
-        linha_ci1, linha_ci2 = region.make_internal_border(rest_pict_eroded, region.img, eroded, origin_axis)
-        pts_trns_origin = equidistant_in_seq(origin_axis, path_radius)
-        pts_trns_ci1 = equidistant_by_proximity(linha_ci1, pts_trns_origin, path_radius, region.img)
-        pontos_trasnv_ci2 = equidistant_by_proximity(linha_ci2, pts_trns_origin, path_radius, region.img)
-        linhas_transversais = np.zeros_like(region.img)
-        linhas_limitrofes = np.zeros_like(region.img)
-        for i, point in enumerate(pts_trns_origin):
-            if i == 0 or i == len(pts_trns_origin) - 1:
-                thisline = it.draw_polyline(linhas_limitrofes,[pts_trns_ci1[i], pts_trns_origin[i], pontos_trasnv_ci2[i]],False)
-                linhas_limitrofes = np.logical_or(linhas_limitrofes, thisline)
-            else:
-                thisline = it.draw_polyline(linhas_transversais,[pts_trns_ci1[i], pts_trns_origin[i], pontos_trasnv_ci2[i]],False)
-                linhas_transversais = np.logical_or(linhas_transversais, thisline)
-        new_contour, new_contour_img = mt.detect_contours(it.sum_imgs([linhas_limitrofes, linha_ci1, linha_ci2]),return_img=True,only_external=True,)
-        new_contour = pt.contour_to_list(new_contour)
-        ends_linha_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(linha_ci1))
-        ends_linha_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(linha_ci2))
-        ia, _ = pt.closest_point(region.pontos_extremos[0], ends_linha_ci1)
-        ib = [x for x in ends_linha_ci1 if x != ia][0]
-        ic, _ = pt.closest_point(region.pontos_extremos[2], ends_linha_ci2)
-        id = [x for x in ends_linha_ci2 if x != ic][0]
-        extr_int_pts = [ia, ib, ic, id]
-        new_contour = path_tools.set_first_pt_in_seq(new_contour, extr_int_pts[0])
-        
-        region.route = crossover_zigzag(new_contour, linhas_transversais, linhas_limitrofes, extr_int_pts, 0)
-        region.route_b = crossover_zigzag(new_contour, linhas_transversais, linhas_limitrofes, extr_int_pts, 1)
-
+        linha_ci1, linha_ci2 = region.make_internal_border(
+            rest_pict_eroded, region.img, eroded, origin_axis
+        )
+        if np.equal(linha_ci1,linha_ci2).all():
+            region.route = region.origin
+            region.route_b = region.route
+        else:
+            pts_trns_origin = equidistant_in_seq(origin_axis, path_radius)
+            pts_trns_ci1 = equidistant_by_proximity(
+                linha_ci1, pts_trns_origin, path_radius, region.img
+            )
+            pontos_trasnv_ci2 = equidistant_by_proximity(
+                linha_ci2, pts_trns_origin, path_radius, region.img
+            )
+            linhas_transversais = np.zeros_like(region.img)
+            linhas_limitrofes = np.zeros_like(region.img)
+            for i, point in enumerate(pts_trns_origin):
+                if i == 0 or i == len(pts_trns_origin) - 1:
+                    thisline = it.draw_polyline(
+                        linhas_limitrofes,
+                        [pts_trns_ci1[i], pts_trns_origin[i], pontos_trasnv_ci2[i]],
+                        False,
+                    )
+                    linhas_limitrofes = np.logical_or(linhas_limitrofes, thisline)
+                else:
+                    thisline = it.draw_polyline(
+                        linhas_transversais,
+                        [pts_trns_ci1[i], pts_trns_origin[i], pontos_trasnv_ci2[i]],
+                        False,
+                    )
+                    linhas_transversais = np.logical_or(linhas_transversais, thisline)
+            new_contour, new_contour_img = mt.detect_contours(
+                it.sum_imgs([linhas_limitrofes, linha_ci1, linha_ci2]),
+                return_img=True,
+                only_external=True,
+            )
+            new_contour = pt.contour_to_list(new_contour)
+            ends_linha_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(linha_ci1))
+            ends_linha_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(linha_ci2))
+            ia, _ = pt.closest_point(region.pontos_extremos[0], ends_linha_ci1)
+            ib = [x for x in ends_linha_ci1 if x != ia][0]
+            ic, _ = pt.closest_point(region.pontos_extremos[2], ends_linha_ci2)
+            id = [x for x in ends_linha_ci2 if x != ic][0]
+            extr_int_pts = [ia, ib, ic, id]
+            new_contour = path_tools.set_first_pt_in_seq(new_contour, extr_int_pts[0])
+            region.route = crossover_zigzag(
+                new_contour,
+                new_contour_img,
+                linhas_transversais,
+                linhas_limitrofes,
+                extr_int_pts,
+                0,
+            )
+            region.route_b = crossover_zigzag(
+                new_contour,
+                new_contour_img,
+                linhas_transversais,
+                linhas_limitrofes,
+                extr_int_pts,
+                1,
+            )
         region.trail = mt.dilation(region.route, kernel_size=path_radius)
         region.trail_b = mt.dilation(region.route_b, kernel_size=path_radius)
-        region.reference_points = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(region.route)))
-        region.reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(region.route_b)))
+        region.reference_points = pt.x_y_para_pontos(
+            np.nonzero(mt.hitmiss_ends_v2(region.route))
+        )
+        region.reference_points_b = pt.x_y_para_pontos(
+            np.nonzero(mt.hitmiss_ends_v2(region.route_b))
+        )
         if len(region.reference_points_b) < 2:
             print("ajdnsabhfsfb")
         if len(region.reference_points) < 2:

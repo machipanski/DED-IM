@@ -497,28 +497,29 @@ class System_Paths:
 
     def save_regs_zigzags_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:
-            base_path = f"/{layer_name}/{isl.name}/zigzags"
-            if np.sum(isl.rest_of_picture_f3) > 0:
-                self.delete_item_hdf5(base_path)
-                self.create_new_hdf5_group(base_path)
-                self.save_props_hdf5(base_path, isl.__dict__)
-                for reg in isl.zigzags.regions:
-                    if isinstance(reg.name, int):
-                        reg.name = f"ZZ_{reg.name:03d}"
-                    self.create_new_hdf5_group(f"{base_path}/{reg.name}")
-                    self.save_img_hdf5(f"{base_path}/{reg.name}", "img", reg.img)
-                    if len(reg.route) > 0:
-                        self.save_img_hdf5(
-                            f"{base_path}/{reg.name}", "route", reg.route
-                        )
-                    else:
-                        self.delete_item_hdf5(f"{base_path}/{reg.name}/route")
-                    if len(reg.trail) > 0:
-                        self.save_img_hdf5(
-                            f"{base_path}/{reg.name}", "trail", reg.trail
-                        )
-                    else:
-                        self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
+            if hasattr(isl,"zigzags"):
+                base_path = f"/{layer_name}/{isl.name}/zigzags"
+                if np.sum(isl.rest_of_picture_f3) > 0:
+                    self.delete_item_hdf5(base_path)
+                    self.create_new_hdf5_group(base_path)
+                    self.save_props_hdf5(base_path, isl.__dict__)
+                    for reg in isl.zigzags.regions:
+                        if isinstance(reg.name, int):
+                            reg.name = f"ZZ_{reg.name:03d}"
+                        self.create_new_hdf5_group(f"{base_path}/{reg.name}")
+                        self.save_img_hdf5(f"{base_path}/{reg.name}", "img", reg.img)
+                        if len(reg.route) > 0:
+                            self.save_img_hdf5(
+                                f"{base_path}/{reg.name}", "route", reg.route
+                            )
+                        else:
+                            self.delete_item_hdf5(f"{base_path}/{reg.name}/route")
+                        if len(reg.trail) > 0:
+                            self.save_img_hdf5(
+                                f"{base_path}/{reg.name}", "trail", reg.trail
+                            )
+                        else:
+                            self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
         return
 
     def save_routes_bridges_hdf5(self, layer_name, islands: List[Island]):

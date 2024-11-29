@@ -89,6 +89,7 @@ class Path:
                         self.regions["thin walls"].append(tw.name)
         return
 
+
 def add_routes_by_sequence(
     nova_rota,
     island: Island,
@@ -147,6 +148,11 @@ def add_routes_by_sequence(
         )
         indexes.append(idx_on_route)
         linked_bridge_seq = img_to_chain(rota_ponte.astype(np.uint8))[0]
+        if len(linked_bridge_seq) < 2:
+            linked_bridge_seq = img_to_chain(
+                it.take_the_bigger_area(rota_ponte.astype(np.uint8))
+            )[0]
+            print("sdasda")
         linked_bridge_seq = set_first_pt_in_seq(
             linked_bridge_seq, list(refs[np.argmax(dists)])
         )
@@ -257,16 +263,24 @@ def connect_thin_walls(island: Island, path_radius_external):
             new_route = Path("thin wall tree", nova_rota, new_regions, saltos=saltos)
     return new_route
 
+def middle_of_the_line(line_img):
+    seq = make_a_chain(line_img, pt.img_to_points(mt.hitmiss_ends_v2(line_img))[0])
+    # seq = set_first_pt_in_seq(seq, pt.img_to_points(mt.hitmiss_ends_v2(line_img))[0])
+    return pt.invert_x_y([seq[int(len(seq)/2)]])[0]
+
 
 def connect_cross_over_bridges(island: Island) -> Path:
     def find_interruption_points(
-        layer,
+        island,
         nova_rota,
         cross_overs_included,
         offssets_included,
         order_crossover_regions,
+        pts_valido_comeco
     ):
         closest_points = {}
+        closest_centers = []
+        flag_first = len(pts_valido_comeco)
         for bridge in island.bridges.cross_over_bridges:
             if not (bridge.name in list(cross_overs_included)):
                 if set(bridge.linked_offset_regions).intersection(offssets_included):
@@ -279,14 +293,30 @@ def connect_cross_over_bridges(island: Island) -> Path:
                     cp.sort(key=lambda x: x[1])
                     cp = cp[:2]
                     cp = [x[0] for x in cp]
+                    if cp[0] == cp[1]:
+                        nova_rota.remove(cp[0])
+                        A = bridge.pontos_extremos
+                        closest_a = pt.closest_point(A[0], nova_rota)
+                        closest_b = pt.closest_point(A[1], nova_rota)
+                        closest_c = pt.closest_point(A[2], nova_rota)
+                        closest_d = pt.closest_point(A[3], nova_rota)
+                        cp = [closest_a, closest_b, closest_c, closest_d]
+                        cp.sort(key=lambda x: x[1])
+                        cp = cp[:2]
+                        cp = [x[0] for x in cp]
                     closest_points[str(bridge.name)] = cp
+                    origin_mid = middle_of_the_line(bridge.origin)
+                    closest_mid, _ = pt.closest_point(origin_mid, nova_rota)
+                    closest_centers.append(closest_mid)
         special = []
         for k in closest_points.values():
             special = special + k
         interruption_points = []
         flags = np.zeros(len(closest_points.keys()))
+        flag_valido_comeco = 0
         for point in nova_rota:
             if point in special:
+                flag_valido_comeco += 1
                 for i, cp in enumerate(list(closest_points.values())):
                     if point in cp:
                         flags[i] += 1
@@ -297,7 +327,18 @@ def connect_cross_over_bridges(island: Island) -> Path:
                                 list(closest_points.keys())[idx]
                             )
                             interruption_points.append(point)
-        return interruption_points, order_crossover_regions
+            if (flags == 1).any() and not flag_first:
+                pts_valido_comeco.append(point)
+            # if flag_valido_comeco%2 == 0 and not flag_first:
+            #     pts_valido_comeco.append(point)
+        if not flag_first:
+            aaaa = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
+            bbbb = it.sum_imgs([aaaa, it.points_to_img(closest_centers, np.zeros_like(island.img))])
+            if pt.list_inside_list(closest_centers,pts_valido_comeco):
+                pts_valido_comeco = list(filter(lambda x: x not in pts_valido_comeco, nova_rota))
+                cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
+                dddd = it.sum_imgs([cccc, it.points_to_img(closest_centers, np.zeros_like(island.img))])
+        return interruption_points, order_crossover_regions, pts_valido_comeco
 
     start_path = list(
         filter(lambda x: "Reg_000" in x.regions["offsets"], island.external_tree_route)
@@ -306,6 +347,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
     cross_overs_included = set(start_path.regions["cross_over_bridges"])
     offset_bridges_included = set(start_path.regions["offset_bridges"])
     all_its = []
+    pts_valido_comeco = []
     if hasattr(island, "bridges"):
         rota_antiga = start_path.sequence.copy()
         nova_rota = []
@@ -313,12 +355,13 @@ def connect_cross_over_bridges(island: Island) -> Path:
         saltos = []
         while not stop:
             order_crossover_regions = []
-            interruption_points, order_crossover_regions = find_interruption_points(
+            interruption_points, order_crossover_regions, pts_valido_comeco = find_interruption_points(
                 island,
                 rota_antiga,
                 cross_overs_included,
                 offssets_included,
                 order_crossover_regions,
+                pts_valido_comeco
             )
             all_its = all_its + interruption_points
             if len(interruption_points) > 0:
@@ -346,6 +389,10 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
+    if len(list(cross_overs_included)) > 0:
+        cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
+        new_start = random.choice(pts_valido_comeco)
+        nova_rota = set_first_pt_in_seq(nova_rota, new_start)
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
     # aaa = new_route.get_img()
     return new_route
@@ -1264,7 +1311,7 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
 
 def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
     path_list = []
-    if hasattr(isl,"zigzags"):
+    if hasattr(isl, "zigzags"):
         for i, ma in enumerate(isl.zigzags.macro_areas):
             zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
             if len(zigzag_path) > 0:
@@ -1274,7 +1321,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
                 )
                 path_list[-1].get_regions(isl)
     else:
-        if hasattr(isl,"bridges"):
+        if hasattr(isl, "bridges"):
             for i, zb in enumerate(isl.bridges.zigzag_bridges):
                 zigzag_b_path = img_to_chain(
                     zb.astype(np.uint8), isl.bridges.zigzag_bridges[0].img
@@ -1380,8 +1427,13 @@ def layers_to_Gcode(
             aaa = island.island_route.img
             pts_crossover = []
             if hasattr(island, "bridge"):
-                A1 = [pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges]
-                A2 = [pt.img_to_points(x.route_b) for x in island.bridges.cross_over_bridges]
+                A1 = [
+                    pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges
+                ]
+                A2 = [
+                    pt.img_to_points(x.route_b)
+                    for x in island.bridges.cross_over_bridges
+                ]
                 A = A1 + A2
                 for x in A:
                     pts_crossover = pts_crossover + x

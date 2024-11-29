@@ -1737,7 +1737,10 @@ def make_cross_over_route(region: Bridge, path_radius, rest_of_picture, base_fra
             print("ajdnsabhfsfb")
         region.find_center(base_frame)
     else:
-        region.route = region.origin
+        reducted_origin = it.take_the_bigger_area(region.origin)
+        reduction_points = mt.dilation(mt.hitmiss_ends_v2(reducted_origin),kernel_size=path_radius)
+        reducted_origin = it.image_subtract(reducted_origin, reduction_points)
+        region.route = reducted_origin
         region.route_b = region.route
         region.trail = mt.dilation(region.route, kernel_size=path_radius)
         region.trail_b = region.trail

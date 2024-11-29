@@ -32,6 +32,11 @@ def contour_to_list(ctr):
 def distance_pts(a, b):
     return distance.euclidean(a, b)
 
+def list_inside_list(a:List, b:List) -> bool:
+    for ponto in a:
+        if ponto not in b:
+            return False
+    return True
 
 def extreme_points(img, force_top=False):
     """gives the 4 most extreme points (max_and min for Y and X)

@@ -182,6 +182,7 @@ class Layer:
                     )
                 with Timer("Conectando pontes de Crossover"):
                     isl.external_tree_route = path_tools.connect_cross_over_bridges(isl)
+                    isl.comeco_ext = isl.external_tree_route.sequence[0]
                 isl.external_tree_route.get_img(self.base_frame)
         with Timer("salvando imagens das rotas"):
             folders.save_external_routes_hdf5(self.name, self.islands)

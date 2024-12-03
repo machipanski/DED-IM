@@ -1606,8 +1606,8 @@ def make_zigzag_bridge_route(
     if n <= 1:
         print("asfnjsdfgdsnfjanpfnasfn")
     bridge_region.route = new_zigzag.astype(bool)
+    bridge_region.reference_points = pt.img_to_points(inicio_e_fim)
     bridge_region.trail = mt.dilation(bridge_region.route, kernel_size=path_radius)
-    bridge_region.reference_points = inicio_e_fim
     bridge_region.find_center(base_frame)
     return bridge_region
 

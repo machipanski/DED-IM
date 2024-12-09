@@ -64,10 +64,11 @@ class Layer:
             self.dpi: int = 0
             self.base_frame = []
             self.layer_height: float = 0
-            self.nozzle_diam_external: float = 0
-            self.nozzle_diam_internal: float = 0
+            self.diam_ext_real: float = 0
+            self.diam_int_real: float = 0
             self.path_radius_external: float = 0
             self.path_radius_internal: float = 0
+            self.path_radius_int_ext: float = 0
             self.pxl_per_mm: float = 0
             self.mm_per_pxl: float = 0
             self.islands: List[Island]
@@ -80,7 +81,7 @@ class Layer:
             folders.load_bridges_hdf5(self.name, island)
             with Timer("Encontrando ponto de união ext-int"):
                 if hasattr(island, "zigzags") and hasattr(island, "offsets"):
-                    island.comeco_ext, island.comeco_int = (path_tools.connect_internal_external(island, self.path_radius_internal))
+                    island.comeco_ext, island.comeco_int = (path_tools.connect_internal_external(island, self.path_radius_int_ext))
                 else:
                     if hasattr(island, "offsets"):
                         island.comeco_ext = pt.img_to_points(island.offsets.regions[0].route.astype(np.uint8))[0]
@@ -287,8 +288,8 @@ class Layer:
     def make_thin_walls(
         self,
         folders: System_Paths,
-        nozzle_diam_external: float,
-        nozzle_diam_internal: float,
+        d_ext: float,
+        sob_ext_per: float,
     ) -> None:
 
         def make_islands_thinWalls(island: Island, mm_per_pxl) -> List[Island, dict]:
@@ -307,11 +308,9 @@ class Layer:
 
         self.pxl_per_mm = self.dpi / 25.4
         self.mm_per_pxl = 1 / self.pxl_per_mm
-        nozzle_diam_external_pxl = nozzle_diam_external * self.pxl_per_mm
-        self.path_radius_external = int(nozzle_diam_external_pxl * 0.5)
-        nozzle_diam_internal_pxl = nozzle_diam_internal * self.pxl_per_mm
-        self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
-        self.nozzle_diam_external = nozzle_diam_external
+        d_ext_pxl = d_ext * self.pxl_per_mm
+        self.path_radius_external = int(d_ext_pxl * 0.5 * (1 - sob_ext_per/100))
+        self.diam_ext_real = d_ext
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
 
@@ -345,7 +344,7 @@ class Layer:
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_thin_walls_hdf5(self.name, isl)
-                isl.thin_walls.make_routes_tw(self.path_radius_internal)
+                isl.thin_walls.make_routes_tw(self.path_radius_external)
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
                 for reg in isl.thin_walls.regions:
@@ -532,10 +531,11 @@ class Layer:
 
     def make_bridges(
         self,
-        n_max: float,
-        nozzle_diam_internal: float,
         folders: System_Paths,
-        n_camadas,
+        n_max: float,
+        d_int: float,
+        sob_int_per: float,
+        n_camadas: int,
         sum_prohibited_areas,
     ):
 
@@ -588,16 +588,15 @@ class Layer:
                 f"/{self.name}/{island.name}", "rest_of_picture_f2"
             )
             if np.sum(rest_of_picture_f2) > 0:
-                nozzle_diam_internal_pxl = nozzle_diam_internal * self.pxl_per_mm
-                self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
+                # nozzle_diam_internal_pxl = d_int * self.pxl_per_mm
+                # self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
                 island.bridges.make_zigzag_bridges(
-                    rest_of_picture_f2,
                     rest_of_picture_f2,
                     self.base_frame,
                     self.path_radius_internal,
+                    self.path_radius_int_ext,
                     n_max,
                     mt.make_mask(self, "full_int"),
-                    isl.offsets.all_valid_loops,
                     isl.offsets.regions,
                 )
             return island
@@ -617,12 +616,13 @@ class Layer:
             return island
 
         self.n_max = n_max
-        self.nozzle_diam_internal = nozzle_diam_internal
+        self.diam_int_real = d_int
+        d_int_pxl = self.diam_int_real * self.pxl_per_mm
+        self.path_radius_internal = int(d_int_pxl * 0.5 * (1-(sob_int_per/100)))
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             isl.bridges = BridgeRegions()
-            # folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/bridges")
         if self.name == "L_000":
             self.prohibited_areas = np.zeros_like(self.original_img)
 
@@ -663,10 +663,10 @@ class Layer:
             )
         return last_prohibited_areas
 
-    def make_bridges_routes(self, folders: System_Paths):
+    def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
         folders.load_islands_hdf5(self)
-        if self.name == "L_035":
-            print("fsflknsdlfn")
+        d_int_pxl = self.diam_int_real * self.pxl_per_mm
+        self.path_radius_int_ext = int(d_int_pxl * 0.5 * (1-(sob_int_ext_per/100)))
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
@@ -675,6 +675,7 @@ class Layer:
                     isl.offsets.regions,
                     self.path_radius_external,
                     self.path_radius_internal,
+                    self.path_radius_int_ext,
                     self.base_frame,
                     isl.rest_of_picture_f2,
                     self.odd_layer,
@@ -740,7 +741,9 @@ class Layer:
                 folders.load_zigzags_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
-                        self.base_frame, self.path_radius_internal
+                        self.base_frame, 
+                        self.path_radius_internal,
+                        self.path_radius_int_ext
                     )
 
         with Timer("salvando imagens das rotas"):

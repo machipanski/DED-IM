@@ -90,6 +90,7 @@ class ThinWallRegions:
                         path_radius,
                         sem_galhos,
                         reduced_continuous_origin[1],
+                        pt.img_to_points(mt.hitmiss_ends_v2(reduced_continuous_origin[0]))[0]
                     )
                 )
                 if np.sum(bridge_img) > 0:

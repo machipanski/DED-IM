@@ -418,7 +418,7 @@ class ZigZagRegions:
         )
         return
 
-    def make_routes_z(self, base_frame, path_radius):
+    def make_routes_z(self, base_frame, path_radius, path_radius_int_ext):
         # def make_zigzag_route(region: ZigZag):
         for region in self.regions:
             region.center = pt.points_center(
@@ -426,7 +426,7 @@ class ZigZagRegions:
             )
             zig_options = []
             lines, n_lines, internal_border_img, contours, new_path_radius = (
-                cut_in_lines(region.img, path_radius, var_path_width=0)
+                cut_in_lines(region.img, path_radius, path_radius_int_ext, var_path_width=0)
             )
             filled = it.fill_internal_area(
                 internal_border_img.astype(np.uint8), np.ones_like(internal_border_img)
@@ -534,7 +534,7 @@ def clean_zigzag_over_extrusion(contours_img, new_path_radius, base_frame):
     return path
 
 
-def cut_in_lines(img, path_radius, var_path_width=0):
+def cut_in_lines(img, path_radius, path_radius_int_ext, var_path_width=0):
     img2 = mt.opening(img, kernel_size=(path_radius * 2))
     considered = np.where(img2 != 0)
     if np.sum(considered[0]) == 0:
@@ -543,14 +543,14 @@ def cut_in_lines(img, path_radius, var_path_width=0):
     top = np.min(considered[0])
     bottom = np.max(considered[0])
     new_path_radius = path_radius
-    region_mask_full = disk(new_path_radius * 2)
+    # region_mask_full = disk(new_path_radius * 2)
     if var_path_width:
         considered_height = bottom - top
         n_linhas = considered_height / (path_radius * 2)
         resto, divs = math.modf(n_linhas / 2)
         new_path_radius = (considered_height / divs) / 4
-        region_mask_full = disk(new_path_radius * 2)
-    internal_border = mt.erosion(img2, kernel_img=region_mask_full)
+        # region_mask_full = disk(new_path_radius * 2)
+    internal_border = mt.erosion(img2, kernel_size=path_radius_int_ext)
     contours, internal_border_img = mt.detect_contours(
         internal_border, return_img=True, only_external=True
     )

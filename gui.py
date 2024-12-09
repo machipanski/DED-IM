@@ -50,48 +50,15 @@ def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
     return fieldValues
 
 
-def ask_parameters_Gcode():
-    """Pede os parametros para a produção, permitindo alterar o que ja esta padronizado"""
-    msg = "Gcode parameters"
-    title = "Gcode parameters"
-    fieldNames = [
-        "vel_int",
-        "vel_ext",
-        "vel_thin_wall",
-        "pausa_religamento(ms)",
-        "pausa_desligamento(ms)",
-        "vel_movimento_vazio",
-        "pausa_entre_camadas",
-        "substrato y",
-        "substrato x",
-        "corte y",
-        "corte x",
-    ]
-    fieldDefs = [
-        580,
-        360,
-        360,
-        1200,
-        700,
-        4000,
-        40000,
-        70,
-        50,
-        50,
-        200,
-    ]  # we start with blanks for the values
-    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
-
-
 def ask_parameters_input():
     """Pede todos os parametros de fatiamento, permitindo alterar o que ja esta padronizado"""
     msg = "Slicing parameters"
     title = "Slicing parameters"
     fieldNames = [
         "DPI",
-        "Layer Height",
+        "Layer Height(mm)",
     ]
-    fieldDefs = [300, 2]
+    fieldDefs = [300, 1.5]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 
@@ -99,17 +66,8 @@ def ask_parameters_thin_walls():
     """Pede os parametros de thinwalls, permitindo alterar o que ja esta padronizado"""
     msg = "Thin walls parameters"
     title = "Thin walls parameters"
-    fieldNames = ["Internal Bw", "External Bw"]
-    fieldDefs = [3, 2.8]  # we start with blanks for the values
-    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
-
-
-def ask_parameters_weaving():
-    """Pergunta se será aplicado o weaving de preenchimento"""
-    msg = "Internal Weaving parameters"
-    title = "Internal Weaving parameters"
-    fieldNames = ["Internal Weaving"]
-    fieldDefs = [1]  # we start with blanks for the values
+    fieldNames = ["Dimetro externo real(mm)", "Sobreposiao contornos(%)"]
+    fieldDefs = [6, 50]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 
@@ -117,7 +75,7 @@ def ask_parameters_offsets():
     """Pede os parametros de offsets, permitindo alterar o que ja esta padronizado"""
     msg = "Contour parameters"
     title = "Contour parameters"
-    fieldNames = ["Vmax", "External max", "Internal max"]
+    fieldNames = ["Void maximo(%)", "Contonrnos externos max(nº)", "Contonrnos internos max(nº)"]
     fieldDefs = [1, 99, 99]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
@@ -126,6 +84,57 @@ def ask_parameters_bridges():
     """Pede os parametros de gargalos, permitindo alterar o que ja esta padronizado"""
     msg = "Bridges parameters"
     title = "Bridges parameters"
-    fieldNames = ["n_max", "nozzle_diam_internal"]
-    fieldDefs = [4, 2.8]  # we start with blanks for the values
+    fieldNames = ["Passagens internas minimas", "Dimetro interno real", "Sobreposiao contornos(%)"]
+    fieldDefs = [4, 7, 30]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+def ask_parameters_internal_routes():
+    """Pede os parametros de rotas internas"""
+    msg = "internal_routes parameters"
+    title = "internal_routes parameters"
+    fieldNames = ["Sobreposiao interno-externo(%)"]
+    fieldDefs = [40]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+def ask_parameters_weaving():
+    """Pergunta se será aplicado o weaving de preenchimento"""
+    msg = "Internal Weaving parameters"
+    title = "Internal Weaving parameters"
+    fieldNames = ["Internal Weaving? (1sim/0nao)"]
+    fieldDefs = [1]  # we start with blanks for the values
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+
+def ask_parameters_Gcode():
+    """Pede os parametros para a produção, permitindo alterar o que ja esta padronizado"""
+    msg = "Gcode parameters"
+    title = "Gcode parameters"
+    fieldNames = [
+        "Velocidade internos(mm/m)",
+        "Velocidade externos(mm/m)",
+        "Velocidade thin_wall(mm/m)",
+        "Velocidade movimento_vazio(mm/m)",
+        "Pausa religamento(ms)",
+        "Pausa desligamento(ms)",
+        "Pausa entre interno e externo(ms)",
+        "Pausa entre_camadas(ms)",
+        "Coordenadas substrato y(mm)",
+        "Coordenadassubstrato x(mm)",
+        "Coordenadascorte y(mm)",
+        "Coordenadascorte x(mm)",
+    ]
+    fieldDefs = [
+        300,
+        360,
+        400,
+        500,
+        700,
+        1200,
+        60000,
+        400000,
+        70,
+        50,
+        50,
+        200,
+    ]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)

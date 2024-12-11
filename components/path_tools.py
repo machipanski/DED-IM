@@ -60,32 +60,32 @@ class Path:
         if hasattr(island, "offsets"):
             if len(island.offsets.regions):
                 for o in island.offsets.regions:
-                    if np.logical_and(o.img, self.img).any():
+                    if np.logical_and(o.route, self.img).any():
                         self.regions["offsets"].append(o.name)
         if hasattr(island, "zigzags"):
             if len(island.zigzags.regions):
                 for z in island.zigzags.regions:
-                    if np.logical_and(z.img, self.img).any():
+                    if np.logical_and(z.route, self.img).any():
                         self.regions["zigzags"].append(z.name)
         if hasattr(island, "bridges"):
             if len(island.bridges.cross_over_bridges):
                 for cb in island.bridges.cross_over_bridges:
-                    if np.logical_and(cb.img, self.img).any():
+                    if np.logical_and(cb.route, self.img).any():
                         self.regions["cross_over_bridges"].append(cb.name)
         if hasattr(island, "bridges"):
             if len(island.bridges.offset_bridges):
                 for ob in island.bridges.offset_bridges:
-                    if np.logical_and(ob.img, self.img).any():
+                    if np.logical_and(ob.route, self.img).any():
                         self.regions["offset_bridges"].append(ob.name)
         if hasattr(island, "bridges"):
             if len(island.bridges.zigzag_bridges):
                 for zb in island.bridges.zigzag_bridges:
-                    if np.logical_and(zb.img, self.img).any():
+                    if np.logical_and(zb.route, self.img).any():
                         self.regions["zigzag_bridges"].append(zb.name)
         if hasattr(island, "thin"):
             if len(island.thin_walls.regions):
                 for tw in island.thin_walls.regions:
-                    if np.logical_and(tw.img, self.img).any():
+                    if np.logical_and(tw.route, self.img).any():
                         self.regions["thin walls"].append(tw.name)
         return
 
@@ -398,11 +398,11 @@ def connect_cross_over_bridges(island: Island) -> Path:
     return new_route
 
 
-def connect_internal_external(island: Island, path_radius_internal):
+def connect_internal_external(island: Island, path_radius_int_ext):
     filling = island.zigzags.all_zigzags
     if np.sum(filling) > 0:
         most_external = island.offsets.regions[0].route.astype(np.uint8)
-        dilation_kernel = int(path_radius_internal * 2)
+        dilation_kernel = int(path_radius_int_ext * 2)
         touching = np.zeros_like(island.img)
         while np.sum(touching) == 0:
             aaa = it.sum_imgs(
@@ -1312,7 +1312,11 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
 def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
     path_list = []
     if hasattr(isl, "zigzags"):
-        for i, ma in enumerate(isl.zigzags.macro_areas):
+        if hasattr(isl.zigzags, "macro_areas_weaved"):
+            list_of_reagions = isl.zigzags.macro_areas_weaved
+        else:
+            list_of_reagions = isl.zigzags.macro_areas
+        for i, ma in enumerate(list_of_reagions):
             zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
             if len(zigzag_path) > 0:
                 path_list.append(Path(i, zigzag_path[0], img=ma))
@@ -1320,6 +1324,14 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
                     path_list[-1].sequence, list(isl.comeco_int)
                 )
                 path_list[-1].get_regions(isl)
+                # path_list[-1].regions = {
+                #                             "offsets": [],
+                #                             "zigzags": [f"{isl.zigzags.regions[0].name}"],
+                #                             "cross_over_bridges": [],
+                #                             "offset_bridges": [],
+                #                             "zigzag_bridges": [],
+                #                             "thin walls": [],
+                #                         }
     else:
         if hasattr(isl, "bridges"):
             for i, zb in enumerate(isl.bridges.zigzag_bridges):

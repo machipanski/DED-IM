@@ -147,6 +147,7 @@ def find_tips(skel_img: np.ndarray, mask=None, label=None):
     endpoint6 = np.rot90(endpoint4)
     endpoint7 = np.rot90(endpoint5)
     endpoint8 = np.rot90(endpoint6)
+    endpoint9 = np.array([[-1, -1, -1], [-1, 1, -1], [-1, -1, -1]]) #TODO se der problema tira aqui
     endpoints = [
         endpoint1,
         endpoint2,
@@ -156,6 +157,7 @@ def find_tips(skel_img: np.ndarray, mask=None, label=None):
         endpoint6,
         endpoint7,
         endpoint8,
+        endpoint9,
     ]
     tip_img = np.zeros(skel_img.shape[:2], dtype=int)
     for endpoint in endpoints:

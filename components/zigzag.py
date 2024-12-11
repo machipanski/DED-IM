@@ -419,18 +419,13 @@ class ZigZagRegions:
         return
 
     def make_routes_z(self, base_frame, path_radius, path_radius_int_ext):
-        # def make_zigzag_route(region: ZigZag):
         for region in self.regions:
             region.center = pt.points_center(
                 pt.contour_to_list(mt.detect_contours(region.img))
             )
             zig_options = []
-            lines, n_lines, internal_border_img, contours, new_path_radius = (
-                cut_in_lines(region.img, path_radius, path_radius_int_ext, var_path_width=0)
-            )
-            filled = it.fill_internal_area(
-                internal_border_img.astype(np.uint8), np.ones_like(internal_border_img)
-            )
+            lines, n_lines, internal_border_img, contours, new_path_radius = cut_in_lines(region.img, path_radius, path_radius_int_ext, var_path_width=0)
+            filled = it.fill_internal_area(internal_border_img.astype(np.uint8), np.ones_like(internal_border_img))
             opened = mt.opening(filled, kernel_size=path_radius)
             with Timer("fazendo as tres opções:"):
                 if np.sum(opened) > 0:
@@ -550,7 +545,7 @@ def cut_in_lines(img, path_radius, path_radius_int_ext, var_path_width=0):
         resto, divs = math.modf(n_linhas / 2)
         new_path_radius = (considered_height / divs) / 4
         # region_mask_full = disk(new_path_radius * 2)
-    internal_border = mt.erosion(img2, kernel_size=path_radius_int_ext)
+    internal_border = mt.erosion(img, kernel_size=path_radius+path_radius_int_ext)
     contours, internal_border_img = mt.detect_contours(
         internal_border, return_img=True, only_external=True
     )
@@ -616,7 +611,6 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
             adjust += 1
         return origens_pontos, line_points
 
-
     div_points, line_points = divide_in_pairs(interface_line, path_radius_internal)
     div_lines = np.zeros_like(fail)
     crossings = []
@@ -632,7 +626,8 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
             div_min = div[1]
             if len(list(filter(lambda x: x in line_points, crossings_pts))) > 0:
                 extreme_points[0] = list(filter(lambda x: x in line_points, crossings_pts))[0]
-                extreme_points[3] = list(filter(lambda x: not (x in line_points), crossings_pts))[0]
+                # extreme_points[3] = list(filter(lambda x: not (x in line_points), crossings_pts))[0]
+                extreme_points[3] = pt.most_distant_from(extreme_points[0], crossings_pts)
             else:
                 break
         elif i == last_iter:
@@ -646,7 +641,8 @@ def internal_weaving_cut(interface_line, path_radius_internal, fail):
                 fail_inside_divs[:, (div_min + 1) :] = 0
             if len(list(filter(lambda x: x in line_points, crossings_pts))) > 0:
                 extreme_points[1] = list(filter(lambda x: x in line_points, crossings_pts))[0]
-                extreme_points[2] = list(filter(lambda x: not (x in line_points), crossings_pts))[0]
+                # extreme_points[2] = list(filter(lambda x: not (x in line_points), crossings_pts))[0]
+                extreme_points[2] = pt.most_distant_from(extreme_points[1], crossings_pts)
             else:
                 last_point = list(filter(lambda x: not (x in extreme_points), line_points))[0]
                 fail_ctr, fail_contour_img = mt.detect_contours(fail_inside_divs,return_img=True,only_external=True)
@@ -971,7 +967,7 @@ def connect_fails_to_zigzags(
                 _, connected_fail = mt.detect_contours(np.logical_or(new_fail, canvas),return_img=True, only_external=True)
                 connected_fail = it.fill_internal_area(connected_fail, np.ones_like(canvas))
                 connected_fails.append(it.sum_imgs([connected_fail, zigzag_contact]))
-                all_connected_fails = np.logical_or(connected_fails, connected_fail)
+                all_connected_fails = np.logical_or(all_connected_fails, connected_fail)
         else:
             pass
     eroded_connected_fails = []
@@ -997,10 +993,33 @@ def connect_fails_to_zigzags(
         extremes_dilated = mt.dilation(mt.hitmiss_ends_v2(cf>1),kernel_size=path_radius_internal)
         reduced_contact = it.image_subtract(cf>1,extremes_dilated)
         eroded_fail = it.sum_imgs([eroded_fail_bef, mt.dilation(reduced_contact,the_other)])
-        eroded_connected_fails.append(eroded_fail)
-        all_eroded_connected_fails = np.logical_or(all_eroded_connected_fails, eroded_fail)
+        eroded_closed_fail = mt.closing(eroded_fail, kernel_size=int(path_radius_internal))
+        eroded_connected_fails.append(eroded_closed_fail)
+        all_eroded_connected_fails = np.logical_or(all_eroded_connected_fails, eroded_closed_fail)
     separated, _, _ = it.divide_by_connected(all_eroded_connected_fails)
     new_conections = []
+
+    cleanned_separated = []
     for fail in separated:
-        new_conections.append(np.logical_and(fail, old_zigzag))
-    return separated, new_conections
+        interface_line = np.logical_and(fail, old_zigzag)
+        line_points = pt.img_to_points(mt.hitmiss_ends_v2(interface_line))
+        if len(line_points) != 2:
+            new_line = it.take_the_bigger_area(interface_line)
+            other_lines = it.image_subtract(interface_line, new_line)
+            a = it.image_subtract(fail, mt.dilation(other_lines, kernel_size=path_radius_internal))
+            b = mt.opening(a, kernel_size=path_radius_internal)
+            c = it.take_the_bigger_area(b)
+            d = np.logical_or(c, new_line)
+            e = mt.closing(d, kernel_size=int(path_radius_internal*4))
+            new_line = np.logical_and(e, old_zigzag)
+            new_separated = np.logical_or(e,new_line)
+            # line_points = pt.img_to_points(mt.hitmiss_ends_v2(new_line))
+        else:
+            new_line = interface_line
+            new_separated = fail
+        #new_separated = it.image_subtract(new_separated,new_line)
+        new_conections.append(new_line)
+        cleanned_separated.append(new_separated)
+    aaa = it.sum_imgs(separated + old_zigzag)
+    aaaa = it.sum_imgs(cleanned_separated + old_zigzag)
+    return cleanned_separated, new_conections

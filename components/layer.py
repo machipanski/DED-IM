@@ -41,6 +41,7 @@ class Island:
         self.thinwalls_tree_route: List[Path] = []
         self.island_route: List[Path] = []
         self.prohibited_areas = []
+        self.macro_areas_weaved = []
         if args:
             self.name = args[0]
             self.img = args[1]
@@ -588,15 +589,11 @@ class Layer:
                 f"/{self.name}/{island.name}", "rest_of_picture_f2"
             )
             if np.sum(rest_of_picture_f2) > 0:
-                # nozzle_diam_internal_pxl = d_int * self.pxl_per_mm
-                # self.path_radius_internal = int(nozzle_diam_internal_pxl * 0.5)
                 island.bridges.make_zigzag_bridges(
                     rest_of_picture_f2,
                     self.base_frame,
                     self.path_radius_internal,
-                    self.path_radius_int_ext,
                     n_max,
-                    mt.make_mask(self, "full_int"),
                     isl.offsets.regions,
                 )
             return island
@@ -604,9 +601,9 @@ class Layer:
         @paralelizando
         def make_islands_cross_over_bridges(island: Island) -> Island:
             try:
-                rest_of_picture_f2 = folders.load_img_hdf5(
-                    f"/{self.name}/{island.name}", "rest_of_picture_f2"
-                )
+                # rest_of_picture_f2 = folders.load_img_hdf5(
+                #     f"/{self.name}/{island.name}", "rest_of_picture_f2"
+                # )
                 self.n_max = n_max
                 island.bridges.all_bridges = island.bridges.make_cross_over_bridges(
                     sum_prohibited_areas, island.offsets_mst
@@ -678,8 +675,6 @@ class Layer:
                     self.path_radius_int_ext,
                     self.base_frame,
                     isl.rest_of_picture_f2,
-                    self.odd_layer,
-                    isl.offsets.all_valid_loops,
                 )
             with Timer("salvando imagens das rotas"):
                 folders.save_routes_bridges_hdf5(self.name, self.islands)
@@ -835,7 +830,7 @@ class Layer:
                 folders.load_zigzags_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
                 if hasattr(isl,"zigzags"):
-                    isl.zigzags.macro_areas, isl.zigzags.all_zigzags = (
+                    isl.zigzags.macro_areas_weaved, isl.zigzags.all_zigzags = (
                         isl.zigzags.create_oscilatory_inner(
                             isl.zigzags.macro_areas,
                             self.original_img,
@@ -862,5 +857,11 @@ class Layer:
                         f"/{self.name}/{isl.name}/zigzags",
                         f"macro_areas",
                         isl.zigzags.macro_areas,
+                    )
+                    folders.delete_item_hdf5(f"/{self.name}/{isl.name}/zigzags/macro_areas_weaved")
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        f"macro_areas_weaved",
+                        isl.zigzags.macro_areas_weaved,
                     )
         return

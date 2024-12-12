@@ -83,9 +83,9 @@ def draw_line(img, a, b):
     return cv2.line(img.astype(np.uint8), af, bf, 1, 1)
 
 
-def draw_circle(img, center, radius):
+def draw_circle(img, center, radius, fill=-1):
     af = tuple(np.flip(center))
-    return cv2.circle(img.astype(np.uint8), af, radius, 1, -1)
+    return cv2.circle(img.astype(np.uint8), af, radius, 1, fill)
 
 
 def draw_polyline(img, pts_list, closed):

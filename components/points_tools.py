@@ -128,14 +128,24 @@ def most_distant(pts_list):
     return pairs[np.argmax(distances)]
 
 
-def most_distant_from(pt, pts_list):
+def most_distant_from(pt, pts_list, give_second=False):
     """Returns the most distant point in a list as ([y,x],[y,x])"""
     pairs = []
     distances = []
     for p2 in pts_list:
         pairs.append([pt, p2])
         distances.append(distance_pts(pt, p2))
-    return pairs[np.argmax(distances)][1]
+    if give_second:
+        pt1 = pairs[np.argmax(distances)]
+        pairs.remove(pt1)
+        distances.remove(distances[np.argmax(distances)])
+        if len(pairs) == 0:
+            pt2 = pt1
+        else: 
+            pt2 = pairs[np.argmax(distances)]
+        return pt1[1], pt2[1]
+    else:
+        return pairs[np.argmax(distances)][1]
 
 
 def multiple_contours_to_list(ctrs_list, minimal_seq=0):

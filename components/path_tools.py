@@ -1,12 +1,13 @@
 from __future__ import annotations
 import copy
 from ctypes.wintypes import HSTR
+from os import times_result
 from tkinter import X
 from typing import TYPE_CHECKING, Dict, reveal_type
 import itertools
 import math
 import random
-
+import datetime
 from networkx import bridges
 import numpy as np
 import networkx as nx
@@ -1347,7 +1348,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
     return path_list
 
 
-def layers_to_Gcode(
+def layers_to_Gcode_holding_trigger(
     layers: List[Layer],
     folders: System_Paths,
     vel_int,
@@ -1362,6 +1363,7 @@ def layers_to_Gcode(
     coords_substrato,
     coords_corte,
 ):
+    """É como trabalhavamos antes, modo 2T"""
     import os
 
     def religamento(output):
@@ -1391,10 +1393,11 @@ def layers_to_Gcode(
         output += ";------------------------\n"
         return output
 
-    def posicao_inicial(output, coords):
+    def posicao_inicial(output, coords, i):
         output += f";_______LAYER{n_layer + 1}_____\n"
         # output += f"G1 F{vel_ext}; speed g1\n"
         output += f"G90\n"
+        output += f";LAYER:{i}\n"
         output += f"G1 Z{layer_heights[n_layer]} ; Camada + 10mm\n"
         output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}; POS INICIAL\n"
         output += f"G91\n"
@@ -1422,7 +1425,7 @@ def layers_to_Gcode(
 
     for n_layer, layer in enumerate(layers):
         soma_do_deslocamento = 0
-        output = posicao_inicial(output, coords_substrato)
+        output = posicao_inicial(output, coords_substrato, n_layer)
         bfr = coords_substrato
         folders.load_islands_hdf5(layer)
         # print(f"nome: {layer.name}")
@@ -1439,7 +1442,7 @@ def layers_to_Gcode(
             print(f"nome: {layer.name}/{island.name}")
             aaa = island.island_route.img
             pts_crossover = []
-            if hasattr(island, "bridge"):
+            if hasattr(island, "bridges"):
                 A1 = [
                     pt.img_to_points(x.route) for x in island.bridges.cross_over_bridges
                 ]
@@ -1481,6 +1484,7 @@ def layers_to_Gcode(
             for i, p in enumerate(chain):
                 if p == [0, 0]:
                     output = desligamento(output)
+                    const_perf = 0
                     flag_salto = 1
                 else:
                     coords = p
@@ -1491,19 +1495,23 @@ def layers_to_Gcode(
                     if p in pontos_int:
                         flag_path_type = 0
                         vel = vel_int
-                        texto_mudanca = ";----Interno----\n"
+                        texto_mudanca = ";----Interno----\n;TYPE:SKIN\n"
+                        const_perf = 8
                     elif p in pontos_ext:
                         flag_path_type = 1
                         vel = vel_ext
-                        texto_mudanca = ";----Externo----\n"
+                        texto_mudanca = ";----Externo----\n;TYPE:WALL-OUTER\n"
+                        const_perf = 5
                     elif p in pontos_tw:
                         flag_path_type = 2
                         vel = vel_thin_wall
-                        texto_mudanca = ";----ThinWalls----\n"
+                        texto_mudanca = ";----ThinWalls----\n;TYPE:WALL-INNER\n"
+                        const_perf = 0.5
                     else:
                         flag_path_type = 3
                         vel = vel_ext
                         texto_mudanca = ";----perdido----\n"
+                        const_perf = 0
                     if i == 1:
                         output = religamento(output)
                     if flag_path_type != last_flag:
@@ -1513,9 +1521,12 @@ def layers_to_Gcode(
                         output += texto_mudanca
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
+                    if flag_salto == 1:
+                        const_perf = 0
+                    extrus = dist*const_perf
                     soma_do_deslocamento += dist
                     output += (
-                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
+                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel} E{extrus}\n"
                     )
                     output += "M400\n"
                     bfr = coords
@@ -1549,71 +1560,293 @@ def layers_to_Gcode(
     return
 
 
-def layers_to_Gcode_FFF(camadas: List[Layer], arquivos: System_Paths, file_name):
-    # ISSO É PARA CURA
+def layers_to_Gcode(
+    layers: List[Layer],
+    folders: System_Paths,
+    vel_int,
+    vel_ext,
+    vel_vazio,
+    vel_thin_wall,
+    p_religamento,
+    p_desligamento,
+    p_entre_int_ext,
+    p_entre_camadas,
+    layer_heights,
+    coords_substrato,
+    coords_corte,
+):
+    """modo 4T na maquina Okerlion na FCT-NOVA"""
     import os
-    import matplotlib.pyplot as plt
 
-    os.chdir(arquivos.home)
-    # img_name = arquivos.all_figs[7]
-    recovered_img = np.zeros(np.multiply(camadas[0].original_img.shape, 3))
-    inFile = file_name
-    i = open(inFile, "r")
-    coordinates = []
-    extrusion = 0
-    pixel_per_mm = camadas[0].dpi / 25.4
-    this_point = []
-    last_point = [0, 0]
-    desloc = [200, 300]
-    coordinates.append(last_point)
-    last_e = 0
-    start = False
-    for linenumber, line in enumerate(i):
-        if line == ";LAYER:2\n":
-            start = True
-        if start:
-            if line == ";LAYER:3\n":
-                break
-            line = line.strip()
-            if line.startswith("G1") or line.startswith("G0"):
-                # print(line.split())
-                data = line.split()
-                if data[1][0] == "F":
-                    adder = 1
+    def religamento(output):
+        output += ";-------RELIGAMENTO------\n"
+        output += "M42 P4 S0\n"
+        output += f"G4 P{p_trigger_longa}\n"
+        output += "M42 P4 S255\n"
+        output += f"G4 P{p_religamento}\n"
+        output += ";------------------------\n"
+        return output, 1
+
+    def desligamento(output):
+        output += ";-------DESLIGAMENTO------\n"
+        output += "M42 P4 S0\n"
+        output += f"G4 P{p_trigger_longa}\n"
+        output += "M42 P4 S255\n"
+        output += f"G4 P{p_desligamento}\n"
+        output += ";-------------------------\n"
+        return output, 0
+
+    def posicao_de_corte(output, coords):
+        output += ";-------POS de CORTE------\n"
+        output += f";POS de Corte\n"
+        output += f"G90\n"
+        output += f"G0 Y{coords[0]} F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G0 x{coords[1]} F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G4 P{p_entre_camadas}\n"
+        output += f"G91\n"
+        output += ";------------------------\n"
+        return output
+
+    def posicao_inicial(output, coords, i):
+        output += f";_______LAYER{n_layer + 1}_____\n"
+        output += f"G90\n"
+        output += f";LAYER:{i}\n"
+        output += f"G1 Z{layer_heights[n_layer]} ; Camada + 10mm\n"
+        output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}; POS INICIAL\n"
+        output += f"G91\n"
+        return output
+
+    mm_per_pixel = layers[0].mm_per_pxl
+    ts = datetime.datetime.now()
+    outFile = f"{folders.selected} {ts.date()} {ts.hour}_{ts.minute}.gcode"
+    output = ""
+    output += ";-------INPUTS------\n"
+    output += f";DPI: {layers[0].dpi} ppp\n"
+    output += f";N# Camadas: {layers[0].n_camadas}\n"
+    output += f";void_max: {layers[0].void_max} % of path_radius\n"
+    output += f";max_internal_walls: {layers[0].max_internal_walls}\n"
+    output += f";max_external_walls: {layers[0].max_external_walls}\n"
+    output += f";n_max: {layers[0].n_max} trilhas para estrangulamentos\n"
+    output += f";p_religamento: {p_religamento} ms \n"
+    output += f";p_desligamento: {p_desligamento} ms \n"
+    output += f"p_entre_int_ext;: {p_entre_int_ext} ms \n"
+    output += f";p_entre_camadas: {p_entre_camadas} ms \n"
+    output += f";layer_heights: {layer_heights} mm \n"
+    output += f";coords_substrato: {coords_substrato} mm \n"
+    output += f";coords_corte: {coords_corte} mm \n"
+    output += f";vel_vazio: {vel_vazio} mm/min \n"
+    output += ";-------PROGRAMA 1 EXTERNO------\n"
+    output += f";Diametro das trilhas: {layers[0].diam_ext_real} mm\n"
+    output += f";Sobreposição das rotas: {layers[0].sob_ext_per} % raio externo \n"    
+    output += f";vel_ext: {vel_ext} mm/min \n"
+    output += f";path_radius_external: {layers[0].path_radius_external} pixels\n"
+    output += ";-------PROGRAMA 2 INTERNO------\n"
+    output += f";Diametro das trilhas: {layers[0].diam_int_real} mm\n"
+    output += f";Sobreposição das rotas: {layers[0].sob_int_per} % raio interno \n"    
+    output += f";Sobreposição Entre interno e externo: {layers[0].sob_int_ext_per} % raio interno \n"    
+    output += f";vel_int: {vel_int} mm/min \n"
+    output += f";path_radius_internal: {layers[0].path_radius_internal} pixels\n"
+    output += ";-------PROGRAMA 3 THINWALLS------\n"
+    output += f";path_radius_int_ext: {layers[0].path_radius_int_ext} pixels\n"
+    output += f";vel_thin_wall: {vel_thin_wall} mm/min \n"
+    output += ";------------------------\n"
+
+    output += f"G91\n"
+    output += f"M42 P4 S255; turn off welder\n"
+    output += f"G28 X0 Y0 Z0\n"
+    output += f"G1 F360; speed g1\n"
+    bfr = [0, 0]
+    base_frame = layers[0].base_frame
+    p_trigger_longa = 700
+    p_trigger_curta = 300
+
+    for n_layer, layer in enumerate(layers):
+        soma_do_deslocamento = 0
+        output = posicao_inicial(output, coords_substrato, n_layer)
+        bfr = coords_substrato
+        folders.load_islands_hdf5(layer)
+        for n_island, island in enumerate(layer.islands):
+            folders.load_island_paths_hdf5(layer.name, island)
+            folders.load_island_paths_hdf5(layer.name, island)
+            itr = [list(x) for x in island.internal_tree_route.sequence]
+            etr = [list(x) for x in island.external_tree_route.sequence]
+            twtr = [list(x) for x in island.thinwalls_tree_route.sequence]
+            folders.load_bridges_hdf5(layer.name, island)
+            print(f"nome: {layer.name}/{island.name}")
+            pts_crossover = []
+            if hasattr(island, "bridges"):
+                A1 = [
+                    pt.img_to_points(x.route) 
+                    for x in island.bridges.cross_over_bridges
+                ]
+                A2 = [
+                    pt.img_to_points(x.route_b)
+                    for x in island.bridges.cross_over_bridges
+                ]
+                A = A1 + A2
+                for x in A:
+                    pts_crossover = pts_crossover + x
+            if n_layer % 2:
+                etr = rotate_path_odd_layer(etr, layer.base_frame)
+                itr = rotate_path_odd_layer(itr, layer.base_frame)
+                twtr = rotate_path_odd_layer(twtr, layer.base_frame)
+                pts_crossover = rotate_path_odd_layer(pts_crossover, layer.base_frame)
+            pontos_int = [list(x) for x in itr] + pts_crossover
+            pontos_ext = [list(x) for x in etr]
+            pontos_ext = [coord for coord in pontos_ext if coord not in pts_crossover]
+            pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
+            chain = [list(x) for x in island.island_route.sequence]
+            counter = 0
+            flag_salto = 0
+            flag_path_type = 99
+            last_flag = 0
+            flag_ligado = 0
+            print(chain)
+            for i, p in enumerate(chain):
+                if p == [0, 0]:
+                    output, flag_ligado = desligamento(output)
+                    const_perf = 0
+                    flag_salto = 1
                 else:
-                    adder = 0
-                if data[1 + adder][0] == "X":
-                    x = data[1 + adder][1:]
-                    try:
-                        x = [int(round(float(x) * pixel_per_mm))]
-                    except:
-                        x = []
-                    y = data[2 + adder][1:]
-                    try:
-                        y = [int(round(float(y) * pixel_per_mm))]
-                    except:
-                        y = []
-                    try:
-                        e = [float(data[3 + adder][1:])]
-                    except:
-                        e = []
-                    if len(x) > 0 and len(y) > 0:
-                        this_point = np.subtract([*y, *x], desloc)
-                        coordinates.append(this_point)
-                        if len(coordinates) > 1:
-                            if len(e) > 0:
-                                this_e = e[0]
-                                if data[3 + adder][0] == "E":
-                                    if this_e > last_e:
-                                        last_e = e[0]
-                                        recovered_img = it.draw_line(
-                                            recovered_img, last_point, this_point
-                                        )
-                                    else:
-                                        last_e = 0
-                                else:
-                                    print(data)
-                    last_point = np.subtract([*y, *x], desloc)
-    i.close()
-    plt.figure()
-    plt.imshow(recovered_img)
+                    coords = p
+                    coords = [
+                        base_frame[0] - coords[0] + coords_substrato[0],
+                        coords[1] + coords_substrato[1],
+                    ]
+                    if p in pontos_int:
+                        flag_path_type = 0
+                        vel = vel_int
+                        texto_mudanca = ";----Interno----\n;TYPE:SKIN\n"
+                        const_perf = 8
+                    elif p in pontos_ext:
+                        flag_path_type = 1
+                        vel = vel_ext
+                        texto_mudanca = ";----Externo----\n;TYPE:WALL-OUTER\n"
+                        const_perf = 5
+                    elif p in pontos_tw:
+                        flag_path_type = 2
+                        vel = vel_thin_wall
+                        texto_mudanca = ";----ThinWalls----\n;TYPE:WALL-INNER\n"
+                        const_perf = 0.5
+                    else:
+                        flag_path_type = 3
+                        vel = vel_ext
+                        texto_mudanca = ";----perdido----\n"
+                        const_perf = 0
+                    if i == 1:
+                        output, flag_ligado = religamento(output)
+                    if flag_path_type != last_flag:
+                        output += f"G1 F{vel}; speed g1\n"
+                        output += "M42 P4 S0\n"
+                        output += f"G4 P{p_trigger_curta}\n"
+                        output += "M42 P4 S255\n"
+                        last_flag = flag_path_type
+                        print(f"trocou para {flag_path_type}")
+                        output += texto_mudanca
+                    desloc = np.subtract(coords, bfr)
+                    dist = distance.euclidean(coords, bfr)
+                    if flag_salto == 1 or flag_ligado == 0:
+                        const_perf = 0
+                    extrus = dist*const_perf
+                    soma_do_deslocamento += dist
+                    output += (
+                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel} E{extrus}\n"
+                    )
+                    output += "M400\n"
+                    bfr = coords
+                    counter += 1
+                    if flag_salto == 1:
+                        output, flag_ligado = religamento(output)
+                        flag_salto = 0
+            output = posicao_de_corte(output, coords_corte)
+            output += ";____________________________________\n"
+            output += f"G28 X0 Y0\n"
+            print(
+                f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm"
+            )
+            print(
+                f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n"
+            )
+    output += f"G1 Z20\n"
+    output += f"G28 X0\n"
+    output += f"G28 Y0\n"
+    output += f"M104 S0; End of Gcode\n"
+    os.chdir(folders.output)
+    f = open(outFile, "w")
+    f.write(output)
+    f.close()
+    os.chdir(folders.home)
+    return
+
+
+# def layers_to_Gcode_FFF(camadas: List[Layer], arquivos: System_Paths, file_name):
+#     # ISSO É PARA CURA
+#     import os
+#     import matplotlib.pyplot as plt
+
+#     os.chdir(arquivos.home)
+#     # img_name = arquivos.all_figs[7]
+#     recovered_img = np.zeros(np.multiply(camadas[0].original_img.shape, 3))
+#     inFile = file_name
+#     i = open(inFile, "r")
+#     coordinates = []
+#     extrusion = 0
+#     pixel_per_mm = camadas[0].dpi / 25.4
+#     this_point = []
+#     last_point = [0, 0]
+#     desloc = [200, 300]
+#     coordinates.append(last_point)
+#     last_e = 0
+#     start = False
+#     for linenumber, line in enumerate(i):
+#         if line == ";LAYER:2\n":
+#             start = True
+#         if start:
+#             if line == ";LAYER:3\n":
+#                 break
+#             line = line.strip()
+#             if line.startswith("G1") or line.startswith("G0"):
+#                 # print(line.split())
+#                 data = line.split()
+#                 if data[1][0] == "F":
+#                     adder = 1
+#                 else:
+#                     adder = 0
+#                 if data[1 + adder][0] == "X":
+#                     x = data[1 + adder][1:]
+#                     try:
+#                         x = [int(round(float(x) * pixel_per_mm))]
+#                     except:
+#                         x = []
+#                     y = data[2 + adder][1:]
+#                     try:
+#                         y = [int(round(float(y) * pixel_per_mm))]
+#                     except:
+#                         y = []
+#                     try:
+#                         e = [float(data[3 + adder][1:])]
+#                     except:
+#                         e = []
+#                     if len(x) > 0 and len(y) > 0:
+#                         this_point = np.subtract([*y, *x], desloc)
+#                         coordinates.append(this_point)
+#                         if len(coordinates) > 1:
+#                             if len(e) > 0:
+#                                 this_e = e[0]
+#                                 if data[3 + adder][0] == "E":
+#                                     if this_e > last_e:
+#                                         last_e = e[0]
+#                                         recovered_img = it.draw_line(
+#                                             recovered_img, last_point, this_point
+#                                         )
+#                                     else:
+#                                         last_e = 0
+#                                 else:
+#                                     print(data)
+#                     last_point = np.subtract([*y, *x], desloc)
+#     i.close()
+#     plt.figure()
+#     plt.imshow(recovered_img)
+

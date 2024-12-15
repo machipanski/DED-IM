@@ -207,8 +207,10 @@ class System_Paths:
         f = h5py.File(self.save_file_name, "r")
         layers = []
         for key, item in f.items():
-            if key != "folders_structure":
-                # isinstance(item, h5py.Group)
+            if key == "folders_structure":
+                for nome_atributo, valor_atributo in f[key].attrs.items(): 
+                    setattr(self,nome_atributo,valor_atributo)
+            else:
                 layers.append(Layer(**dict(f[key].attrs)))
                 layers[-1].original_img = np.array(f.get(f"/{key}/original_img"))
                 layers[-1].prohibited_areas = np.array(

@@ -84,7 +84,7 @@ def ask_parameters_bridges():
     """Pede os parametros de gargalos, permitindo alterar o que ja esta padronizado"""
     msg = "Bridges parameters"
     title = "Bridges parameters"
-    fieldNames = ["Passagens internas minimas", "Dimetro interno real", "Sobreposiao contornos(%)"]
+    fieldNames = ["Passagens internas minimas", "Dimetro interno real", "Sobreposiao internos(%)"]
     fieldDefs = [4, 7, 30]  # we start with blanks for the values
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 

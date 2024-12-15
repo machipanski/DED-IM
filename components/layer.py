@@ -70,9 +70,13 @@ class Layer:
             self.path_radius_external: float = 0
             self.path_radius_internal: float = 0
             self.path_radius_int_ext: float = 0
+            self.sob_ext_per: float = 0
+            self.sob_int_per: float = 0
+            self.sob_int_ext_per: float = 0
             self.pxl_per_mm: float = 0
             self.mm_per_pxl: float = 0
             self.islands: List[Island]
+            self.selected = []
 
     def islands_path_starts(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
@@ -310,6 +314,7 @@ class Layer:
         self.pxl_per_mm = self.dpi / 25.4
         self.mm_per_pxl = 1 / self.pxl_per_mm
         d_ext_pxl = d_ext * self.pxl_per_mm
+        self.sob_ext_per = sob_ext_per
         self.path_radius_external = int(d_ext_pxl * 0.5 * (1 - sob_ext_per/100))
         self.diam_ext_real = d_ext
         for isl in self.islands:
@@ -614,6 +619,7 @@ class Layer:
 
         self.n_max = n_max
         self.diam_int_real = d_int
+        self.sob_int_per = sob_int_per
         d_int_pxl = self.diam_int_real * self.pxl_per_mm
         self.path_radius_internal = int(d_int_pxl * 0.5 * (1-(sob_int_per/100)))
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
@@ -662,6 +668,7 @@ class Layer:
 
     def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
         folders.load_islands_hdf5(self)
+        self.sob_int_ext_per = sob_int_ext_per
         d_int_pxl = self.diam_int_real * self.pxl_per_mm
         self.path_radius_int_ext = int(d_int_pxl * 0.5 * (1-(sob_int_ext_per/100)))
         for isl in self.islands:

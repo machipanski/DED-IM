@@ -1618,6 +1618,7 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_internal
             )
             new_zigzag = np.logical_or(new_zigzag,linhas_transversais)
             new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 2)
+
             new_zigzag_b = weaving_zigzag(
                 new_contour,
                 new_contour_img,
@@ -1628,6 +1629,7 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_internal
             )
             new_zigzag_b = np.logical_or(new_zigzag_b,linhas_transversais)
             new_zigzag_b, _, _ = sk.create_prune_divide_skel(new_zigzag_b, 2)
+
         region.reference_points = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
         region.reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag_b)))
         if len(region.reference_points) < 2:
@@ -1766,7 +1768,7 @@ def weaving_zigzag(
 ):
     cutted_border = internal_cut(new_contour, linhas_transversais, extr_int_pts, sentido)
     new_zigzag = np.logical_or(linhas_transversais, cutted_border)
-    new_zigzag = np.logical_or(cutted_border, linhas_limitrofes)
+    new_zigzag = np.logical_or(new_zigzag, linhas_limitrofes)
     _, _, n = it.divide_by_connected(new_zigzag)
     reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
     if n > 1:

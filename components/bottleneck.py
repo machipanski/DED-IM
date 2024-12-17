@@ -681,6 +681,45 @@ def connect_origin_parts(origin, eroded):
     new_eroded = mt.closing(new_eroded, kernel_size=2)
     return origin_axis_reconected, new_eroded
 
+def reduce_lines_overshoot(candidate, origin_points):
+    """Determina inicio e fim para cada trunk, então vai reduzindo as margens até englobar todos os estrangulamentos dele"""
+    t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
+    # if len(t_ends) == 0:  # se for um ciclo fechado
+    #     start_pnt = random.choice(pt.x_y_para_pontos(np.nonzero(candidate)))
+    #     origin_chain = pt.invert_x_y(
+    #         path_tools.make_a_chain(candidate.astype(bool), start_pnt)
+    #     )
+    #     origin_chain_img = it.points_to_img(origin_chain, np.zeros_like(candidate))
+    #     new_ends = pt.img_to_points(sk.find_tips(origin_chain_img.astype(bool)))
+    #     origin_chain = path_tools.set_first_pt_in_seq(origin_chain, new_ends[0])
+    #     candidate = np.multiply(candidate, origin_chain_img)
+    # else:  # se for um trunk aberto
+    # start_pnt = []
+    origin_chain = pt.invert_x_y(
+        path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
+    )
+    # reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
+    new_ends = [pt.closest_point(x, origin_chain)[0] for x in origin_points] 
+    new_origin = origin_chain.copy()
+    count_up = 0
+    count_down = -1
+    start_flag = 0
+    end_flag = 0
+    while not (start_flag and end_flag):
+        current_pt_1 = origin_chain[count_up]
+        current_pt_2 = origin_chain[count_down]
+        if current_pt_1 in new_ends:
+            start_flag = 1
+        else:
+            new_origin.remove(current_pt_1)
+            count_up += 1
+        if current_pt_2 in new_ends:
+            end_flag = 1
+        else:
+            new_origin.remove(current_pt_2)
+            count_down -= 1
+    reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
+    return reduced_origin
 
 def close_bridge_contour(
     trunk,
@@ -728,7 +767,13 @@ def close_bridge_contour(
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
             return np.zeros_like(trunk), np.zeros_like(trunk)
+        
+        linha1 = reduce_lines_overshoot(linha1, pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool))))
+        linha2 = reduce_lines_overshoot(linha2, pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool))))
+
         return linha1, linha2
+    
+    
 
     def close_area_from_lines(
         linha1: np.ndarray, 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 import copy
+import datetime
 import random
 from typing import TYPE_CHECKING, Dict, reveal_type
 from components import images_tools as it, path_tools, points_tools
@@ -263,7 +264,8 @@ class Layer:
             for layer in list_layers:
                 divide_islands(layer)
         with Timer("salvando as camadas"):
-            folders.save_layers(hdf5_file_name, list_layers)
+            ts = datetime.datetime.now()
+            folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
             folders.save_folders_structure(hdf5_file_name)
         return
 

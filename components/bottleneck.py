@@ -767,9 +767,13 @@ def close_bridge_contour(
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
             return np.zeros_like(trunk), np.zeros_like(trunk)
-        
-        linha1 = reduce_lines_overshoot(linha1, pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool))))
-        linha2 = reduce_lines_overshoot(linha2, pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool))))
+        points_trunk = pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool)))
+        points_line1 = pt.img_to_points(mt.hitmiss_ends_v2(linha1.astype(bool)))
+        if len(points_line1)>0:
+            linha1 = reduce_lines_overshoot(linha1, points_trunk)
+        points_line2 = pt.img_to_points(mt.hitmiss_ends_v2(linha2.astype(bool)))
+        if len(points_line2)>0:
+            linha2 = reduce_lines_overshoot(linha2, points_trunk)
 
         return linha1, linha2
     

@@ -354,6 +354,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
         nova_rota = []
         stop = 0
         saltos = []
+        counter = 0
         while not stop:
             order_crossover_regions = []
             interruption_points, order_crossover_regions, pts_valido_comeco = find_interruption_points(
@@ -364,6 +365,13 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 order_crossover_regions,
                 pts_valido_comeco
             )
+            if len(list(pts_valido_comeco)) > 0 and counter == 0:
+                pts_valido_comeco = list(filter(lambda x: x not in interruption_points, pts_valido_comeco))
+                new_start = random.choice(pts_valido_comeco)
+                if len(new_start) == 0:
+                    print("AFBOFFHASPHF")
+                rota_antiga = set_first_pt_in_seq(rota_antiga, new_start, evitar_saltos=interruption_points)
+                aaaa = it.sum_imgs([it.points_to_img(pts_valido_comeco, np.zeros_like(island.img)),it.points_to_img([new_start], np.zeros_like(island.img)),it.points_to_img(nova_rota, np.zeros_like(island.img)),it.points_to_img(interruption_points, np.zeros_like(island.img))])
             all_its = all_its + interruption_points
             if len(interruption_points) > 0:
                 nova_rota, cross_overs_included, offssets_included, saltos = (
@@ -380,6 +388,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 rota_antiga = nova_rota
             else:
                 stop = 1
+            counter += 1
     else:
         nova_rota = start_path.sequence
         saltos = []
@@ -390,10 +399,10 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
-    if len(list(cross_overs_included)) > 0:
-        cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
-        new_start = random.choice(pts_valido_comeco)
-        nova_rota = set_first_pt_in_seq(nova_rota, new_start)
+    # if len(list(cross_overs_included)) > 0:
+    #     cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
+    #     new_start = random.choice(pts_valido_comeco)
+    #     nova_rota = set_first_pt_in_seq(nova_rota, new_start)
     new_route = Path("exterior tree", nova_rota, new_regions, saltos=saltos)
     # aaa = new_route.get_img()
     return new_route
@@ -1214,16 +1223,57 @@ def remove_repeated_contours(multiple_lines_lists, canvas_size):
     return cleaned_multiple_lines
 
 
-def set_first_pt_in_seq(seq, first_point):
+def set_first_pt_in_seq(seq, first_point, evitar_saltos=[]):
+    def invert_if_close_to_jump(fila, evitar_saltos):
+        fila2 = fila[::-1]
+        fila2 = [fila[0]] + fila2[:-1]
+        indexeses = [fila.index(x) for x in evitar_saltos]
+        indexeses2 = [fila2.index(x) for x in evitar_saltos]
+        if min(indexeses) < min(indexeses2):
+            return fila2
+        elif min(indexeses2) < min(indexeses):
+            return fila
+        else:
+            print("BAFHASHFBOASFASOPFIAVF")
+        # primeiro_ponto_lista2 = None
+
+        # for ponto in evitar_saltos:
+        #     if ponto in fila:
+        #         primeiro_ponto_lista2 = ponto
+        #         break
+        # if primeiro_ponto_lista2 is not None:
+        #     indice_ponto_lista1 = fila.index(primeiro_ponto_lista2)
+        #     elementos_antes_lista1 = fila[:indice_ponto_lista1]
+        # else:
+        #     elementos_antes_lista1 = fila  # Se não houver pontos em comum, consideramos toda a lista1
+        # primeiro_ponto_lista1 = None
+        # for ponto in fila:
+        #     if ponto in evitar_saltos:
+        #         primeiro_ponto_lista1 = ponto
+        #         break
+        # if primeiro_ponto_lista1 is not None:
+        #     indice_ponto_lista2 = evitar_saltos.index(primeiro_ponto_lista1)
+        #     elementos_antes_lista2 = evitar_saltos[:indice_ponto_lista2]
+        # else:
+        #     elementos_antes_lista2 = evitar_saltos  # Se não houver pontos em comum, consideramos toda a lista2
+        # if len(elementos_antes_lista1) > len(elementos_antes_lista2):
+        #     return fila
+        # else:
+        #     print("invertido foi")
+        #     return fila[::-1]  # Retorna a lista1 invertida
+    
     fila = seq.copy()
     if not (first_point in seq):
         first_point, _ = pt.closest_point(first_point, seq)
         # first_point = [first_point[1],first_point[0]]
     rotations = fila.index(first_point)
     fila = fila[rotations:] + fila[:rotations]
-    if pt.distance_pts(fila[0], fila[1]) >= 3:
-        fila.reverse()
-        fila = [fila[-1]] + fila[:-1]
+    if len(evitar_saltos) > 0:
+        fila = invert_if_close_to_jump(fila, evitar_saltos)
+    else:
+        if pt.distance_pts(fila[0], fila[1]) >= 3:
+            fila.reverse()
+            fila = [fila[-1]] + fila[:-1]
     return fila
 
 
@@ -1237,6 +1287,7 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
         segmentos = np.array_split(
             sequence, np.where([(x in saltos) for x in sequence])[0]
         )
+        segmentos = list(filter(lambda x: len(x) > 0, segmentos))
         for s in segmentos:
             candidates = []
             candidates.append(factor_epilson * arcLength(s, False))
@@ -1583,8 +1634,9 @@ def layers_to_Gcode(
             output += ";-------RELIGAMENTO------\n"
             output += "M42 P4 S0\n"
             output += f"G4 P{p_trigger_longa}\n"
+            # output += f"G4 P{p_religamento}\n"
             output += "M42 P4 S255\n"
-            output += f"G4 P{p_religamento}\n"
+            output += f"G4 P{p_religamento-p_trigger_longa}\n"
             output += ";------------------------\n"
         return output, 1
 
@@ -1593,8 +1645,9 @@ def layers_to_Gcode(
             output += ";-------DESLIGAMENTO------\n"
             output += "M42 P4 S0\n"
             output += f"G4 P{p_trigger_longa}\n"
+            # output += f"G4 P{p_desligamento}\n"
             output += "M42 P4 S255\n"
-            output += f"G4 P{p_desligamento}\n"
+            output += f"G4 P{p_desligamento-p_trigger_longa}\n"
             output += ";-------------------------\n"
         return output, 0
 
@@ -1661,8 +1714,8 @@ def layers_to_Gcode(
     output += f"G1 F360; speed g1\n"
     bfr = [0, 0]
     base_frame = layers[0].base_frame
-    p_trigger_longa = 700
-    p_trigger_curta = 300
+    p_trigger_longa = 2000
+    p_trigger_curta = 400
 
     for n_layer, layer in enumerate(layers):
         soma_do_deslocamento = 0

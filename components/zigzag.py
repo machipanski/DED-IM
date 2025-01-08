@@ -372,7 +372,7 @@ class ZigZagRegions:
             for r in macro_areas:
                 all_new_zigzags = np.logical_or(all_new_zigzags, r)
             new_macro_areas = macro_areas
-        all_new_zigzags,_,_ = sk.create_prune_divide_skel(all_new_zigzags, path_radius_internal)
+        all_new_zigzags,_,_ = sk.create_prune_skel(all_new_zigzags, path_radius_internal)
         return new_macro_areas, all_new_zigzags
 
     def connect_island_zigzags(self, path_radius_internal, mask_full_int, base_frame):
@@ -520,7 +520,7 @@ def clean_zigzag_over_extrusion(contours_img, new_path_radius, base_frame):
         MORPH_RECT, (new_path_radius * 2 - 2, new_path_radius * 2 - 2)
     )
     no_failure = mt.gradient(contours_img, kernel_img=square_mask)
-    no_failure_axis_img, _, _ = sk.create_prune_divide_skel(no_failure, new_path_radius)
+    no_failure_axis_img, _, _ = sk.create_prune_skel(no_failure, new_path_radius)
     no_failure_axis_path, no_failure_axis_path_img = mt.detect_contours(
         no_failure_axis_img, return_img=True, only_external=True
     )

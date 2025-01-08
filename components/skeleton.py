@@ -1,11 +1,15 @@
+from cProfile import label
 import cv2
 import numpy as np
 import ploters
-from components import morphology_tools as mt
+import networkx as nx
+from components import morphology_tools as mt, path_tools
 from skimage.morphology import disk
 from scipy.ndimage import distance_transform_edt
 from skimage import morphology as skmorph
 from components import images_tools as it
+from components import points_tools as pt
+import matplotlib.pyplot as plt
 
 
 def create_prune_divide_skel(original_img: np.ndarray, size_prune):
@@ -16,11 +20,24 @@ def create_prune_divide_skel(original_img: np.ndarray, size_prune):
         skel_img=skel.astype(np.uint16),
         size=size_prune
     )
-    if np.sum(sem_galhos) == 0:
-        sem_galhos = skel
-        segmented_img, segment_objects = segment_skeleton(skel)
+    skeleton_graph, trunks_img, segment_objects = path_tools.skel_to_graph(sem_galhos, 2)
+    segment_objects = [pt.invert_x_y(list(seg)) for seg in segment_objects]
+    # if np.sum(sem_galhos) == 0:
+    #     sem_galhos = skel
+    #     segmented_img, segment_objects = segment_skeleton(skel)
+    plt.figure()
+    plt.imshow(trunks_img)
     return sem_galhos, dist, segment_objects
 
+def create_prune_skel(original_img: np.ndarray, size_prune):
+    skel = skmorph.skeletonize(original_img.astype(bool))
+    skel = skel.astype(np.uint16)
+    dist = distance_transform_edt(original_img)
+    sem_galhos, segmented_img, segment_objects = prune(
+        skel_img=skel.astype(np.uint16),
+        size=size_prune
+    )
+    return sem_galhos, dist, segment_objects
 
 def prune(skel_img: np.ndarray, size=0, mask=None):
     """Prune the ends of skeletonized segments.

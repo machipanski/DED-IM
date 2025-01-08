@@ -115,31 +115,18 @@ class ThinWallRegions:
             return region
 
         new_medial_transforms = []
-        sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-            island_img.astype(np.uint8), 2 * path_radius
-        )
-        new_medial_transforms.append(
-            [
-                f"{layer_name}/{island_name}",
-                "medial_transform",
-                sem_galhos * sem_galhos_dist,
-            ]
-        )
+        sem_galhos, sem_galhos_dist, list_trunks = sk.create_prune_divide_skel(island_img.astype(np.uint8), 2 * path_radius)
+        new_medial_transforms.append([f"{layer_name}/{island_name}","medial_transform",sem_galhos * sem_galhos_dist,])
         max_width = 2
-        trunks = [pt.contour_to_list([x]) for x in trunks]
-        trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
-        normalized_distance_map = sem_galhos_dist / path_radius
-        normalized_trunks = [trunk * normalized_distance_map for trunk in trunks]
-        n_trilhas_max = [(np.unique(trunk))[1] for trunk in normalized_trunks]
-        origin_candidates = [
-            normalized_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width
-        ]
-        reduced_origins = [
-            bottleneck.reduce_origin(x, max_width, island_img)
-            for x in origin_candidates
-        ]
-
+        # trunks = [pt.contour_to_list([x]) for x in trunks]
+        trunks_imgs = [it.points_to_img(x, np.zeros(base_frame)) for x in list_trunks]
+        norm_dist_map = sem_galhos_dist / path_radius
+        norm_trunks = [trunk * norm_dist_map for trunk in trunks_imgs]
+        n_trilhas_max = [(np.unique(trunk))[1] for trunk in norm_trunks]
+        origin_candidates = [norm_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width]
+        reduced_origins = [bottleneck.reduce_origin(x, max_width, island_img)for x in origin_candidates]
         processed_trunks = []
+
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
                 executor.submit(close_contour, origin_candidate, i)

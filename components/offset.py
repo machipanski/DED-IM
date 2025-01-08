@@ -430,7 +430,7 @@ class OffsetRegions:
             reparos = mt.find_failures(route, np.zeros_like(route))
             route = np.logical_or(reparos, route)
             route = mt.closing(route, kernel_size=1)
-            region.route, _, _ = sk.create_prune_divide_skel(route, path_radius)
+            region.route, _, _ = sk.create_prune_skel(route, path_radius)
             region.trail = mt.dilation(route, kernel_img=mask_full)
             region.next_prohibited_area = next_prohibited_area
             return region

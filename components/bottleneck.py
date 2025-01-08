@@ -193,9 +193,9 @@ class Bridge:
             new_fig = np.logical_and(new_fig, filled_external_borders)
             _, internal_borders_closed = mt.detect_contours(new_fig, return_img=True)
         linha_ci1 = np.logical_and(eroded, linha_ci1)
-        linha_ci1, _, _ = sk.create_prune_divide_skel(linha_ci1, 1)
+        linha_ci1, _, _ = sk.create_prune_skel(linha_ci1, 1)
         linha_ci2 = np.logical_and(eroded, linha_ci2)
-        linha_ci2, _, _ = sk.create_prune_divide_skel(linha_ci2, 1)
+        linha_ci2, _, _ = sk.create_prune_skel(linha_ci2, 1)
         if np.sum(linha_ci1) == 0:
             print("jsnsdjfs")
         if np.sum(linha_ci2) == 0:
@@ -398,7 +398,7 @@ class BridgeRegions:
                 rest_of_picture.astype(np.uint8), 4 * path_radius_int
             )
             self.medial_transform = sem_galhos * sem_galhos_dist
-            trunks = [pt.contour_to_list([x]) for x in trunks]
+            # trunks = [pt.contour_to_list([x]) for x in trunks]
             trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
             trunks = it.eliminate_duplicates(trunks)
             normalized_dist_map = sem_galhos_dist / path_radius_int
@@ -1491,7 +1491,7 @@ def internal_adapted_polygon(
 ):
     new_contour = np.logical_or(linha_ci1, linha_ci2)
     new_contour = np.logical_or(new_contour, linhas_transversais).astype(np.uint8)
-    new_contour, _, _ = sk.create_prune_divide_skel(new_contour, 20)
+    new_contour, _, _ = sk.create_prune_skel(new_contour, 20)
     new_contour_cnt = mt.detect_contours(new_contour, only_external=True)
     new_contour_pts = pt.contour_to_list(new_contour_cnt)
     new_contour_img = it.points_to_img(new_contour_pts, np.zeros_like(linha_ci1))
@@ -1666,7 +1666,7 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_internal
                 0,
             )
             new_zigzag = np.logical_or(new_zigzag,linhas_transversais)
-            new_zigzag, _, _ = sk.create_prune_divide_skel(new_zigzag, 2)
+            new_zigzag, _, _ = sk.create_prune_skel(new_zigzag, 2)
 
             new_zigzag_b = weaving_zigzag(
                 new_contour,
@@ -1677,7 +1677,7 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_internal
                 1,
             )
             new_zigzag_b = np.logical_or(new_zigzag_b,linhas_transversais)
-            new_zigzag_b, _, _ = sk.create_prune_divide_skel(new_zigzag_b, 2)
+            new_zigzag_b, _, _ = sk.create_prune_skel(new_zigzag_b, 2)
 
         region.reference_points = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
         region.reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag_b)))
@@ -1835,7 +1835,7 @@ def weaving_zigzag(
     _, _, n = it.divide_by_connected(mt.hitmiss_ends_v2(new_zigzag))
     if n <= 1:
         cccc = mt.closing(new_zigzag, kernel_size=1)
-        ddd, _, _ = sk.create_prune_divide_skel(cccc, 1)
+        ddd, _, _ = sk.create_prune_skel(cccc, 1)
         _, eee, n = it.divide_by_connected(mt.hitmiss_ends_v2(ddd))
         if n > 1:
             new_zigzag = ddd

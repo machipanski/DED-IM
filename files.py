@@ -1,22 +1,22 @@
 from __future__ import annotations
 from email.headerregistry import Group
 from typing import TYPE_CHECKING
-# from networkx import bridges
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Region
 from components.thin_walls import ThinWallRegions, ThinWall
 from components.zigzag import ZigZag, ZigZagRegions
 from components.layer import Layer, Island
-import os, shutil
-import subprocess
+from components.path_tools import Path
+from cv2 import imread
+from dataclasses import dataclass
 from typing import List
-import scipy.sparse
+import os
+import subprocess
 import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 import h5py
-from components.path_tools import Path
-from cv2 import imread
+import yaml
 
 if TYPE_CHECKING:
     from typing import List
@@ -660,3 +660,79 @@ class System_Paths:
             list_layers.append(layer)
         os.chdir(self.home)
         return list_layers
+
+@dataclass
+class ProgramaDeSolda:
+    nome: str
+    reg_associada: str
+    estrategia: str
+    diam_cord: float
+    sobrep_cord: float
+    vel_desloc: float
+    wire_speed: float
+    tensao: float
+    p_religamento: float
+    p_desligamento: float
+
+class Config:
+    def __init__(self, target_file):
+        self.file = target_file
+        self.lista_programas = []
+        self.loadYamlConfigs()
+        self.updateConfigs()
+
+    def loadYamlConfigs(self):
+        with open(self.file, 'r') as file:
+            try:
+                lista = yaml.safe_load(file)["lista_programas"]
+                self.lista_programas = lista
+            except:
+                pass
+
+
+    def updateConfigs(self):
+        lista_de_programas = []
+        for prog in self.lista_programas:
+            lista_de_programas.append({
+                    "nome": prog['nome'],
+                    "reg_associada": prog['reg_associada'],
+                    "estrategia": prog['estrategia'],
+                    "diam_cord": prog['diam_cord'],
+                    "sobrep_cord": prog['sobrep_cord'],
+                    "vel_desloc": prog['vel_desloc'],
+                    "wire_speed": prog['wire_speed'],
+                    "tensao": prog['tensao'],
+                    "p_religamento": prog['p_religamento'],
+                    "p_desligamento": prog['p_desligamento'],
+                })
+        configs = {
+            "file": self.file,
+            "lista_programas": lista_de_programas,
+        }
+        with open(self.file, "w") as file:
+            yaml.dump(configs, file)
+
+    
+    def salvar_programaDeSolda(self, 
+                               nome, 
+                               reg_associada, 
+                               estrategia, 
+                               diam_cord , 
+                               sobrep_cord, 
+                               vel_desloc, 
+                               wire_speed, 
+                               tensao,
+                               p_religamento,
+                               p_desligamento,):
+        self.lista_programas.append((ProgramaDeSolda(nome=nome, 
+                                                    reg_associada=reg_associada, 
+                                                    estrategia=estrategia, 
+                                                    diam_cord=float(diam_cord) , 
+                                                    sobrep_cord=float(sobrep_cord), 
+                                                    vel_desloc=float(vel_desloc), 
+                                                    wire_speed=float(wire_speed), 
+                                                    tensao=float(tensao),
+                                                    p_religamento=float(p_religamento),
+                                                    p_desligamento=float(p_desligamento),
+                                                    )).__dict__)
+        self.updateConfigs()

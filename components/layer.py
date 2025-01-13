@@ -17,6 +17,7 @@ from components import points_tools
 from components.path_tools import Path
 from cv2 import imread
 from components import points_tools as pt
+import matplotlib.pyplot as plt
 
 if TYPE_CHECKING:
     from files import System_Paths
@@ -65,14 +66,24 @@ class Layer:
             self.odd_layer: int = 0
             self.dpi: int = 0
             self.base_frame = []
+            self.program_tw:str = ""
+            self.program_cont:str = ""
+            self.program_larg:str = ""
+            self.program_bridg:str = ""
             self.layer_height: float = 0
-            self.diam_ext_real: float = 0
-            self.diam_int_real: float = 0
-            self.path_radius_external: float = 0
-            self.path_radius_internal: float = 0
+            self.diam_tw_real: float = 0
+            self.diam_cont_real: float = 0
+            self.diam_larg_real: float = 0
+            self.diam_bridg_real: float = 0
+            self.path_radius_tw: float = 0
+            self.path_radius_cont: float = 0
+            self.path_radius_bridg: float = 0
+            self.path_radius_larg: float = 0
             self.path_radius_int_ext: float = 0
-            self.sob_ext_per: float = 0
-            self.sob_int_per: float = 0
+            self.sob_tw_per: float = 0
+            self.sob_cont_per: float = 0
+            self.sob_larg_per: float = 0
+            self.sob_bridg_per: float = 0
             self.sob_int_ext_per: float = 0
             self.pxl_per_mm: float = 0
             self.mm_per_pxl: float = 0
@@ -184,8 +195,8 @@ class Layer:
                     isl.external_tree_route = path_tools.connect_offset_bridges(
                         isl,
                         self.base_frame,
-                        mt.make_mask(self, "3_4_ext"),
-                        self.path_radius_external,
+                        mt.make_mask(self, "3_4_cont"),
+                        self.path_radius_cont,
                     )
                 with Timer("Conectando pontes de Crossover"):
                     isl.external_tree_route = path_tools.connect_cross_over_bridges(isl)
@@ -204,7 +215,7 @@ class Layer:
             folders.load_thin_walls_hdf5(self.name, isl)
             with Timer("Conectando zgzags vizinhos"):
                 isl.internal_tree_route = path_tools.start_internal_route(
-                    isl, mt.make_mask(self, "full_int"), self.path_radius_internal
+                    isl, mt.make_mask(self, "full_larg"), self.path_radius_larg
                 )
             if isl.internal_tree_route != []:
                 with Timer("Conectando pontes de zigzag"):
@@ -223,7 +234,7 @@ class Layer:
             folders.load_thin_walls_hdf5(self.name, isl)
             with Timer("Convertendo paredes finas"):
                 isl.thinwalls_tree_route = path_tools.connect_thin_walls(
-                    isl, self.path_radius_external
+                    isl, self.path_radius_cont
                 )
                 isl.thinwalls_tree_route.get_img(self.base_frame)
 
@@ -295,8 +306,9 @@ class Layer:
     def make_thin_walls(
         self,
         folders: System_Paths,
-        d_ext: float,
-        sob_ext_per: float,
+        d_tw: float,
+        sob_tw_per: float,
+        name_prog: str,
     ) -> None:
 
         def make_islands_thinWalls(island: Island, mm_per_pxl) -> List[Island, dict]:
@@ -307,18 +319,19 @@ class Layer:
                 island.name,
                 island_img,
                 self.base_frame,
-                self.path_radius_external,
-                mt.make_mask(self, "full_ext"),
+                self.path_radius_tw,
+                mt.make_mask(self, "full_tw"),
                 mm_per_pxl,
             )
             return island
 
         self.pxl_per_mm = self.dpi / 25.4
+        self.program_tw = name_prog
         self.mm_per_pxl = 1 / self.pxl_per_mm
-        d_ext_pxl = d_ext * self.pxl_per_mm
-        self.sob_ext_per = sob_ext_per
-        self.path_radius_external = int(d_ext_pxl * 0.5 * (1 - sob_ext_per/100))
-        self.diam_ext_real = d_ext
+        d_tw_pxl = d_tw * self.pxl_per_mm
+        self.sob_tw_per = sob_tw_per
+        self.path_radius_tw = int(d_tw_pxl * 0.5 * (1 - sob_tw_per/100))
+        self.diam_tw_real = d_tw
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
 
@@ -352,7 +365,7 @@ class Layer:
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_thin_walls_hdf5(self.name, isl)
-                isl.thin_walls.make_routes_tw(self.path_radius_external)
+                isl.thin_walls.make_routes_tw(self.path_radius_tw)
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
                 for reg in isl.thin_walls.regions:
@@ -374,6 +387,9 @@ class Layer:
         void_max: float,
         external_max: int,
         internal_max: int,
+        d_cont: float,
+        sob_cont_per: float,
+        name_prog: str,
     ) -> None:
 
         def paralelizando(func):
@@ -406,8 +422,8 @@ class Layer:
             if np.sum(rest_of_picture_f1) > 0:
                 island.offsets.create_levels(
                     rest_of_picture_f1,
-                    mt.make_mask(self, "full_ext"),
-                    mt.make_mask(self, "double_ext"),
+                    mt.make_mask(self, "full_cont"),
+                    mt.make_mask(self, "double_cont"),
                     self.name,
                     island.name,
                 )
@@ -421,7 +437,7 @@ class Layer:
             if np.sum(rest_of_picture_f1) > 0:
                 for level in island.offsets.levels:
                     level.create_loops(
-                        mt.make_mask(self, "full_ext"),
+                        mt.make_mask(self, "full_cont"),
                         self.base_frame,
                         rest_of_picture_f1,
                         self.name,
@@ -450,7 +466,7 @@ class Layer:
                     rest_of_picture_f1,
                     island.offsets.levels,
                     island.offsets.n_levels,
-                    self.path_radius_external,
+                    self.path_radius_cont,
                 )
             return island
 
@@ -463,11 +479,11 @@ class Layer:
                 island.rest_of_picture_f2 = island.offsets.make_regions(
                     rest_of_picture_f1,
                     self.base_frame,
-                    self.path_radius_external,
+                    self.path_radius_cont,
                     self.void_max,
                     self.max_external_walls,
                     self.max_internal_walls,
-                    np.sum(mt.make_mask(self, "full_int")),
+                    np.sum(mt.make_mask(self, "full_cont")),
                 )
             return island
 
@@ -482,6 +498,13 @@ class Layer:
                 )
             return island
 
+        # self.pxl_per_mm = self.dpi / 25.4
+        # self.mm_per_pxl = 1 / self.pxl_per_mm
+        self.program_cont = name_prog
+        d_cont_pxl = d_cont * self.pxl_per_mm
+        self.sob_cont_per = sob_cont_per
+        self.path_radius_cont = int(d_cont_pxl * 0.5 * (1 - sob_cont_per/100))
+        self.diam_cont_real = d_cont
         self.void_max = void_max
         self.max_external_walls = external_max
         self.max_internal_walls = internal_max
@@ -517,8 +540,8 @@ class Layer:
             folders.load_offsets_hdf5(self.name, isl)
             isl.offsets.make_routes_o(
                 self.base_frame,
-                mt.make_mask(self, "full_ext"),
-                self.path_radius_external,
+                mt.make_mask(self, "full_cont"),
+                self.path_radius_cont,
                 amendment_size,
             )
         with Timer("salvando imagens das rotas"):
@@ -541,10 +564,11 @@ class Layer:
         self,
         folders: System_Paths,
         n_max: float,
-        d_int: float,
-        sob_int_per: float,
+        d_bridg: float,
+        sob_bridg_per: float,
         n_camadas: int,
         sum_prohibited_areas,
+        name_prog: str,
     ):
 
         def paralelizando(func):
@@ -580,7 +604,7 @@ class Layer:
                         rest_of_picture_f2,
                         isl.offsets,
                         self.base_frame,
-                        self.path_radius_external,
+                        self.path_radius_cont,
                         rest_of_picture_f2,
                         sum_prohibited_areas,
                     )
@@ -599,7 +623,7 @@ class Layer:
                 island.bridges.make_zigzag_bridges(
                     rest_of_picture_f2,
                     self.base_frame,
-                    self.path_radius_internal,
+                    self.path_radius_bridg,
                     n_max,
                     isl.offsets.regions,
                 )
@@ -619,11 +643,12 @@ class Layer:
                 pass
             return island
 
+        self.program_bridg = name_prog
         self.n_max = n_max
-        self.diam_int_real = d_int
-        self.sob_int_per = sob_int_per
-        d_int_pxl = self.diam_int_real * self.pxl_per_mm
-        self.path_radius_internal = int(d_int_pxl * 0.5 * (1-(sob_int_per/100)))
+        self.diam_bridg_real = d_bridg
+        self.sob_bridg_per = sob_bridg_per
+        d_bridg_pxl = d_bridg * self.pxl_per_mm
+        self.path_radius_bridg = int(d_bridg_pxl * 0.5 * (1-(sob_bridg_per/100)))
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -671,16 +696,16 @@ class Layer:
     def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
-        d_int_pxl = self.diam_int_real * self.pxl_per_mm
-        self.path_radius_int_ext = int(d_int_pxl * 0.5 * (1-(sob_int_ext_per/100)))
+        d_bridg_pxl = self.diam_bridg_real * self.pxl_per_mm
+        self.path_radius_int_ext = int(d_bridg_pxl * 0.5 * (1-(sob_int_ext_per/100)))
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             if hasattr(isl, "bridges"):
                 isl.bridges.make_routes_b(
                     isl.offsets.regions,
-                    self.path_radius_external,
-                    self.path_radius_internal,
+                    self.path_radius_cont,
+                    self.path_radius_bridg,
                     self.path_radius_int_ext,
                     self.base_frame,
                     isl.rest_of_picture_f2,
@@ -689,7 +714,12 @@ class Layer:
                 folders.save_routes_bridges_hdf5(self.name, self.islands)
                 folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
-    def make_zigzags(self, folders: System_Paths):
+    def make_zigzags(self, 
+                     folders: System_Paths, 
+                     d_larg:float, 
+                     sob_larg_per:float,
+                     name_prog:str
+                     ):
 
         def paralelizando(func):
             @wraps(func)
@@ -717,16 +747,22 @@ class Layer:
             island.rest_of_picture_f3 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f3"
             )
-            ideal_sum = np.sum(mt.make_mask(self, "full_int"))
+            ideal_sum = np.sum(mt.make_mask(self, "full_larg"))
             if np.sum(island.rest_of_picture_f3) > 0:
                 island.zigzags.find_monotonic(
                     island.rest_of_picture_f3,
                     self.base_frame,
-                    self.path_radius_internal,
+                    self.path_radius_larg,
                     ideal_sum,
                 )
             return island
 
+        self.program_larg = name_prog
+        self.diam_larg_real = d_larg
+        self.sob_larg_per = sob_larg_per
+        d_larg_pxl = d_larg * self.pxl_per_mm
+        self.path_radius_larg = int(d_larg_pxl * 0.5 * (1-(sob_larg_per/100)))
+        folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for island in self.islands:
             folders.load_bridges_hdf5(self.name, island)
@@ -736,6 +772,7 @@ class Layer:
             find_islands_monotonic()
         with Timer("salvando imagens das regiões"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
+            folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
     def make_zigzag_routes(self, folders: System_Paths):
@@ -746,7 +783,7 @@ class Layer:
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
                         self.base_frame, 
-                        self.path_radius_internal,
+                        self.path_radius_larg,
                         self.path_radius_int_ext
                     )
 
@@ -803,8 +840,8 @@ class Layer:
         for isl in self.islands:
             if hasattr(isl, "zigzags"):
                 isl.zigzags.connect_island_zigzags(
-                    self.path_radius_internal,
-                    mt.make_mask(self, "full_int"),
+                    self.path_radius_larg,
+                    mt.make_mask(self, "full_larg"),
                     self.base_frame,
                 )
 
@@ -844,8 +881,8 @@ class Layer:
                             isl.zigzags.macro_areas,
                             self.original_img,
                             self.base_frame,
-                            self.path_radius_internal,
-                            mt.make_mask(self, "full_int"),
+                            self.path_radius_larg,
+                            mt.make_mask(self, "full_larg"),
                             isl.zigzags.regions,
                             isl.bridges,
                             isl.offsets.regions,

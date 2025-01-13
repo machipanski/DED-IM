@@ -455,7 +455,7 @@ class OffsetRegions:
         self,
         rest_f1,
         base_frame,
-        path_radius_external,
+        path_radius_cont,
         void_max,
         max_external_walls,
         max_internal_walls,
@@ -463,7 +463,7 @@ class OffsetRegions:
     ):
         acceptable = self.tag_loops_by_voids(
             base_frame,
-            path_radius_external,
+            path_radius_cont,
             void_max,
             max_external_walls,
             max_internal_walls,
@@ -481,7 +481,7 @@ class OffsetRegions:
             filter(lambda x: x[0] == "Lvl_000", all_loops_descrition)
         )
         loops_accepted = []
-        ideal_sum = np.sum(disk(path_radius_external))
+        ideal_sum = np.sum(disk(path_radius_cont))
         for loop in loops_accepted_desc:
             if loop[1] == 0:
                 loop_level = int(loop[0].replace("Lvl_", ""))
@@ -587,7 +587,7 @@ class OffsetRegions:
     def tag_loops_by_voids(
         self,
         base_frame,
-        path_radius_external,
+        path_radius_cont,
         void_max,
         max_external_walls,
         max_internal_walls,
@@ -595,7 +595,7 @@ class OffsetRegions:
         levels,
     ):
         offset_simulated = np.zeros(base_frame)
-        ideal_sum = np.sum(disk(path_radius_external))
+        ideal_sum = np.sum(disk(path_radius_cont))
         # exclude_region = []
         for region in influence_regions:
             internal_counter = 0

@@ -230,14 +230,14 @@ def add_routes_by_sequence_internal(
     return nova_rota, zigzag_bridges_included, zigzags_included, saltos
 
 
-def connect_thin_walls(island: Island, path_radius_external):
+def connect_thin_walls(island: Island, path_radius_tw):
     new_route = Path("thin wall tree", [], [], saltos=[])
     if hasattr(island.thin_walls, "all_origins"):
         if np.sum(island.thin_walls.all_origins):
             thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
             thinwall_path_list = []
             for i, tw in enumerate(thinwall_list):
-                tw, _, _ = sk.create_prune_skel(tw, path_radius_external)
+                tw, _, _ = sk.create_prune_skel(tw, path_radius_tw)
                 tw_path = img_to_chain(tw.astype(np.uint8))[0]
                 one_of_the_tips = pt.x_y_para_pontos(
                     np.nonzero(mt.hitmiss_ends_v2(tw))
@@ -439,8 +439,9 @@ def connect_internal_external(island: Island, path_radius_int_ext):
 
 
 def connect_offset_bridges(
-    island: Island, base_frame, mask_3_4, path_radius_external
+    island: Island, base_frame, mask_3_4, path_radius_cont
 ) -> Path:
+    
     def integrate_bridge(todas_espirais, path_radius, pontos_extremos, base_frame):
 
         def filtrar_pontos(y_val, x_val):
@@ -527,20 +528,20 @@ def connect_offset_bridges(
             if bridge.type == "common_offset_bridge":
                 todas_espirais_img = integrate_bridge(
                     todas_espirais_img,
-                    path_radius_external,
+                    path_radius_cont,
                     pontos_extremos,
                     base_frame,
                 )
             elif bridge.type == "contact_offset_bridge":
                 todas_espirais_img = integrate_contact(
                     todas_espirais_img,
-                    path_radius_external,
+                    path_radius_cont,
                     bridge,
                     base_frame,
                 )
     rotas_isoladas = img_to_chain(todas_espirais_img.astype(np.uint8))
     lens = [len(x) for x in rotas_isoladas]
-    circunf = 2 * 3.14 * path_radius_external
+    circunf = 2 * 3.14 * path_radius_cont
     for i, rota in enumerate(rotas_isoladas):
         if lens[i] > 2 * circunf:
             lista_de_rotas.append(Path(i, rota))
@@ -640,7 +641,7 @@ def draw_interface(composed_img, base_frame, jump):
 
 
 def draw_the_links(
-    zigzags, zigzags_mst, base_frame, interfaces, centers, path_radius_internal
+    zigzags, zigzags_mst, base_frame, interfaces, centers, path_radius_larg
 ):
 
     def perpendicular_on_point(line_img, center, base_frame, path_radius):
@@ -690,12 +691,12 @@ def draw_the_links(
             if occurence_edges.count(bridge) == 1:
                 bridges_on_end.append(bridge)
         link = perpendicular_on_point(
-            line, centers[i], base_frame, path_radius_internal
+            line, centers[i], base_frame, path_radius_larg
         )
-        mask_line = np.zeros((path_radius_internal * 2, path_radius_internal * 2))
-        mask_line[int(path_radius_internal) - 1] = 1
-        mask_line[int(path_radius_internal)] = 1
-        mask_line[int(path_radius_internal) + 1] = 1
+        mask_line = np.zeros((path_radius_larg * 2, path_radius_larg * 2))
+        mask_line[int(path_radius_larg) - 1] = 1
+        mask_line[int(path_radius_larg)] = 1
+        mask_line[int(path_radius_larg) + 1] = 1
         work_area = mt.dilation(link, mask_line)
         _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
         a, b, n_points = it.divide_by_connected(
@@ -745,7 +746,7 @@ def draw_the_links(
 
 
 def find_points_of_contact(
-    edges, path_radius_internal, mask_full_int, zigzags: List[ZigZag]
+    edges, path_radius_larg, mask_full_int, zigzags: List[ZigZag]
 ):
 
     def dilate_and_search(a1, a2, grow):
@@ -756,6 +757,9 @@ def find_points_of_contact(
         # a2_reg = zigzags[int(edge[1][1])]
         a2_vertical_trail = mt.dilation(a2.route, kernel_img=mask_line)
         interface = np.add(a1_vertical_trail, a2_vertical_trail) == 2
+        tips = pt.img_to_points(mt.hitmiss_ends_v2(interface))
+        if len(tips) != 2:
+            interface,_,_ = sk.create_prune_skel(interface,1)
         aaa = np.add(a1_vertical_trail, a2_vertical_trail)
         return interface
 
@@ -1362,7 +1366,7 @@ def spiral_cut(contours, spiral, points, n_loops, base_frame, idx):
     return borda_cortada
 
 
-def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
+def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
     path_list = []
     if hasattr(isl, "zigzags"):
         if hasattr(isl.zigzags, "macro_areas_weaved"):
@@ -1403,12 +1407,8 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_internal):
 def layers_to_Gcode(
     layers: List[Layer],
     folders: System_Paths,
-    vel_int,
-    vel_ext,
+    configuracoes,
     vel_vazio,
-    vel_thin_wall,
-    p_religamento,
-    p_desligamento,
     p_entre_int_ext,
     p_entre_camadas,
     layer_heights,
@@ -1418,7 +1418,7 @@ def layers_to_Gcode(
     """modo 4T na maquina Okerlion na FCT-NOVA"""
     import os
 
-    def religamento(output, flag_ligado):
+    def religamento(output, flag_ligado, p_religamento):
         if flag_ligado == 0:
             output += ";-------RELIGAMENTO------\n"
             output += "M42 P4 S0\n"
@@ -1429,7 +1429,7 @@ def layers_to_Gcode(
             output += ";------------------------\n"
         return output, 1
 
-    def desligamento(output, flag_ligado):
+    def desligamento(output, flag_ligado, p_desligamento):
         if flag_ligado == 1:
             output += ";-------DESLIGAMENTO------\n"
             output += "M42 P4 S0\n"
@@ -1466,37 +1466,74 @@ def layers_to_Gcode(
     ts = datetime.datetime.now()
     outFile = f"{folders.selected} {ts.date()} {ts.hour}_{ts.minute}.gcode"
     output = ""
-    output += ";-------INPUTS------\n"
+    output += ";-------MAPPING------\n"
     output += f";DPI: {layers[0].dpi} ppp\n"
-    output += f";N# Camadas: {layers[0].n_camadas}\n"
     output += f";void_max: {layers[0].void_max} % of path_radius\n"
     output += f";max_internal_walls: {layers[0].max_internal_walls}\n"
     output += f";max_external_walls: {layers[0].max_external_walls}\n"
     output += f";n_max: {layers[0].n_max} trilhas para estrangulamentos\n"
-    output += f";p_religamento: {p_religamento} ms \n"
-    output += f";p_desligamento: {p_desligamento} ms \n"
+    output += ";-------PROGRAMA 1 Contornos------\n"
+    output += f";Nome do programa: {layers[0].program_cont}\n"
+    diam_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["diam_cord"]
+    output += f";Diametro das trilhas: {diam_cont} mm\n"
+    sobrep_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["sobrep_cord"]
+    output += f";Sobreposição das rotas: {sobrep_cont} % raio real \n"    
+    vel_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["vel_desloc"]
+    output += f";vel_ext: {vel_cont} mm/min \n"
+    output += f";path_radius: {layers[0].path_radius_cont} pixels\n"
+    p_religamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_religamento"]
+    output += f";p_religamento: {p_religamento_cont} ms \n"
+    p_desligamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_desligamento"]
+    output += f";p_desligamento: {p_desligamento_cont} ms \n"
+    output += ";-------PROGRAMA 2 Estrangulamentos------\n"
+    output += f";Nome do programa: {layers[0].program_bridg}\n"
+    diam_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["diam_cord"]
+    output += f";Diametro das trilhas: {diam_bridg} mm\n"
+    sobrep_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["sobrep_cord"]
+    output += f";Sobreposição das rotas: {sobrep_bridg} % raio real \n"    
+    vel_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["vel_desloc"]
+    output += f";vel_ext: {vel_bridg} mm/min \n"
+    output += f";path_radius: {layers[0].path_radius_bridg} pixels\n"
+    p_religamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_religamento"]
+    output += f";p_religamento: {p_religamento_bridg} ms \n"
+    p_desligamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_desligamento"]
+    output += f";p_desligamento: {p_desligamento_bridg} ms \n"
+    output += ";-------PROGRAMA 3 Areas Largas------\n"
+    output += f";Nome do programa: {layers[0].program_larg}\n"
+    diam_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["diam_cord"]
+    output += f";Diametro das trilhas: {diam_larg} mm\n"
+    sobrep_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["sobrep_cord"]
+    output += f";Sobreposição das rotas: {sobrep_larg} % raio real \n"    
+    vel_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["vel_desloc"]
+    output += f";vel_ext: {vel_larg} mm/min \n"
+    output += f";path_radius: {layers[0].path_radius_larg} pixels\n"
+    p_religamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_religamento"]
+    output += f";p_religamento: {p_religamento_larg} ms \n"
+    p_desligamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_desligamento"]
+    output += f";p_desligamento: {p_desligamento_larg} ms \n"
+    output += ";-------PROGRAMA 4 Paredes finas------\n"
+    output += f";Nome do programa: {layers[0].program_tw}\n"
+    diam_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["diam_cord"]
+    output += f";Diametro das trilhas: {diam_tw} mm\n"
+    sobrep_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["sobrep_cord"]
+    output += f";Sobreposição das rotas: {sobrep_tw} % raio real \n"    
+    vel_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["vel_desloc"]
+    output += f";vel_ext: {vel_tw} mm/min \n"
+    output += f";path_radius: {layers[0].path_radius_tw} pixels\n"
+    p_religamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_religamento"]
+    output += f";p_religamento: {p_religamento_tw} ms \n"
+    p_desligamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_desligamento"]
+    output += f";p_desligamento: {p_desligamento_tw} ms \n"
+    output += ";------------OUTROS------------\n"
+    output += f";Sobreposição Entre interno e externo: {layers[0].sob_int_ext_per} % raio interno \n"    
+    output += f";N# Camadas: {layers[0].n_camadas}\n"
     output += f";p_entre_int_ext;: {p_entre_int_ext} ms \n"
     output += f";p_entre_camadas: {p_entre_camadas} ms \n"
     output += f";layer_heights: {layer_heights} mm \n"
-    output += f";coords_substrato: {coords_substrato} mm \n"
     output += f";coords_corte: {coords_corte} mm \n"
+    output += f";coords_substrato: {coords_substrato} mm \n"
     output += f";vel_vazio: {vel_vazio} mm/min \n"
-    output += ";-------PROGRAMA 1 EXTERNO------\n"
-    output += f";Diametro das trilhas: {layers[0].diam_ext_real} mm\n"
-    output += f";Sobreposição das rotas: {layers[0].sob_ext_per} % raio externo \n"    
-    output += f";vel_ext: {vel_ext} mm/min \n"
-    output += f";path_radius_external: {layers[0].path_radius_external} pixels\n"
-    output += ";-------PROGRAMA 2 INTERNO------\n"
-    output += f";Diametro das trilhas: {layers[0].diam_int_real} mm\n"
-    output += f";Sobreposição das rotas: {layers[0].sob_int_per} % raio interno \n"    
-    output += f";Sobreposição Entre interno e externo: {layers[0].sob_int_ext_per} % raio interno \n"    
-    output += f";vel_int: {vel_int} mm/min \n"
-    output += f";path_radius_internal: {layers[0].path_radius_internal} pixels\n"
-    output += ";-------PROGRAMA 3 THINWALLS------\n"
-    output += f";path_radius_int_ext: {layers[0].path_radius_int_ext} pixels\n"
-    output += f";vel_thin_wall: {vel_thin_wall} mm/min \n"
-    output += ";------------------------\n"
-
+    output += ";------------FIM INPUTS------------\n"
     output += f"G91\n"
     output += f"M42 P4 S255; turn off welder\n"
     output += f"G28 X0 Y0 Z0\n"
@@ -1514,33 +1551,44 @@ def layers_to_Gcode(
         for n_island, island in enumerate(layer.islands):
             folders.load_island_paths_hdf5(layer.name, island)
             folders.load_island_paths_hdf5(layer.name, island)
-            itr = [list(x) for x in island.internal_tree_route.sequence]
-            etr = [list(x) for x in island.external_tree_route.sequence]
-            twtr = [list(x) for x in island.thinwalls_tree_route.sequence]
+            # itr = [list(x) for x in island.internal_tree_route.sequence]
+            # etr = [list(x) for x in island.external_tree_route.sequence]
+            # twtr = [list(x) for x in island.thinwalls_tree_route.sequence]
             folders.load_bridges_hdf5(layer.name, island)
             print(f"nome: {layer.name}/{island.name}")
-            pts_crossover = []
-            if hasattr(island, "bridges"):
-                A1 = [
-                    pt.img_to_points(x.route) 
-                    for x in island.bridges.cross_over_bridges
-                ]
-                A2 = [
-                    pt.img_to_points(x.route_b)
-                    for x in island.bridges.cross_over_bridges
-                ]
-                A = A1 + A2
-                for x in A:
-                    pts_crossover = pts_crossover + x
+            pts_bridg = points_from_region(layer.name,folders,island,bridges=True)
+            pts_tw = points_from_region(layer.name,folders,island,tw=True)
+            pts_cont = points_from_region(layer.name,folders,island,offsets=True)
+            pts_larg = points_from_region(layer.name,folders,island,zigzags=True)
+            # if hasattr(island, "bridges"):
+                # A1 = [
+                #     pt.img_to_points(x.route) 
+                #     for x in island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
+                # ]
+                # A2 = [
+                #     pt.img_to_points(x.route_b)
+                #     for x in island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
+                # ]
+                # A = A1 + A2
+                # for x in A:
+                #     pts_bridg = pts_bridg + x
             if n_layer % 2:
-                etr = rotate_path_odd_layer(etr, layer.base_frame)
-                itr = rotate_path_odd_layer(itr, layer.base_frame)
-                twtr = rotate_path_odd_layer(twtr, layer.base_frame)
-                pts_crossover = rotate_path_odd_layer(pts_crossover, layer.base_frame)
-            pontos_int = [list(x) for x in itr] + pts_crossover
-            pontos_ext = [list(x) for x in etr]
-            pontos_ext = [coord for coord in pontos_ext if coord not in pts_crossover]
-            pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
+                # etr = rotate_path_odd_layer(etr, layer.base_frame)
+                # itr = rotate_path_odd_layer(itr, layer.base_frame)
+                # twtr = rotate_path_odd_layer(twtr, layer.base_frame)
+                # pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
+                pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
+                pts_tw = rotate_path_odd_layer(pts_tw, layer.base_frame)
+                pts_cont = rotate_path_odd_layer(pts_cont, layer.base_frame)
+                pts_larg = rotate_path_odd_layer(pts_larg, layer.base_frame)
+            # pontos_int = [list(x) for x in itr] + pts_bridg
+            # pontos_ext = [list(x) for x in etr]
+            # pontos_ext = [coord for coord in pontos_ext if coord not in pts_bridg]
+            # pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
+            # pontos_larg = [list(x) for x in itr]
+            # pontos_cont = [list(x) for x in etr]
+            # pontos_brdg = pts_bridg
+            # pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
             chain = [list(x) for x in island.island_route.sequence]
             counter = 0
             flag_salto = 0
@@ -1550,7 +1598,7 @@ def layers_to_Gcode(
             print(chain)
             for i, p in enumerate(chain):
                 if p == [0, 0]:
-                    output, flag_ligado = desligamento(output, flag_ligado)
+                    output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
                     const_perf = 0
                     flag_salto = 1
                 else:
@@ -1559,33 +1607,61 @@ def layers_to_Gcode(
                         base_frame[0] - coords[0] + coords_substrato[0],
                         coords[1] + coords_substrato[1],
                     ]
-                    if p in pontos_ext:
-                        flag_path_type = 0
-                        vel = vel_ext
-                        texto_mudanca = ";----Externo----\n;TYPE:WALL-OUTER\n"
-                        const_perf = 5
-                    elif p in pontos_int:
+                    # if p in pontos_ext:
+                    #     flag_path_type = 0
+                    #     vel = vel_ext
+                    #     texto_mudanca = ";----Externo----\n;TYPE:WALL-OUTER\n"
+                    #     const_perf = 5
+                    # elif p in pontos_int:
+                    #     flag_path_type = 1
+                    #     vel = vel_int
+                    #     texto_mudanca = ";----Interno----\n;TYPE:SKIN\n"
+                    #     const_perf = 8
+                    # elif p in pontos_tw:
+                    #     flag_path_type = 2
+                    #     vel = vel_thin_wall
+                    #     texto_mudanca = ";----ThinWalls----\n;TYPE:WALL-INNER\n"
+                    #     const_perf = 0.5
+                    if p in pts_cont:
                         flag_path_type = 1
-                        vel = vel_int
-                        texto_mudanca = ";----Interno----\n;TYPE:SKIN\n"
-                        const_perf = 8
-                    elif p in pontos_tw:
+                        vel = vel_cont
+                        texto_mudanca = ";----Contorno----\n;TYPE:WALL-OUTER\n"
+                        const_perf = 5
+                        p_desligamento = p_desligamento_cont
+                        p_religamento = p_religamento_cont
+                    elif p in pts_bridg:
                         flag_path_type = 2
-                        vel = vel_thin_wall
-                        texto_mudanca = ";----ThinWalls----\n;TYPE:WALL-INNER\n"
-                        const_perf = 0.5
-                    else:
+                        vel = vel_bridg
+                        texto_mudanca = ";----Estrangulamento----\n;TYPE:SKIN\n"
+                        const_perf = 8
+                        p_desligamento = p_desligamento_bridg
+                        p_religamento = p_religamento_bridg
+                    elif p in pts_larg:
                         flag_path_type = 3
-                        vel = vel_ext
+                        vel = vel_larg
+                        texto_mudanca = ";----Area Larga----\n;TYPE:WALL-INNER\n"
+                        const_perf = 0.5
+                        p_desligamento = p_desligamento_larg
+                        p_religamento = p_religamento_larg
+                    elif p in pts_tw:
+                        flag_path_type = 4
+                        vel = vel_tw
+                        texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
+                        const_perf = 0.5
+                        p_desligamento = p_desligamento_tw
+                        p_religamento = p_religamento_tw
+                    else:
+                        flag_path_type = 0
+                        vel = vel_vazio
                         texto_mudanca = ";----perdido----\n"
                         const_perf = 0
                     if i == 1:
-                        output, flag_ligado = religamento(output, flag_ligado)
+                        output, flag_ligado = religamento(output, flag_ligado, p_religamento)
                     if flag_path_type != last_flag:
                         if flag_path_type == 1 and last_flag == 0:
-                            output, flag_ligado = desligamento(output, flag_ligado)
+                            output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
                             output += f"G4 P{p_entre_int_ext}\n"
-                            output, flag_ligado = religamento(output, flag_ligado)
+                            output, flag_ligado = religamento(output, flag_ligado, p_religamento)
                         output += f"G1 F{vel}; speed g1\n"
                         output += "M42 P4 S0\n"
                         output += f"G4 P{p_trigger_curta}\n"
@@ -1610,7 +1686,7 @@ def layers_to_Gcode(
                     bfr = coords
                     counter += 1
                     if flag_salto == 1:
-                        output, flag_ligado = religamento(output, flag_ligado)
+                        output, flag_ligado = religamento(output, flag_ligado, p_religamento)
                         flag_salto = 0
             output = posicao_de_corte(output, coords_corte)
             output += ";____________________________________\n"
@@ -1619,7 +1695,7 @@ def layers_to_Gcode(
                 f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm"
             )
             print(
-                f"Tempo estimado com Vel={vel_ext}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_ext}min\n"
+                f"Tempo estimado com Vel={vel_cont}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_cont}min\n"
             )
     output += f"G1 Z20\n"
     output += f"G28 X0\n"
@@ -1632,6 +1708,29 @@ def layers_to_Gcode(
     os.chdir(folders.home)
     return
 
+def points_from_region(layer_name, folders,island,zigzags=False,offsets=False,tw=False,bridges=False):
+    from components import points_tools as pt
+    points = []
+    region_list = []
+    if bridges:
+        folders.load_bridges_hdf5(layer_name,island)
+        region_list = island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
+    if zigzags:
+        folders.load_zigzags_hdf5(layer_name,island)
+        region_list = island.zigzags.regions
+    if offsets:
+        folders.load_offsets_hdf5(layer_name,island)
+        region_list = island.offsets.regions
+    if tw:
+        folders.load_thin_walls_hdf5(layer_name,island)
+        region_list = island.thin_walls.regions
+    for reg in region_list:
+        A1 = pt.img_to_points(reg.img)
+        for pnt in A1:
+            points.append(pnt)
+    # aaaa = it.points_to_img(points, np.zeros_like(reg.img))
+    return points
+
 def skel_to_graph(sem_galhos, separation_degree):
     """Separates the graph into groups of connected nodes based on nodes with degree > degree.
     Parameters:(networkx.Graph): The input graph.
@@ -1639,7 +1738,11 @@ def skel_to_graph(sem_galhos, separation_degree):
     def condense_nodes(J, nodes, label):
         for i,a in enumerate(nodes):
             S = J.subgraph(a) 
-            J.add_node(f"{label}{i}", data=a)
+            coords = [0,0]
+            for j, c in enumerate(coords):
+                coords[j] = int(sum([x[j] for x in a])/len(a))
+            # J.add_node(f"{label}{i}", data=pt.invert_x_y(a), weight=len(a), coords=pt.invert_x_y([coords])[0])
+            J.add_node(f"{label}{i}", data=pt.invert_x_y(a), weight=len(a), coords=coords)
             for no in S.nodes:
                 nbrs = set(J.neighbors(no))
                 for nbr in nbrs - set([S]):
@@ -1674,6 +1777,9 @@ def skel_to_graph(sem_galhos, separation_degree):
     B = [pt.invert_x_y(l) for l in trunks_nodes]
     # aaaa = it.sum_imgs([it.points_to_img(g, np.zeros_like(sem_galhos)) for g in B] + path_tools.one_pixel_wide(sem_galhos))
     aaaa = it.sum_imgs_colored([it.points_to_img(g, np.zeros_like(sem_galhos)) for g in B])
-    nx.draw(F, with_labels=True)
+    # from matplotlib import pyplot
+    # pyplot.gca().invert_yaxis()
+    # pyplot.gca().invert_xaxis()
+    # nx.draw(F, nx.get_node_attributes(F, 'coords'), with_labels=True)
     # F.nodes._nodes["J1"]
     return F, aaaa, trunks_pxls

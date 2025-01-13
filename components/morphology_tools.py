@@ -116,26 +116,46 @@ def hitmiss_ends_v2(img):
 
 
 def make_mask(layer: Layer, size: str) -> np.ndarray:
-    if size == "full_ext":
-        mask = disk(layer.path_radius_external)
-    if size == "half_ext":
-        mask = disk(int(layer.path_radius_external * 0.5))
-    if size == "3_4_ext":
-        mask = disk(int(layer.path_radius_external * 0.75))
-    if size == "3_2_ext":
-        mask = disk(int(layer.path_radius_external * 1.5))
-    if size == "double_ext":
-        mask = disk(layer.path_radius_external * 2)
-    if size == "full_int":
-        mask = disk(layer.path_radius_internal)
-    if size == "half_int":
-        mask = disk(int(layer.path_radius_internal * 0.5))
-    if size == "3_4_int":
-        mask = disk(int(layer.path_radius_internal * 0.75))
-    if size == "3_2_int":
-        mask = disk(int(layer.path_radius_internal * 1.5))
-    if size == "double_int":
-        mask = disk(layer.path_radius_internal * 2)
+    if size == "full_tw":
+        mask = disk(layer.path_radius_tw)
+    if size == "half_tw":
+        mask = disk(int(layer.path_radius_tw * 0.5))
+    if size == "3_4_tw":
+        mask = disk(int(layer.path_radius_tw * 0.75))
+    if size == "3_2_tw":
+        mask = disk(int(layer.path_radius_tw * 1.5))
+    if size == "double_tw":
+        mask = disk(layer.path_radius_tw * 2)
+    if size == "full_cont":
+        mask = disk(layer.path_radius_cont)
+    if size == "half_cont":
+        mask = disk(int(layer.path_radius_cont * 0.5))
+    if size == "3_4_cont":
+        mask = disk(int(layer.path_radius_cont * 0.75))
+    if size == "3_2_cont":
+        mask = disk(int(layer.path_radius_cont * 1.5))
+    if size == "double_cont":
+        mask = disk(layer.path_radius_cont * 2)
+    if size == "full_bridg":
+        mask = disk(layer.path_radius_bridg)
+    if size == "half_bridg":
+        mask = disk(int(layer.path_radius_bridg * 0.5))
+    if size == "3_4_bridg":
+        mask = disk(int(layer.path_radius_bridg * 0.75))
+    if size == "3_2_bridg":
+        mask = disk(int(layer.path_radius_bridg * 1.5))
+    if size == "double_bridg":
+        mask = disk(layer.path_radius_bridg * 2)
+    if size == "full_larg":
+        mask = disk(layer.path_radius_larg)
+    if size == "half_larg":
+        mask = disk(int(layer.path_radius_larg * 0.5))
+    if size == "3_4_larg":
+        mask = disk(int(layer.path_radius_larg * 0.75))
+    if size == "3_2_larg":
+        mask = disk(int(layer.path_radius_larg * 1.5))
+    if size == "double_larg":
+        mask = disk(layer.path_radius_larg * 2)
     return mask
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 import copy
 from ctypes.wintypes import HSTR
 from os import times_result
+from re import L
 from tkinter import X
 from typing import TYPE_CHECKING, Dict, reveal_type
 import itertools
@@ -1404,7 +1405,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
     return path_list
 
 
-def layers_to_Gcode(
+def layers_to_Gcode_4t(
     layers: List[Layer],
     folders: System_Paths,
     configuracoes,
@@ -1697,6 +1698,299 @@ def layers_to_Gcode(
             print(
                 f"Tempo estimado com Vel={vel_cont}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_cont}min\n"
             )
+    output += f"G1 Z20\n"
+    output += f"G28 X0\n"
+    output += f"G28 Y0\n"
+    output += f"M104 S0; End of Gcode\n"
+    os.chdir(folders.output)
+    f = open(outFile, "w")
+    f.write(output)
+    f.close()
+    os.chdir(folders.home)
+    return
+
+def layers_to_Gcode(
+    layers: List[Layer],
+    folders: System_Paths,
+    configuracoes,
+    vel_vazio,
+    p_entre_int_ext,
+    p_entre_camadas,
+    layer_heights,
+    coords_substrato,
+    coords_corte,
+):
+    """modo 2T na maquina Okerlion na FCT-NOVA"""
+    import os
+
+    def cabecalho(output, flag_ligado):
+        output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
+        output += ";-------MAPPING------\n"
+        output += f";DPI: {layers[0].dpi} ppp\n"
+        output += f";void_max: {layers[0].void_max} % of path_radius\n"
+        output += f";max_internal_walls: {layers[0].max_internal_walls}\n"
+        output += f";max_external_walls: {layers[0].max_external_walls}\n"
+        output += f";n_max: {layers[0].n_max} trilhas para estrangulamentos\n"
+        output += ";-------PROGRAMA 1 Contornos------\n"
+        output += f";Nome do programa: {layers[0].program_cont}\n"
+        output += f";Diametro das trilhas: {diam_cont} mm\n"
+        output += f";Sobreposição das rotas: {sobrep_cont} % raio real \n"    
+        output += f";vel_ext: {vel_cont} mm/min \n"
+        output += f";path_radius: {layers[0].path_radius_cont} pixels\n"
+        output += f";p_religamento: {p_religamento_cont} ms \n"
+        output += f";p_desligamento: {p_desligamento_cont} ms \n"
+        output += ";-------PROGRAMA 2 Estrangulamentos------\n"
+        output += f";Nome do programa: {layers[0].program_bridg}\n"
+        output += f";Diametro das trilhas: {diam_bridg} mm\n"
+        output += f";Sobreposição das rotas: {sobrep_bridg} % raio real \n"    
+        output += f";vel_ext: {vel_bridg} mm/min \n"
+        output += f";path_radius: {layers[0].path_radius_bridg} pixels\n"
+        output += f";p_religamento: {p_religamento_bridg} ms \n"
+        output += f";p_desligamento: {p_desligamento_bridg} ms \n"
+        output += ";-------PROGRAMA 3 Areas Largas------\n"
+        output += f";Nome do programa: {layers[0].program_larg}\n"
+        output += f";Diametro das trilhas: {diam_larg} mm\n"
+        output += f";Sobreposição das rotas: {sobrep_larg} % raio real \n"    
+        output += f";vel_ext: {vel_larg} mm/min \n"
+        output += f";path_radius: {layers[0].path_radius_larg} pixels\n"
+        output += f";p_religamento: {p_religamento_larg} ms \n"
+        output += f";p_desligamento: {p_desligamento_larg} ms \n"
+        output += ";-------PROGRAMA 4 Paredes finas------\n"
+        output += f";Nome do programa: {layers[0].program_tw}\n"
+        output += f";Diametro das trilhas: {diam_tw} mm\n"
+        output += f";Sobreposição das rotas: {sobrep_tw} % raio real \n"    
+        output += f";vel_ext: {vel_tw} mm/min \n"
+        output += f";path_radius: {layers[0].path_radius_tw} pixels\n"
+        output += f";p_religamento: {p_religamento_tw} ms \n"
+        output += f";p_desligamento: {p_desligamento_tw} ms \n"
+        output += ";------------OUTROS------------\n"
+        output += f";Sobreposição Entre interno e externo: {layers[0].sob_int_ext_per} % raio interno \n"    
+        output += f";N# Camadas: {layers[0].n_camadas}\n"
+        output += f";p_entre_int_ext;: {p_entre_int_ext} ms \n"
+        output += f";p_entre_camadas: {p_entre_camadas} ms \n"
+        output += f";layer_heights: {layer_heights} mm \n"
+        output += f";coords_corte: {coords_corte} mm \n"
+        output += f";coords_substrato: {coords_substrato} mm \n"
+        output += f";vel_vazio: {vel_vazio} mm/min \n"
+        output += ";------------FIM INPUTS------------\n"
+        output += f"G91\n"
+        # output += f"M42 P4 S255; turn off welder\n"
+        output += f"G28 X0 Y0 Z0\n"
+        # output += f"G1 F360; speed g1\n"
+        return output
+
+    def religamento(output, flag_ligado, p_religamento):
+        if flag_ligado == 0:
+            output += ";-------RELIGAMENTO------\n"
+            output += "M42 P4 S0\n"
+            # output += f"G4 P{p_trigger_longa}\n"
+            output += f"G4 P{p_religamento}\n"
+            # output += "M42 P4 S255\n"
+            # output += f"G4 P{p_religamento-p_trigger_longa}\n"
+            output += ";------------------------\n"
+        return output, 1
+
+    def desligamento(output, flag_ligado, p_desligamento):
+        if flag_ligado == 1:
+            output += ";-------DESLIGAMENTO------\n"
+            # output += "M42 P4 S0\n"
+            # output += f"G4 P{p_trigger_longa}\n"
+            output += "M42 P4 S255\n"
+            output += f"G4 P{p_desligamento}\n"
+            # output += f"G4 P{p_desligamento-p_trigger_longa}\n"
+            output += ";-------------------------\n"
+        return output, 0
+    
+    def troca_de_programa(output, agora, alvo, flag_ligado_antes,p_desligamento):
+        if flag_ligado_antes==1:
+            output, _ = desligamento(output,flag_ligado_antes,p_desligamento)
+        if alvo == 1:
+            vel = vel_cont
+            texto_mudanca = ";----Contorno----\n;TYPE:WALL-OUTER\n"
+            const_perf = 5
+            p_desligamento = p_desligamento_cont
+            p_religamento = p_religamento_cont
+        elif alvo == 2:
+            vel = vel_bridg
+            texto_mudanca = ";----Estrangulamento----\n;TYPE:SKIN\n"
+            const_perf = 8
+            p_desligamento = p_desligamento_bridg
+            p_religamento = p_religamento_bridg
+        elif alvo == 3:
+            vel = vel_larg
+            texto_mudanca = ";----Area Larga----\n;TYPE:WALL-INNER\n"
+            const_perf = 0.5
+            p_desligamento = p_desligamento_larg
+            p_religamento = p_religamento_larg
+        elif alvo == 4:
+            vel = vel_tw
+            texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
+            const_perf = 0.5
+            p_desligamento = p_desligamento_tw
+            p_religamento = p_religamento_tw
+        else:
+            vel = vel_vazio
+            texto_mudanca = ";----perdido----\n"
+            p_desligamento = 0
+            p_religamento = p_religamento_cont
+            const_perf = 0
+        output += f";-------Trocando Programa {agora}->{alvo}------\n"
+        print(f"trocou para {flag_path_type}")
+        output += texto_mudanca
+        diferenca = alvo - agora
+        if diferenca<0:
+            diferenca = 4+diferenca
+        for toque in range(diferenca):
+            output += "M400\n"
+            output += "M42 P4 S0\n"
+            output += f"G4 P{p_trigger_curta}\n"
+            output += "M42 P4 S255\n"
+            output += f"G4 P{p_trigger_curta}\n"
+            output += f"G4 P{p_trigger_curta}\n"
+        output += ";-------------------------\n"
+        output += f"G1 F{vel}; speed g1\n"
+        if flag_ligado_antes == 1:
+            output, _ = religamento(output,0,p_religamento)
+        return output, p_desligamento, p_religamento
+
+    def posicao_de_corte(output, coords):
+        output += ";-------POS de CORTE------\n"
+        output += f";POS de Corte\n"
+        output += f"G90\n"
+        output += f"G0 Y{coords[0]} F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G0 x{coords[1]} F{vel_vazio}\n"
+        output += f"M400\n"
+        output += f"G4 P{p_entre_camadas}\n"
+        output += f"G91\n"
+        output += ";------------------------\n"
+        return output
+
+    def posicao_inicial(output, coords, i):
+        output += f";_______LAYER{n_layer + 1}_____\n"
+        output += f"G90\n"
+        output += f";LAYER:{i}\n"
+        output += f"G1 Z{layer_heights[n_layer]} ; Camada + 10mm\n"
+        output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}; POS INICIAL\n"
+        output += f"M400\n"
+        output += f"G91\n"
+        return output
+    
+    def pontos_das_regioes(layer:Layer, island):
+        # folders.load_bridges_hdf5(layer.name, island)
+        # print(f"nome: {layer.name}/{island.name}")
+        pts_bridg = points_from_region(layer.name,folders,island,bridges=True)
+        pts_tw = points_from_region(layer.name,folders,island,tw=True)
+        pts_cont = points_from_region(layer.name,folders,island,offsets=True)
+        pts_larg = points_from_region(layer.name,folders,island,zigzags=True)
+        if layer.odd_layer == 1:
+            pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
+            pts_tw = rotate_path_odd_layer(pts_tw, layer.base_frame)
+            pts_cont = rotate_path_odd_layer(pts_cont, layer.base_frame)
+            pts_larg = rotate_path_odd_layer(pts_larg, layer.base_frame)
+        return pts_bridg, pts_tw, pts_cont, pts_larg
+
+    mm_per_pixel = layers[0].mm_per_pxl
+    diam_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["diam_cord"]
+    sobrep_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["sobrep_cord"]
+    vel_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["vel_desloc"]
+    p_religamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_religamento"]
+    p_desligamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_desligamento"]
+    diam_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["diam_cord"]
+    sobrep_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["sobrep_cord"]
+    vel_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["vel_desloc"]
+    p_religamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_religamento"]
+    p_desligamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_desligamento"]
+    diam_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["diam_cord"]
+    sobrep_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["sobrep_cord"]
+    vel_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["vel_desloc"]
+    p_religamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_religamento"]
+    p_desligamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_desligamento"]
+    diam_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["diam_cord"]
+    sobrep_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["sobrep_cord"]
+    vel_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["vel_desloc"]
+    p_religamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_religamento"]
+    p_desligamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_desligamento"]
+    p_desligamento = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_desligamento"]
+    p_religamento = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_religamento"]
+    p_trigger_longa = 2000
+    p_trigger_curta = 300
+    bfr = [0, 0]
+    base_frame = layers[0].base_frame
+    ts = datetime.datetime.now()
+    outFile = f"{folders.selected} {ts.date()} {ts.hour}_{ts.minute}.gcode"
+    flag_ligado = 1
+    flag_path_type = 0
+    output = ""
+    output = cabecalho(output, flag_ligado)
+    for n_layer, layer in enumerate(layers):
+        soma_do_deslocamento = 0
+        output = posicao_inicial(output, coords_substrato, n_layer)
+        bfr = coords_substrato
+        folders.load_islands_hdf5(layer)
+        for n_island, island in enumerate(layer.islands):
+            counter = 0
+            flag_path_type = 0
+            last_flag = 0
+            flag_ligado = 0
+            pts_bridg, pts_tw, pts_cont, pts_larg = pontos_das_regioes(layer, island)
+            folders.load_island_paths_hdf5(layer.name, island)
+            chain = [list(x) for x in island.island_route.sequence]
+            # print(chain)
+            for i, p in enumerate(chain):
+                if i <= 2:
+                    # output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
+                    # const_perf = 0
+                    flag_salto = 1
+                if p == [0,0]:
+                    output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
+                    const_perf = 0
+                    flag_salto = 1
+                else:
+                    coords = p
+                    coords = [
+                        base_frame[0] - coords[0] + coords_substrato[0],
+                        coords[1] + coords_substrato[1],
+                    ]
+                    if p in pts_cont:
+                        flag_path_type = 1
+                    elif p in pts_bridg:
+                        flag_path_type = 2
+                    elif p in pts_larg:
+                        flag_path_type = 3
+                    elif p in pts_tw:
+                        flag_path_type = 4
+                    else:
+                        flag_path_type = 0
+                    # if i == 1:
+                    #     output, flag_ligado = religamento(output, flag_ligado, p_religamento)
+                    if flag_path_type != last_flag:
+                        # output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
+                        if flag_path_type == 3 and last_flag == 1:
+                            output += f"G4 P{p_entre_int_ext}\n"
+                        output, p_desligamento, p_religamento = troca_de_programa(output, last_flag, flag_path_type, flag_ligado,p_desligamento)
+                        # output, flag_ligado = religamento(output, flag_ligado, p_religamento)
+                        output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
+                        last_flag = flag_path_type
+                    desloc = np.subtract(coords, bfr)
+                    dist = distance.euclidean(coords, bfr)
+                    # if flag_salto == 1 or flag_ligado == 0:
+                    #     output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
+                    #     const_perf = 0
+                    # extrus = dist*const_perf
+                    soma_do_deslocamento += dist
+                    output += (f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n")
+                    output += "M400\n"
+                    bfr = coords
+                    counter += 1
+                    if flag_salto == 1:
+                        output, flag_ligado = religamento(output, flag_ligado, p_religamento)
+                        flag_salto = 0
+            output = posicao_de_corte(output, coords_corte)
+            output += ";____________________________________\n"
+            output += f"G28 X0 Y0\n"
+            print(f"Deslocamento total da camada {n_layer} = {soma_do_deslocamento*mm_per_pixel}mm")
+            print(f"Tempo estimado com Vel={vel_cont}mm/min = {soma_do_deslocamento*mm_per_pixel/vel_cont}min\n")
     output += f"G1 Z20\n"
     output += f"G28 X0\n"
     output += f"G28 Y0\n"

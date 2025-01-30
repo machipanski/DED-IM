@@ -25,9 +25,9 @@ def create_prune_divide_skel(original_img: np.ndarray, size_prune):
     # if np.sum(sem_galhos) == 0:
     #     sem_galhos = skel
     #     segmented_img, segment_objects = segment_skeleton(skel)
-    plt.figure()
-    plt.imshow(trunks_img)
-    nx.draw(skeleton_graph, nx.get_node_attributes(skeleton_graph, 'coords'), with_labels=True)
+    # plt.figure()
+    # plt.imshow(trunks_img)
+    # nx.draw(skeleton_graph, nx.get_node_attributes(skeleton_graph, 'coords'), with_labels=True)
     return sem_galhos, dist, segment_objects
 
 def create_prune_skel(original_img: np.ndarray, size_prune):

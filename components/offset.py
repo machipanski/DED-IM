@@ -549,10 +549,10 @@ class OffsetRegions:
         size_label_bfr = 0
         index_main_body = 0
         rest_f2 = np.zeros(base_frame)
-        for i in np.arange(1, n_labels):
-            label_img = labels == i
+        for i in np.arange(0, n_labels):
+            label_img = labels == i+1
             size_label_now = np.sum(label_img)
-            if size_label_now > bead_size:
+            if size_label_now > bead_size/2:
                 rest_f2 = it.sum_imgs([rest_f2, label_img])
         return rest_f2
 

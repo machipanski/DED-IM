@@ -40,3 +40,53 @@ lista_programas:
   tensao: 16.6
   vel_desloc: 600.0
   wire_speed: 3.6
+- diam_cord: 6.0
+  estrategia: linha simples
+  nome: 15-01-25 thinw
+  p_desligamento: 700.0
+  p_religamento: 700.0
+  reg_associada: Thin Walls
+  sobrep_cord: 50.0
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 3.6
+- diam_cord: 8.0
+  estrategia: weaving
+  nome: 15-01-25 estrang
+  p_desligamento: 700.0
+  p_religamento: 700.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 50.0
+  tensao: 16.4
+  vel_desloc: 400.0
+  wire_speed: 3.0
+- diam_cord: 0.6
+  estrategia: zigzag vai e volta
+  nome: 15-01-25 largas
+  p_desligamento: 700.0
+  p_religamento: 700.0
+  reg_associada: Areas Largas
+  sobrep_cord: 50.0
+  tensao: 16.4
+  vel_desloc: 420.0
+  wire_speed: 3.4
+- diam_cord: 8.0
+  estrategia: weaving
+  nome: reduzindo pontes sera
+  p_desligamento: 700.0
+  p_religamento: 700.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 50.0
+  tensao: 15.0
+  vel_desloc: 290
+  wire_speed: 1.6
+- diam_cord: 6.0
+  estrategia: offsets
+  nome: offsets corrigidos
+  p_desligamento: 700.0
+  p_religamento: 700.0
+  reg_associada: Contornos
+  sobrep_cord: 75.0
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8

@@ -395,7 +395,7 @@ class BridgeRegions:
         def separate_trunks():
             """Quebra a imagem em suas componentes do MAT - já devolve nomralizado para o numero de rotas que cabem no sentido paralelo"""
             sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-                rest_of_picture.astype(np.uint8), 4 * path_radius_bridg
+                rest_of_picture.astype(np.uint8), path_radius_bridg
             )
             self.medial_transform = sem_galhos * sem_galhos_dist
             # trunks = [pt.contour_to_list([x]) for x in trunks]

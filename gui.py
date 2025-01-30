@@ -171,7 +171,7 @@ def select_or_input(configuracoes, thinwalls=False, contonos=False, estrang=Fals
     elif selected_item is not None:
         # msgbox(f"You selected: {selected_item}", "Selected Item")
         # if thinwalls:
-        perf_selecionado = configuracoes.lista_programas["nome"=="selected_item"]
+        perf_selecionado = list(filter(lambda x: x["nome"] == selected_item, configuracoes.lista_programas))[0]
         d_ext = perf_selecionado["diam_cord"]
         sob_ext_per = perf_selecionado["sobrep_cord"]
         name_prog = perf_selecionado["nome"]

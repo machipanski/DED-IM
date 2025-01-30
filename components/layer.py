@@ -138,14 +138,14 @@ class Layer:
                         )
 
             with Timer("Conectando todas as partes"):
-                internal_simpl = path_tools.simplifica_retas_master(
-                    itr.sequence, 0.0002, itr.saltos
+                internal_simpl = path_tools.simplifica_retas_masterV2(
+                    itr.sequence, 0.002, itr.saltos
                 )
-                external_simpl = path_tools.simplifica_retas_master(
-                    etr.sequence, 0.0002, etr.saltos
+                external_simpl = path_tools.simplifica_retas_masterV2(
+                    etr.sequence, 0.002, etr.saltos
                 )
-                thinwalls_simpl = path_tools.simplifica_retas_master(
-                    twtr.sequence, 0.001, twtr.saltos
+                thinwalls_simpl = path_tools.simplifica_retas_masterV2(
+                    twtr.sequence, 0.002, twtr.saltos
                 )
                 island_route_path = external_simpl + internal_simpl + thinwalls_simpl
                 island_island_route_img = it.chain_to_lines(
@@ -277,7 +277,7 @@ class Layer:
         with Timer("salvando as camadas"):
             ts = datetime.datetime.now()
             folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
-            folders.save_folders_structure(hdf5_file_name)
+            folders.save_folders_structure(f"{hdf5_file_name}_{ts.date()}")
         return
 
     def make_input_img(
@@ -330,7 +330,8 @@ class Layer:
         self.mm_per_pxl = 1 / self.pxl_per_mm
         d_tw_pxl = d_tw * self.pxl_per_mm
         self.sob_tw_per = sob_tw_per
-        self.path_radius_tw = int(d_tw_pxl * 0.5 * (1 - sob_tw_per/100))
+        # self.path_radius_tw = int(d_tw_pxl * 0.5 * (1 - sob_tw_per/100))
+        self.path_radius_tw = round(d_tw_pxl * 0.5)
         self.diam_tw_real = d_tw
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
@@ -365,7 +366,7 @@ class Layer:
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_thin_walls_hdf5(self.name, isl)
-                isl.thin_walls.make_routes_tw(self.path_radius_tw)
+                isl.thin_walls.make_routes_tw(self.path_radius_tw, self.sob_tw_per)
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
                 for reg in isl.thin_walls.regions:
@@ -422,8 +423,8 @@ class Layer:
             if np.sum(rest_of_picture_f1) > 0:
                 island.offsets.create_levels(
                     rest_of_picture_f1,
-                    mt.make_mask(self, "full_cont"),
-                    mt.make_mask(self, "double_cont"),
+                    mt.make_mask(self, "full_cont", percentage=self.sob_cont_per),
+                    mt.make_mask(self, "double_cont", percentage=self.sob_cont_per),
                     self.name,
                     island.name,
                 )
@@ -503,7 +504,8 @@ class Layer:
         self.program_cont = name_prog
         d_cont_pxl = d_cont * self.pxl_per_mm
         self.sob_cont_per = sob_cont_per
-        self.path_radius_cont = int(d_cont_pxl * 0.5 * (1 - sob_cont_per/100))
+        # self.path_radius_cont = int(d_cont_pxl * 0.5 * (1 - sob_cont_per/100))
+        self.path_radius_cont = round(d_cont_pxl * 0.5)
         self.diam_cont_real = d_cont
         self.void_max = void_max
         self.max_external_walls = external_max
@@ -546,7 +548,9 @@ class Layer:
             )
         with Timer("salvando imagens das rotas"):
             for isl in self.islands:
-                if np.sum(isl.rest_of_picture_f2) > 0:
+                # if np.sum(isl.rest_of_picture_f2) > 0:
+                # if len(isl.rest_of_picture_f2) != 0:
+                if hasattr(isl, "offsets"):
                     for reg in isl.offsets.regions:
                         folders.save_img_hdf5(
                             f"/{self.name}/{isl.name}/offsets/{reg.name}",
@@ -648,7 +652,8 @@ class Layer:
         self.diam_bridg_real = d_bridg
         self.sob_bridg_per = sob_bridg_per
         d_bridg_pxl = d_bridg * self.pxl_per_mm
-        self.path_radius_bridg = int(d_bridg_pxl * 0.5 * (1-(sob_bridg_per/100)))
+        # self.path_radius_bridg = int(d_bridg_pxl * 0.5 * (1-(sob_bridg_per/100)))
+        self.path_radius_bridg = round(d_bridg_pxl * 0.5)
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -697,7 +702,8 @@ class Layer:
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
         d_bridg_pxl = self.diam_bridg_real * self.pxl_per_mm
-        self.path_radius_int_ext = int(d_bridg_pxl * 0.5 * (1-(sob_int_ext_per/100)))
+        # self.path_radius_int_ext = int(d_bridg_pxl * 0.5 * (1-(sob_int_ext_per/100)))
+        self.path_radius_int_ext = round(d_bridg_pxl * 0.5)
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
@@ -761,7 +767,8 @@ class Layer:
         self.diam_larg_real = d_larg
         self.sob_larg_per = sob_larg_per
         d_larg_pxl = d_larg * self.pxl_per_mm
-        self.path_radius_larg = int(d_larg_pxl * 0.5 * (1-(sob_larg_per/100)))
+        # self.path_radius_larg = int(d_larg_pxl * 0.5 * (1-(sob_larg_per/100)))
+        self.path_radius_larg = round(d_larg_pxl * 0.5)
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for island in self.islands:

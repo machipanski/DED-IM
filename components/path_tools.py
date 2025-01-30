@@ -351,12 +351,12 @@ def connect_cross_over_bridges(island: Island) -> Path:
     offset_bridges_included = set(start_path.regions["offset_bridges"])
     all_its = []
     pts_valido_comeco = []
+    rota_antiga = start_path.sequence.copy()
+    nova_rota = start_path.sequence.copy()
+    stop = 0
+    saltos = []
+    counter = 0
     if hasattr(island, "bridges"):
-        rota_antiga = start_path.sequence.copy()
-        nova_rota = []
-        stop = 0
-        saltos = []
-        counter = 0
         while not stop:
             order_crossover_regions = []
             interruption_points, order_crossover_regions, pts_valido_comeco = find_interruption_points(
@@ -392,7 +392,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 stop = 1
             counter += 1
     else:
-        nova_rota = start_path.sequence
+        # nova_rota = start_path.sequence
         saltos = []
     new_regions = {
         "offsets": list(offssets_included),
@@ -427,10 +427,23 @@ def connect_internal_external(island: Island, path_radius_int_ext):
         external_pts = pt.img_to_points(most_external)
         chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
     elif hasattr(island, "bridges"):
-        filling = [x.route for x in island.bridges.zigzag_bridges]
+        filling = it.sum_imgs([x.route for x in island.bridges.zigzag_bridges])
         if len(filling) > 0:
-            filling = it.sum_imgs(filling)
-            print("FAZER A PARTE QUE TEM SÓ PONTES DE ZZ")
+            # filling = it.sum_imgs(filling)
+            print("SÓ TEM PONTES DE ZZ")
+            most_external = island.offsets.regions[0].route.astype(np.uint8)
+            dilation_kernel = int(path_radius_int_ext * 2)
+            touching = np.zeros_like(island.img)
+            while np.sum(touching) == 0:
+                aaa = it.sum_imgs(
+                    [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
+                )
+                touching = aaa == 2
+                dilation_kernel = dilation_kernel + 2
+            candidates_internal = pt.img_to_points(touching)
+            chosen_internal = random.choice(pt.img_to_points(mt.hitmiss_ends_v2(filling)))
+            external_pts = pt.img_to_points(most_external)
+            chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
         else:
             most_external = island.offsets.regions[0].route.astype(np.uint8)
             external_pts = pt.img_to_points(most_external)
@@ -561,6 +574,9 @@ def connect_zigzag_bridges(island: Island):
     zigzag_bridges_included = set(start_path.regions["zigzag_bridges"])
     zigzag_bridges_number = len(island.bridges.zigzag_bridges)
     if zigzag_bridges_number == 0:
+        nova_rota = start_path.sequence
+        saltos = []
+    elif len(zigzags_included) == 0:
         nova_rota = start_path.sequence
         saltos = []
     else:
@@ -810,9 +826,25 @@ def find_interruption_points_v2(
     from components.points_tools import closest_point
 
     closest_points = {}
-    for bridge in isl.bridges.zigzag_bridges:
-        if not (bridge.name in zigzag_bridges_included):
-            if set(bridge.linked_zigzag_regions).intersection(zigzags_included):
+    if zigzags_included:
+        for bridge in isl.bridges.zigzag_bridges:
+            if not (bridge.name in zigzag_bridges_included):
+                if set(bridge.linked_zigzag_regions).intersection(zigzags_included):
+                    A = bridge.pontos_extremos
+                    if len(bridge.route) > 0 and np.sum(A) != 0:
+                        closest_a = closest_point(A[0], nova_rota)
+                        closest_b = closest_point(A[1], nova_rota)
+                        closest_c = closest_point(A[2], nova_rota)
+                        closest_d = closest_point(A[3], nova_rota)
+                        cp = [closest_a, closest_b, closest_c, closest_d]
+                        cp.sort(key=lambda x: x[1])
+                        cp = cp[:2]
+                        cp = [x[0] for x in cp]
+                        closest_points[bridge.name] = cp
+    else:
+        #ARRUMAR AQUI PARA MAIS DE UMA PONTEEEEEEE
+        for i, bridge in enumerate(isl.bridges.zigzag_bridges):
+            if not(bridge.name in zigzag_bridges_included) or i == 0:
                 A = bridge.pontos_extremos
                 if len(bridge.route) > 0 and np.sum(A) != 0:
                     closest_a = closest_point(A[0], nova_rota)
@@ -1290,16 +1322,19 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     approx_seq = []
     if len(sequence) > 0:
         saltos = [list(x) for x in saltos]
-        segmentos = np.array_split(
-            sequence, np.where([(x in saltos) for x in sequence])[0]
-        )
+        if len(saltos)>0:
+            segmentos = np.array_split(
+                sequence, np.where([(x in saltos) for x in sequence])[0]
+            )
+        else:
+            segmentos = [sequence]
         segmentos = list(filter(lambda x: len(x) > 0, segmentos))
         for s in segmentos:
             candidates = []
-            candidates.append(factor_epilson * arcLength(s, False))
-            candidates.append(factor_epilson * arcLength(s, True))
+            candidates.append(factor_epilson * arcLength(np.float32(s), False))
+            candidates.append(factor_epilson * arcLength(np.float32(s), True))
             epsilon = candidates[np.argmax(candidates)]
-            approx_seg = approxPolyDP(np.ascontiguousarray(s), epsilon, False)
+            approx_seg = approxPolyDP(np.ascontiguousarray(np.float32(s)), epsilon, False)
             approx_seg = [list(x[0]) for x in approx_seg]
             if approx_seg is None:
                 pass
@@ -1307,6 +1342,75 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
                 approx_seq += approx_seg
                 # approx_seq += [["a", "a"]]
                 approx_seq += [[0, 0]]
+    return approx_seq
+
+def simplifica_retas_masterV2(seq_pts, factor_epilson, saltos):
+    # if len(seq_pts) == 0:
+    #     return []
+    def perpendicular_distance(point, start, end):
+        """Calculate the perpendicular distance from a point to a line segment."""
+        start = np.array(start)
+        end = np.array(end)
+        point = np.array(point)
+        if np.array_equal(start, end):
+            return np.linalg.norm(point - start)
+        # Vector from start to end
+        line_vec = end - start
+        line_len = np.linalg.norm(line_vec)
+        line_unitvec = line_vec / line_len
+        point_vec = point - start
+        t = np.dot(point_vec, line_unitvec)
+        if t < 0:
+            nearest = start
+        elif t > line_len:
+            nearest = end
+        else:
+            nearest = start + t * line_unitvec
+        return np.linalg.norm(point - nearest)
+
+
+    def douglas_peucker(points, epsilon):
+        """Simplify a sequence of points using the Ramer-Douglas-Peucker algorithm."""
+        points = np.array(points)  # Ensure points is a NumPy array
+        if len(points) < 2:
+            return points
+        # Find the point with the maximum distance from the line between the endpoints
+        start, end = points[0], points[-1]
+        dmax = 0.0
+        index = 0
+        for i in range(1, len(points) - 1):
+            d = perpendicular_distance(points[i], start, end)
+            if d > dmax:
+                index = i
+                dmax = d
+        # If the maximum distance is greater than epsilon, recursively simplify
+        if dmax > epsilon:
+            # Recursive call
+            left = douglas_peucker(points[:index + 1], epsilon)
+            right = douglas_peucker(points[index:], epsilon)
+            # Combine the results
+            return np.vstack((left[:-1], right))  # Exclude the last point of left to avoid duplication
+        else:
+            return np.array([start, end])
+    
+    sequence = [list(x) for x in seq_pts]
+    approx_seq = []
+    if len(sequence) > 0:
+        saltos = [list(x) for x in saltos]
+        if len(saltos)>0:
+            segmentos = np.array_split(
+                sequence, np.where([(x in saltos) for x in sequence])[0]
+            )
+        else:
+            segmentos = [sequence]
+        segmentos = list(filter(lambda x: len(x) > 0, segmentos))
+        for s in segmentos:
+            simplified_coordinates = douglas_peucker(s, factor_epilson)
+            if approx_seq == []:
+                approx_seq = simplified_coordinates.tolist()
+            else:
+                approx_seq = approx_seq + simplified_coordinates.tolist()
+            approx_seq = approx_seq + [[0, 0]]
     return approx_seq
 
 
@@ -1390,14 +1494,14 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
                 #                             "zigzag_bridges": [],
                 #                             "thin walls": [],
                 #                         }
-    else:
+    if path_list == []:
         if hasattr(isl, "bridges"):
             for i, zb in enumerate(isl.bridges.zigzag_bridges):
                 zigzag_b_path = img_to_chain(
-                    zb.astype(np.uint8), isl.bridges.zigzag_bridges[0].img
+                    zb.route, isl.bridges.zigzag_bridges[0].route
                 )
                 if len(zigzag_b_path) > 0:
-                    path_list.append(Path(i, zigzag_b_path[0], img=zb))
+                    path_list.append(Path(i, zigzag_b_path[0], img=zb.route))
                     path_list[-1].sequence = set_first_pt_in_seq(
                         path_list[-1].sequence, list(isl.comeco_int)
                     )
@@ -1838,8 +1942,11 @@ def layers_to_Gcode(
         print(f"trocou para {flag_path_type}")
         output += texto_mudanca
         diferenca = alvo - agora
-        if diferenca<0:
+        if diferenca < 0:
             diferenca = 4+diferenca
+        if agora == 1:
+            output += "M400\n"
+            output += f"G4 P{p_entre_int_ext}\n"
         for toque in range(diferenca):
             output += "M400\n"
             output += "M42 P4 S0\n"
@@ -1891,28 +1998,32 @@ def layers_to_Gcode(
         return pts_bridg, pts_tw, pts_cont, pts_larg
 
     mm_per_pixel = layers[0].mm_per_pxl
-    diam_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["diam_cord"]
-    sobrep_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["sobrep_cord"]
-    vel_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["vel_desloc"]
-    p_religamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_religamento"]
-    p_desligamento_cont = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_desligamento"]
-    diam_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["diam_cord"]
-    sobrep_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["sobrep_cord"]
-    vel_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["vel_desloc"]
-    p_religamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_religamento"]
-    p_desligamento_bridg = configuracoes.lista_programas["nome"==layers[0].program_bridg]["p_desligamento"]
-    diam_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["diam_cord"]
-    sobrep_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["sobrep_cord"]
-    vel_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["vel_desloc"]
-    p_religamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_religamento"]
-    p_desligamento_larg = configuracoes.lista_programas["nome"==layers[0].program_larg]["p_desligamento"]
-    diam_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["diam_cord"]
-    sobrep_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["sobrep_cord"]
-    vel_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["vel_desloc"]
-    p_religamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_religamento"]
-    p_desligamento_tw = configuracoes.lista_programas["nome"==layers[0].program_tw]["p_desligamento"]
-    p_desligamento = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_desligamento"]
-    p_religamento = configuracoes.lista_programas["nome"==layers[0].program_cont]["p_religamento"]
+    A=list(filter(lambda x: x["nome"]==layers[0].program_cont,configuracoes.lista_programas))[0]
+    diam_cont = A["diam_cord"]
+    sobrep_cont = A["sobrep_cord"]
+    vel_cont = A["vel_desloc"]
+    p_religamento_cont = A["p_religamento"]
+    p_desligamento_cont = A["p_desligamento"]
+    B=list(filter(lambda x: x["nome"]==layers[0].program_bridg,configuracoes.lista_programas))[0]
+    diam_bridg = B["diam_cord"]
+    sobrep_bridg = B["sobrep_cord"]
+    vel_bridg = B["vel_desloc"]
+    p_religamento_bridg = B["p_religamento"]
+    p_desligamento_bridg = B["p_desligamento"]
+    C=list(filter(lambda x: x["nome"]==layers[0].program_larg,configuracoes.lista_programas))[0]
+    diam_larg = C["diam_cord"]
+    sobrep_larg = C["sobrep_cord"]
+    vel_larg = C["vel_desloc"]
+    p_religamento_larg = C["p_religamento"]
+    p_desligamento_larg = C["p_desligamento"]
+    D=list(filter(lambda x: x["nome"]==layers[0].program_tw,configuracoes.lista_programas))[0]
+    diam_tw = D["diam_cord"]
+    sobrep_tw = D["sobrep_cord"]
+    vel_tw = D["vel_desloc"]
+    p_religamento_tw = D["p_religamento"]
+    p_desligamento_tw = D["p_desligamento"]
+    p_desligamento = A["p_desligamento"]
+    p_religamento = A["p_religamento"]
     p_trigger_longa = 2000
     p_trigger_curta = 300
     bfr = [0, 0]
@@ -1930,7 +2041,7 @@ def layers_to_Gcode(
         folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             counter = 0
-            flag_path_type = 0
+            # flag_path_type = 0
             last_flag = 0
             flag_ligado = 0
             pts_bridg, pts_tw, pts_cont, pts_larg = pontos_das_regioes(layer, island)
@@ -1966,8 +2077,8 @@ def layers_to_Gcode(
                     #     output, flag_ligado = religamento(output, flag_ligado, p_religamento)
                     if flag_path_type != last_flag:
                         # output, flag_ligado = desligamento(output, flag_ligado, p_desligamento)
-                        if flag_path_type == 3 and last_flag == 1:
-                            output += f"G4 P{p_entre_int_ext}\n"
+                        # if last_flag == 1:
+                        #     output += f"G4 P{p_entre_int_ext}\n"
                         output, p_desligamento, p_religamento = troca_de_programa(output, last_flag, flag_path_type, flag_ligado,p_desligamento)
                         # output, flag_ligado = religamento(output, flag_ligado, p_religamento)
                         output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
@@ -2007,17 +2118,21 @@ def points_from_region(layer_name, folders,island,zigzags=False,offsets=False,tw
     points = []
     region_list = []
     if bridges:
-        folders.load_bridges_hdf5(layer_name,island)
-        region_list = island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
+        if hasattr(island,"bridges"):
+            folders.load_bridges_hdf5(layer_name,island)
+            region_list = island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
     if zigzags:
-        folders.load_zigzags_hdf5(layer_name,island)
-        region_list = island.zigzags.regions
+        if hasattr(island,"zigzags"):
+            folders.load_zigzags_hdf5(layer_name,island)
+            region_list = island.zigzags.regions
     if offsets:
-        folders.load_offsets_hdf5(layer_name,island)
-        region_list = island.offsets.regions
+        if hasattr(island,"offsets"):
+            folders.load_offsets_hdf5(layer_name,island)
+            region_list = island.offsets.regions
     if tw:
-        folders.load_thin_walls_hdf5(layer_name,island)
-        region_list = island.thin_walls.regions
+        if hasattr(island,"thin_walls"):
+            folders.load_thin_walls_hdf5(layer_name,island)
+            region_list = island.thin_walls.regions
     for reg in region_list:
         A1 = pt.img_to_points(reg.img)
         for pnt in A1:

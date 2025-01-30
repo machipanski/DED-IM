@@ -1,4 +1,5 @@
 from __future__ import annotations
+from bdb import effective
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -45,9 +46,10 @@ class ThinWall:
             self.destiny = 0
         return
 
-    def make_route(self, path_radius):
-        self.route = np.logical_and(self.origin, self.img)
-        self.route = self.route.astype(np.uint8)
+    def make_route(self, path_radius, sobrep):
+        effective_origin = np.logical_and(self.origin, self.img)
+        reduced_extremes_origin = sk.prune(effective_origin, int(path_radius*2*(1 - sobrep/100)))
+        self.route = reduced_extremes_origin.astype(np.uint8)
         self.trail = mt.dilation(self.route, kernel_size=path_radius)
         pontos_extremos = np.nonzero(mt.hitmiss_ends_v2(self.route))
         pontos_extremos = pt.x_y_para_pontos(pontos_extremos)
@@ -155,8 +157,8 @@ class ThinWallRegions:
             )
         return rest_of_picture_f1.astype(np.uint8)
 
-    def make_routes_tw(self, path_radius):
+    def make_routes_tw(self, path_radius, sobrep):
         """Chama a função make_route() para cada região"""
         for i in self.regions:
-            i.make_route(path_radius)
+            i.make_route(path_radius, sobrep)
         return

@@ -463,7 +463,8 @@ class System_Paths:
     def save_regs_offsets_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:
             path_island = f"/{layer_name}/{isl.name}"
-            if np.sum(isl.rest_of_picture_f2) > 0:
+            # if np.sum(isl.rest_of_picture_f2) > 0:
+            if len(isl.rest_of_picture_f2) != 0:
                 self.save_img_hdf5(
                     path_island, "rest_of_picture_f2", isl.rest_of_picture_f2
                 )

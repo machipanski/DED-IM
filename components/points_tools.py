@@ -13,7 +13,6 @@ def closest_point(pt, pts_list):
     dist_2 = [distance_pts(x, pt) for x in pts_list]
     return pts_list[np.argmin(dist_2)], np.min(dist_2)
 
-
 def closest_line(pt, lines_pts_list):
     """returns the closest list of points from the point indicated as a list of
     points(y,x) and the minimal distance"""
@@ -23,11 +22,17 @@ def closest_line(pt, lines_pts_list):
         list_distances.append(this_line_dist)
     return lines_pts_list[np.argmin(list_distances)], np.min(list_distances)
 
-
 def contour_to_list(ctr):
     """takes the contour notation of CV2 returns and gives back a list of points (y,x)"""
     return [[x[0][1], x[0][0]] for x in ctr[0].tolist()]
 
+def calculate_tangent(p1, p2):
+    """Calculate the slope (tangent) between two points."""
+    dy = p2[0] - p1[0]
+    dx = p2[1] - p1[1]
+    if dx == 0:  # Avoid division by zero
+        return None  # Vertical line
+    return dy / dx
 
 def distance_pts(a, b):
     return distance.euclidean(a, b)

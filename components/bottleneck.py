@@ -19,7 +19,9 @@ from skimage.morphology import disk
 import networkx as nx
 import concurrent.futures
 from scipy.ndimage import distance_transform_edt
-
+from scipy import ndimage as ndi
+from skimage.segmentation import watershed
+from skimage.feature import peak_local_max
 from timer import Timer
 
 
@@ -125,7 +127,7 @@ class Bridge:
         return
 
     def make_internal_border(
-        self, internal, filled_external_borders, eroded, origin_axis
+        self, internal, filled_external_borders, eroded, origin_axis, path_radius_bridg
     ):
         def make_closest_path_to(
             internal_borders, original_line, start_orig, end_orig, internal_extreme
@@ -151,6 +153,11 @@ class Bridge:
         linha_ci2 = np.zeros_like(self.img)
         if labeled_n == 1:
             internal_extreme = pt.img_to_points(mt.hitmiss_ends_v2(internal_borders))
+            if len(internal_extreme)==0:
+                possible_c1_c2, counter_accepted, internal_extreme = decompose_pol_cont_by_corners(internal_borders, origin_axis, path_radius_bridg)
+                # bbb = it.sum_imgs([tng_end,tng_start,all_borders_img])
+                labeled = possible_c1_c2
+                labeled_n = counter_accepted
             linha_ci1 = make_closest_path_to(
                     internal_borders,
                     self.contorno[0],
@@ -742,6 +749,13 @@ def close_bridge_contour(
         overlap = np.add(area_pescocal, all_borders_img)
         linhas_do_limite = overlap == 2
         _, labeled, labeled_n = it.divide_by_connected(linhas_do_limite)
+        if labeled_n == 1:
+            print("teste: caso de uma unica linha no entorno da origem")
+            possible_c1_c2, counter_accepted, pontos_curvatura = decompose_pol_cont_by_corners(linhas_do_limite, trunk, path_radius_bridg)
+            # bbb = it.sum_imgs([tng_end,tng_start,all_borders_img])
+            labeled = possible_c1_c2
+            labeled_n = counter_accepted
+            # print("pausadsddass")
         if labeled_n > 2:
             dists = []
             trunk_pts = pt.x_y_para_pontos(np.nonzero(trunk))
@@ -756,14 +770,13 @@ def close_bridge_contour(
             lista_dist[idx1] = 999999
             idx2 = np.argmin(lista_dist)
             linha1 = labeled == idx1 + 1
+            #ATENçÂO PARA NOVOS CASOS AQUI!!!!!!!
             linha2 = labeled == idx2 + 1
         elif labeled_n == 2:
             linha1 = labeled == 1
             linha2 = labeled == 2
-        elif labeled_n == 1:
-            print("teste: caso de uma unica linha no entorno da origem")
-            linha1 = labeled == 1
-            return linha1, linha1
+            # linha1 = labeled == 1
+            return linha1, linha2
         else:
             print("ERRO: não haviam paredes no entorno da origem!")
             return np.zeros_like(trunk), np.zeros_like(trunk)
@@ -774,7 +787,6 @@ def close_bridge_contour(
         points_line2 = pt.img_to_points(mt.hitmiss_ends_v2(linha2.astype(bool)))
         if len(points_line2)>0:
             linha2 = reduce_lines_overshoot(linha2, points_trunk)
-
         return linha1, linha2
     
     def close_area_from_lines(
@@ -1564,7 +1576,7 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_int_ext,
         if n_divisions > 1:
             origin_axis, eroded = connect_origin_parts(region.origin, eroded)
         linha_ci1, linha_ci2 = region.make_internal_border(
-            rest_pict_eroded, region.img, eroded, origin_axis
+            rest_pict_eroded, region.img, eroded, origin_axis, path_radius
         )
         if np.equal(linha_ci1,linha_ci2).all():
             new_zigzag = region.origin
@@ -1694,3 +1706,26 @@ def weaving_zigzag(
     if len(reference_points_b) < 2:
         print("ajdnsabhfsfb")
     return new_zigzag
+
+def decompose_pol_cont_by_corners(linhas_do_limite, trunk, path_radius_bridg):
+    pontos = path_tools.img_to_chain(linhas_do_limite)[0]
+    # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
+    pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos)
+    pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(linhas_do_limite))
+    pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
+    segments = path_tools.colorbyevent(pontos,pontos_curvatura,np.zeros_like(linhas_do_limite))
+    segments_n = max(np.unique(segments))
+    trunque = trunk>0
+    trunk_seq = path_tools.img_to_chain(trunque)[0]
+    trunk_seq = path_tools.cut_repetition(trunk_seq)
+    trunk_seq = path_tools.set_first_pt_in_seq(trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0])
+    tng_end = path_tools.draw_tangent_from_seq(list(reversed(trunk_seq)), path_radius_bridg*4, np.zeros_like(linhas_do_limite))
+    tng_start = path_tools.draw_tangent_from_seq(trunk_seq, path_radius_bridg*4, np.zeros_like(linhas_do_limite))
+    possible_c1_c2 = np.zeros_like(linhas_do_limite)
+    counter_accepted = 0
+    for labl in np.add(list(range(segments_n)),1):
+        contact = it.sum_imgs([tng_end,tng_start,np.int32(segments==labl)])
+        if not((contact == 2).any()):
+            counter_accepted += 1
+            possible_c1_c2 = it.sum_imgs([possible_c1_c2, np.multiply(segments==labl,counter_accepted)])
+    return possible_c1_c2, counter_accepted, pontos_curvatura

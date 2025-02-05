@@ -1,4 +1,5 @@
 from __future__ import annotations
+from asyncio import events
 import copy
 from ctypes.wintypes import HSTR
 from os import times_result
@@ -9,6 +10,7 @@ import itertools
 import math
 import random
 import datetime
+from more_itertools import first
 from networkx import bridges
 import numpy as np
 import networkx as nx
@@ -91,6 +93,31 @@ class Path:
                         self.regions["thin walls"].append(tw.name)
         return
 
+def calcular_angulo(p1, p2, p3):
+    # Vetores
+    v1 = np.array(p2) - np.array(p1)
+    v2 = np.array(p3) - np.array(p2)
+    # Cálculo do ângulo em radianos
+    angulo_rad = np.arctan2(np.linalg.det([v1, v2]), np.dot(v1, v2))
+    angulo_deg = np.degrees(angulo_rad)
+    return abs(angulo_deg)
+
+def encontrar_pontos_curvatura(seq, ang=60):
+    pontos_curvatura = []
+    pontos = seq + seq
+    for i in range(1, len(pontos) - 1):
+        p1 = pontos[i - 1]
+        p2 = pontos[i]
+        p3 = pontos[i + 1]
+        angulo = calcular_angulo(p1, p2, p3)
+        if angulo > ang:
+            if len(pontos_curvatura) == 0:
+                first_angled = p2
+            else:
+                if p2 == first_angled:
+                    break
+            pontos_curvatura.append(p2)
+    return pontos_curvatura
 
 def add_routes_by_sequence(
     nova_rota,
@@ -622,6 +649,16 @@ def connect_zigzag_bridges(island: Island):
     # aaa = new_route.get_img(island.img.shape)
     return new_route
 
+def colorbyevent(seq, eventlist,img):
+    """Segue a sequencia e da um novo label para cada vez que encontra um ponto de evento"""
+    result = copy.deepcopy(img).astype(np.uint8)
+    label = 0
+    for p in seq:
+        occurences = list(filter(lambda x: x==p, eventlist))
+        if len(occurences) > 0:
+            label = label + 1
+        result[p[0]][p[1]] = label
+    return result
 
 def cut_repetition(seq):
     new_seq = []
@@ -656,6 +693,27 @@ def draw_interface(composed_img, base_frame, jump):
                     interface_img[y][x] = 1
     return interface_img
 
+
+def draw_tangent_from_seq(points, length, img):
+    # Create a binary image
+    binary_image = copy.deepcopy(img)
+    # Convert points to integer coordinates
+    points = [(int(y), int(x)) for y, x in points]
+    # Draw the original points on the binary image
+    for y, x in points:
+        binary_image[y, x] = 1  # Mark the point
+    # Calculate the tangent at the last point
+    if len(points) < 2:
+        print("Not enough points to calculate tangent.")
+        return tng_img
+    last_point = points[-1]
+    second_last_point = points[-2]
+    slope = pt.calculate_tangent(second_last_point, last_point)
+    # Extend the tangent line
+    tangent_line = it.extend_tangent(last_point, second_last_point, slope, length)
+    # Draw the tangent line on the binary image
+    tng_img = it.draw_line(img,np.uint64(tangent_line[0]),np.uint64(tangent_line[1]))
+    return tng_img
 
 def draw_the_links(
     zigzags, zigzags_mst, base_frame, interfaces, centers, path_radius_larg

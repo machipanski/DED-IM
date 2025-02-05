@@ -96,6 +96,28 @@ def draw_polyline(img, pts_list, closed):
     pts = pts.reshape((-1, 1, 2))
     return cv2.polylines(img.astype(np.uint8), [pts], closed, 1, 1)
 
+def extend_tangent(last_point, second_last, slope, length):
+    """Extend the tangent line from the last point."""
+    if slope is None:  # Vertical line
+        return [(last_point[0] - length, last_point[1]), (last_point[0] + length, last_point[1])]
+    # Calculate the angle of the slope
+    angle = np.arctan(slope)
+    # Calculate the end points of the tangent line
+    if second_last[1]<last_point[1]:
+        x2 = last_point[1] + length * np.cos(angle)
+        y2 = last_point[0] + length * np.sin(angle)
+    elif second_last[1]>last_point[1]:
+        x2 = last_point[1] - length * np.cos(angle)
+        y2 = last_point[0] - length * np.sin(angle)
+    else:
+        if second_last[0]>last_point[0]:
+            x2 = last_point[1] + length * np.cos(angle)
+            y2 = last_point[0] + length * np.sin(angle)
+        elif second_last[0]<last_point[0]:
+            x2 = last_point[1] - length * np.cos(angle)
+            y2 = last_point[0] - length * np.sin(angle)
+    # return [(y1, x1), (y2, x2)]
+    return [(last_point[0], last_point[1]), (y2, x2)]
 
 def esta_contido(a, b):
     """Analisa se a área a tem todos os pixels dentro de b,

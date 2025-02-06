@@ -1571,7 +1571,17 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_int_ext,
 
     eroded = mt.erosion(region.img, kernel_size=path_radius_int_ext)
     rest_pict_eroded = mt.erosion(rest_of_picture, kernel_size=path_radius_int_ext)
-    origin_axis = np.logical_and(region.origin, eroded)
+    _, eroded_border = mt.detect_contours(eroded, return_img=True, only_external=True)
+    if len(np.unique(it.sum_imgs([region.origin, eroded_border]))) < 3:
+        origin_seq = path_tools.img_to_chain(region.origin)[0]
+        origin_seq = path_tools.cut_repetition(origin_seq)
+        origin_seq = path_tools.set_first_pt_in_seq(origin_seq, pt.img_to_points(mt.hitmiss_ends_v2(region.origin))[0])
+        tng_end = path_tools.draw_tangent_from_seq(list(reversed(origin_seq)), path_radius_int_ext*4, np.zeros_like(eroded))
+        tng_start = path_tools.draw_tangent_from_seq(origin_seq, path_radius_int_ext*4, np.zeros_like(eroded))
+        origin = np.logical_or(tng_start,np.logical_or(region.origin,tng_end))
+    else:
+        origin = region.origin
+    origin_axis = np.logical_and(origin, eroded)
     _,_,n = it.divide_by_connected(origin_axis)
     if np.sum(origin_axis) > 0 and n == 1:
         _, _, n_divisions = it.divide_by_connected(origin_axis)

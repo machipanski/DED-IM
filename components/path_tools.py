@@ -1543,6 +1543,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
                 path_list[-1].sequence = set_first_pt_in_seq(
                     path_list[-1].sequence, list(isl.comeco_int)
                 )
+                path_list[-1].sequence = cut_repetition(path_list[-1].sequence)
                 path_list[-1].get_regions(isl)
                 # path_list[-1].regions = {
                 #                             "offsets": [],
@@ -1563,6 +1564,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
                     path_list[-1].sequence = set_first_pt_in_seq(
                         path_list[-1].sequence, list(isl.comeco_int)
                     )
+                    path_list[-1].sequence = cut_repetition(path_list[-1].sequence)
                     path_list[-1].get_regions(isl)
     return path_list
 

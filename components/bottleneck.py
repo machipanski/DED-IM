@@ -23,6 +23,7 @@ from scipy import ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
 from timer import Timer
+from skimage.feature import corner_harris, corner_subpix, corner_peaks
 
 
 class Bottleneck:
@@ -302,7 +303,8 @@ class BridgeRegions:
             path_radius,
             offreg,
         )
-        self.all_bridges = it.sum_imgs(bridge_imgs)
+        if len(bridge_imgs)> 0 :
+            self.all_bridges = it.sum_imgs(bridge_imgs)
         return areas_graph, offsets_paralel_mst
 
     def draw_offset_paralel_links(
@@ -1711,6 +1713,17 @@ def decompose_pol_cont_by_corners(linhas_do_limite, trunk, path_radius_bridg):
     pontos = path_tools.img_to_chain(linhas_do_limite)[0]
     # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
     pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos)
+    if len(pontos_curvatura) <4:
+        pontos_harris = corner_peaks(corner_harris(linhas_do_limite), min_distance=5, threshold_rel=0.02)
+        pontos_harris = [list(x) for x in pontos_harris]
+        pontos_corrigidos = []
+        for point in pontos_harris:
+            if not (point in pontos):
+                pnt, _ = pt.closest_point(point, pontos)
+                pontos_corrigidos.append(pnt)
+            else:
+                pontos_corrigidos.append(point)
+        pontos_curvatura = pontos_corrigidos
     pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(linhas_do_limite))
     pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
     segments = path_tools.colorbyevent(pontos,pontos_curvatura,np.zeros_like(linhas_do_limite))

@@ -1,58 +1,38 @@
 file: solda_config.yaml
 lista_programas:
-- diam_cord: 6.0
-  estrategia: offsets conectados
-  nome: Padrao offsets
-  p_desligamento: 700
-  p_religamento: 1300
+- diam_cord: 6
+  estrategia: offsets
+  nome: offsets padrao
+  p_desligamento: 700.0
+  p_religamento: 700.0
   reg_associada: Contornos
-  sobrep_cord: 50.0
+  sobrep_cord: 70
   tensao: 16.6
   vel_desloc: 360.0
-  wire_speed: 3.6
+  wire_speed: 1.8
 - diam_cord: 6
-  estrategia: zigzags vai-e-volta
-  nome: internos acelerados
-  p_desligamento: 700
-  p_religamento: 1300
+  estrategia: zigzag vai e volta
+  nome: 06_02_25 largas
+  p_desligamento: 700.0
+  p_religamento: 700.0
   reg_associada: Areas Largas
-  sobrep_cord: 50
+  sobrep_cord: 50.0
   tensao: 16.6
   vel_desloc: 425
   wire_speed: 3.6
 - diam_cord: 6.0
-  estrategia: linha medial continua
-  nome: Padrao como offsets
-  p_desligamento: 700
-  p_religamento: 1300
-  reg_associada: Thin Walls
-  sobrep_cord: 50.0
-  tensao: 16.6
-  vel_desloc: 500.0
-  wire_speed: 3.6
-- diam_cord: 6.0
-  estrategia: weaving
-  nome: Parecido com offsets
-  p_desligamento: 700
-  p_religamento: 1300
-  reg_associada: Estrangulamentos
-  sobrep_cord: 50.0
-  tensao: 16.6
-  vel_desloc: 600.0
-  wire_speed: 3.6
-- diam_cord: 6.0
   estrategia: linha simples
-  nome: 15-01-25 thinw
+  nome: 06_02_25 thinw
   p_desligamento: 700.0
   p_religamento: 700.0
   reg_associada: Thin Walls
   sobrep_cord: 50.0
   tensao: 16.6
-  vel_desloc: 360.0
+  vel_desloc: 400.0
   wire_speed: 3.6
-- diam_cord: 8.0
+- diam_cord: 6
   estrategia: weaving
-  nome: 15-01-25 estrang
+  nome: 06_02_25 estrang
   p_desligamento: 700.0
   p_religamento: 700.0
   reg_associada: Estrangulamentos
@@ -60,33 +40,13 @@ lista_programas:
   tensao: 16.4
   vel_desloc: 400.0
   wire_speed: 3.0
-- diam_cord: 0.6
-  estrategia: zigzag vai e volta
-  nome: 15-01-25 largas
+- diam_cord: 6.0
+  estrategia: a mesma
+  nome: largas sobrep 70
   p_desligamento: 700.0
   p_religamento: 700.0
   reg_associada: Areas Largas
-  sobrep_cord: 50.0
-  tensao: 16.4
-  vel_desloc: 420.0
-  wire_speed: 3.4
-- diam_cord: 8.0
-  estrategia: weaving
-  nome: reduzindo pontes sera
-  p_desligamento: 700.0
-  p_religamento: 700.0
-  reg_associada: Estrangulamentos
-  sobrep_cord: 50.0
-  tensao: 15.0
-  vel_desloc: 290
-  wire_speed: 1.6
-- diam_cord: 6.0
-  estrategia: offsets
-  nome: offsets corrigidos
-  p_desligamento: 700.0
-  p_religamento: 700.0
-  reg_associada: Contornos
-  sobrep_cord: 75.0
+  sobrep_cord: 70.0
   tensao: 16.6
-  vel_desloc: 360.0
-  wire_speed: 1.8
+  vel_desloc: 425.0
+  wire_speed: 3.6

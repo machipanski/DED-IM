@@ -709,7 +709,7 @@ def zig_zag_two_options(
 ):
     points_external = pt.extreme_points(internal_border_img, force_top=force_top)
     points_internal = pt.extreme_points(lines)
-    eiorja = it.points_to_img(points_external, np.zeros(base_frame))
+    points_external_img = it.points_to_img(points_external, np.zeros(base_frame))
     new_zigzags = []
     extreme_points = separate_extreme_points(
         points_external, points_internal, internal_border_img, new_path_radius

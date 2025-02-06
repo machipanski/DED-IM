@@ -53,7 +53,7 @@ def extreme_points(img, force_top=False):
         sequence_simpl = path_tools.simplifica_retas_master(sequence, 0.001, [])
         sequence_simpl.remove([0, 0])
         regyar = it.chain_to_lines(
-            [[x[1], x[0]] for x in sequence_simpl], np.zeros_like(img)
+            [[x[0], x[1]] for x in sequence_simpl], np.zeros_like(img)
         )
         if len(sequence_simpl) < 4:
             considered = np.where(img != 0)
@@ -72,8 +72,8 @@ def extreme_points(img, force_top=False):
             considered = [ffdfsfdf, rtertrtet]
     else:
         considered = np.where(img != 0)
-    top = np.min(considered[0])
-    bottom = np.max(considered[0])
+    top = int(np.min(considered[0]))
+    bottom = int(np.max(considered[0]))
     point_a = [top, np.min(np.where(img[top]))]
     point_d = [top, np.max(np.where(img[top]))]
     point_b = [bottom, np.min(np.where(img[bottom]))]

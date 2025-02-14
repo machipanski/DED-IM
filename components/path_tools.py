@@ -2178,20 +2178,20 @@ def points_from_region(layer_name, folders,island,zigzags=False,offsets=False,tw
     points = []
     region_list = []
     if bridges:
+        folders.load_bridges_hdf5(layer_name,island)
         if hasattr(island,"bridges"):
-            folders.load_bridges_hdf5(layer_name,island)
             region_list = island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
     if zigzags:
+        folders.load_zigzags_hdf5(layer_name,island)
         if hasattr(island,"zigzags"):
-            folders.load_zigzags_hdf5(layer_name,island)
             region_list = island.zigzags.regions
     if offsets:
+        folders.load_offsets_hdf5(layer_name,island)
         if hasattr(island,"offsets"):
-            folders.load_offsets_hdf5(layer_name,island)
             region_list = island.offsets.regions
     if tw:
+        folders.load_thin_walls_hdf5(layer_name,island)
         if hasattr(island,"thin_walls"):
-            folders.load_thin_walls_hdf5(layer_name,island)
             region_list = island.thin_walls.regions
     for reg in region_list:
         A1 = pt.img_to_points(reg.img)

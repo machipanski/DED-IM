@@ -702,8 +702,8 @@ class Layer:
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
         d_bridg_pxl = self.diam_bridg_real * self.pxl_per_mm
-        # self.path_radius_int_ext = int(d_bridg_pxl * 0.5 * (1-(sob_int_ext_per/100)))
-        self.path_radius_int_ext = round(d_bridg_pxl * 0.5)
+        self.path_radius_int_ext = int((d_bridg_pxl*(1-(sob_int_ext_per/100)))* 0.5)
+        # self.path_radius_int_ext = round(d_bridg_pxl * 0.5)
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)

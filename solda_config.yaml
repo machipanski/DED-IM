@@ -20,7 +20,7 @@ lista_programas:
   tensao: 16.6
   vel_desloc: 425
   wire_speed: 3.6
-- diam_cord: 6.0
+- diam_cord: 8.0
   estrategia: linha simples
   nome: 06_02_25 thinw
   p_desligamento: 700.0

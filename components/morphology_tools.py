@@ -121,7 +121,8 @@ def make_mask(layer: Layer, size: str, percentage:float=50) -> np.ndarray:
         de solda em relação ao seu diâmetro total. Portanto,
         50%(standart) retorna o elemento do tamanho da trilha
         solitária (diam real do programa de solda)"""
-    percentage_inverse = 2*(1 - percentage/100)
+    percentage_inverse = 2*(1 - percentage/100) 
+    #new_radius = round((((100-percentage)*layer.diam_cont_real)/100)/2 * layer.pxl_per_mm)
     if size == "full_tw":
         mask = disk(round(layer.path_radius_tw * percentage_inverse))
     if size == "half_tw":

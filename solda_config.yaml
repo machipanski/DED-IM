@@ -3,28 +3,68 @@ lista_programas:
 - diam_cord: 6
   estrategia: offsets
   nome: offsets padrao
-  p_desligamento: 700.0
-  p_religamento: 700.0
+  p_desligamento: 600.0
+  p_religamento: 800.0
   reg_associada: Contornos
-  sobrep_cord: 70
+  sobrep_cord: 50
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 6
+  estrategia: offsets
+  nome: offsets revisado 20
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Contornos
+  sobrep_cord: 20
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 4.5
+  estrategia: offsets
+  nome: offsets revisado 20 CAM1
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Contornos
+  sobrep_cord: 20
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 6
+  estrategia: offsets
+  nome: offsets revisado 23
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Contornos
+  sobrep_cord: 23
   tensao: 16.6
   vel_desloc: 360.0
   wire_speed: 1.8
 - diam_cord: 6
   estrategia: zigzag vai e volta
   nome: 06_02_25 largas
-  p_desligamento: 700.0
-  p_religamento: 700.0
+  p_desligamento: 600.0
+  p_religamento: 800.0
   reg_associada: Areas Largas
   sobrep_cord: 50.0
+  tensao: 16.6
+  vel_desloc: 425
+  wire_speed: 3.6
+- diam_cord: 8
+  estrategia: zigzag vai e volta
+  nome: Largas revisada
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Areas Largas
+  sobrep_cord: 20.0
   tensao: 16.6
   vel_desloc: 425
   wire_speed: 3.6
 - diam_cord: 8.0
   estrategia: linha simples
   nome: 06_02_25 thinw
-  p_desligamento: 700.0
-  p_religamento: 700.0
+  p_desligamento: 600.0
+  p_religamento: 800.0
   reg_associada: Thin Walls
   sobrep_cord: 50.0
   tensao: 16.6
@@ -33,20 +73,80 @@ lista_programas:
 - diam_cord: 6
   estrategia: weaving
   nome: 06_02_25 estrang
-  p_desligamento: 700.0
-  p_religamento: 700.0
+  p_desligamento: 600.0
+  p_religamento: 800.0
   reg_associada: Estrangulamentos
   sobrep_cord: 50.0
   tensao: 16.4
   vel_desloc: 400.0
   wire_speed: 3.0
+- diam_cord: 8
+  estrategia: weaving
+  nome: estrang revisados
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 20.0
+  tensao: 16.6
+  vel_desloc: 420.0
+  wire_speed: 3.0
+- diam_cord: 4.5
+  estrategia: weaving
+  nome: estrang revisados CAM1
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 20.0
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 4.5
+  estrategia: weaving
+  nome: estrang revisados CAM1 sobrep30
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 30
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 4.5
+  estrategia: weaving
+  nome: estrang revisados CAM1 sobrep30
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 50
+  tensao: 16.6
+  vel_desloc: 360.0
+  wire_speed: 1.8
+- diam_cord: 4.5
+  estrategia: weaving
+  nome: estrang revisados CAM1 ver menor
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Estrangulamentos
+  sobrep_cord: 20.0
+  tensao: 16.6
+  vel_desloc: 300
+  wire_speed: 1.5
 - diam_cord: 6.0
   estrategia: a mesma
   nome: largas sobrep 70
-  p_desligamento: 700.0
-  p_religamento: 700.0
+  p_desligamento: 600.0
+  p_religamento: 800.0
   reg_associada: Areas Largas
   sobrep_cord: 70.0
   tensao: 16.6
   vel_desloc: 425.0
   wire_speed: 3.6
+- diam_cord: 6.0
+  estrategia: reree
+  nome: offsets 49
+  p_desligamento: 600.0
+  p_religamento: 800.0
+  reg_associada: Contornos
+  sobrep_cord: 48.0
+  tensao: 0.0
+  vel_desloc: 360.0
+  wire_speed: 0.0

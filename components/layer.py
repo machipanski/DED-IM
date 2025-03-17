@@ -423,8 +423,8 @@ class Layer:
             if np.sum(rest_of_picture_f1) > 0:
                 island.offsets.create_levels(
                     rest_of_picture_f1,
-                    mt.make_mask(self, "full_cont", percentage=self.sob_cont_per),
-                    mt.make_mask(self, "double_cont", percentage=self.sob_cont_per),
+                    mt.make_mask(self, "full_cont"),
+                    mt.make_distancer(self, region="cont", percentage=self.sob_cont_per),
                     self.name,
                     island.name,
                 )
@@ -654,6 +654,7 @@ class Layer:
         d_bridg_pxl = d_bridg * self.pxl_per_mm
         # self.path_radius_bridg = int(d_bridg_pxl * 0.5 * (1-(sob_bridg_per/100)))
         self.path_radius_bridg = round(d_bridg_pxl * 0.5)
+        distancer = mt.make_distancer(self, "bridg", sob_bridg_per)
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -701,8 +702,11 @@ class Layer:
     def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
-        d_bridg_pxl = self.diam_bridg_real * self.pxl_per_mm
-        self.path_radius_int_ext = int((d_bridg_pxl*(1-(sob_int_ext_per/100)))* 0.5)
+        # d_bridg_pxl = self.diam_bridg_real * self.pxl_per_mm
+        # self.path_radius_int_ext = int((d_bridg_pxl*(1-(sob_int_ext_per/100)))* 0.5)
+        # self.path_radius_int_ext = self.diam_bridg_real*((100-sob_int_ext_per)/100)*self.pxl_per_mm
+        mask_distancer = mt.make_distancer(self, "bridg", percentage=sob_int_ext_per)
+        internal_mask_dist = mt.make_distancer(self, "bridg", percentage=self.sob_bridg_per)
         # self.path_radius_int_ext = round(d_bridg_pxl * 0.5)
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
@@ -712,7 +716,8 @@ class Layer:
                     isl.offsets.regions,
                     self.path_radius_cont,
                     self.path_radius_bridg,
-                    self.path_radius_int_ext,
+                    mask_distancer,
+                    internal_mask_dist,
                     self.base_frame,
                     isl.rest_of_picture_f2,
                 )

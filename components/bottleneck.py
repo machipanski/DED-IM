@@ -582,7 +582,8 @@ class BridgeRegions:
         offsets_regions,
         path_radius_cont,
         path_radius_bridg,
-        path_radius_int_ext,
+        mask_distancer,
+        internal_mask_dist,
         base_frame,
         rest_of_picture,
     ):
@@ -612,7 +613,8 @@ class BridgeRegions:
                         make_zz_or_co_bridge_route,
                         region,
                         path_radius_bridg,
-                        path_radius_int_ext,
+                        mask_distancer,
+                        internal_mask_dist,
                         rest_of_picture,
                         base_frame,
                     )
@@ -630,7 +632,7 @@ class BridgeRegions:
                         make_zz_or_co_bridge_route,
                         region,
                         path_radius_bridg,
-                        path_radius_int_ext,
+                        mask_distancer,
                         rest_of_picture,
                         base_frame,
                     )
@@ -1392,8 +1394,8 @@ def organize_extreme_zb_points(linha, bridge_img, path_radius):
     candidates = candidates[rotations:] + candidates[:rotations]
     return candidates[1], candidates[2]
 
-
-def equidistant_in_seq(line_img, path_radius, origin_pt=[]):
+#TODO: continuar daqui a arrumar as distancias de maneira mais padrão, hoje não tem ajuste
+def equidistant_in_seq(line_img, path_radius,internal_mask_dist, origin_pt=[]):
     n_origens = 0
     adjust = 0
     endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
@@ -1567,10 +1569,12 @@ def make_offset_bridge_route(
     return bridge_region
 
 
-def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_int_ext, rest_of_picture, base_frame):
+def make_zz_or_co_bridge_route(region: Bridge, path_radius, mask_distancer, internal_mask_dist, rest_of_picture, base_frame):
 
-    eroded = mt.erosion(region.img, kernel_size=path_radius_int_ext)
-    rest_pict_eroded = mt.erosion(rest_of_picture, kernel_size=path_radius_int_ext)
+    total_sobreposition = mt.dilation(region.img, kernel_size=path_radius)
+    eroded = mt.erosion(total_sobreposition, kernel_img=mask_distancer)
+    rest_pict_total_sobreposition = mt.dilation(rest_of_picture, kernel_size=path_radius)
+    rest_pict_eroded = mt.erosion(rest_pict_total_sobreposition, kernel_img=mask_distancer)
     _, eroded_border = mt.detect_contours(eroded, return_img=True, only_external=True)
     if len(np.unique(it.sum_imgs([region.origin, eroded_border]))) < 3:
         origin_seq = path_tools.img_to_chain(region.origin)[0]
@@ -1588,18 +1592,18 @@ def make_zz_or_co_bridge_route(region: Bridge, path_radius, path_radius_int_ext,
         if n_divisions > 1:
             origin_axis, eroded = connect_origin_parts(region.origin, eroded)
         linha_ci1, linha_ci2 = region.make_internal_border(
-            rest_pict_eroded, region.img, eroded, origin_axis, path_radius
+            rest_pict_eroded, total_sobreposition, eroded, origin_axis, path_radius
         )
         if np.equal(linha_ci1,linha_ci2).all():
             new_zigzag = region.origin
             new_zigzag_b = region.route
         else:
-            pts_trns_origin = equidistant_in_seq(origin_axis, path_radius)
+            pts_trns_origin = equidistant_in_seq(origin_axis, path_radius, internal_mask_dist)
             pts_trns_ci1 = equidistant_by_proximity(
-                linha_ci1, pts_trns_origin, path_radius, region.img
+                linha_ci1, pts_trns_origin, path_radius, total_sobreposition
             )
             pts_trns_ci2 = equidistant_by_proximity(
-                linha_ci2, pts_trns_origin, path_radius, region.img
+                linha_ci2, pts_trns_origin, path_radius, total_sobreposition
             )
             linhas_transversais = np.zeros_like(region.img)
             linhas_limitrofes = np.zeros_like(region.img)
@@ -1742,6 +1746,7 @@ def decompose_pol_cont_by_corners(linhas_do_limite, trunk, path_radius_bridg):
     trunk_seq = path_tools.img_to_chain(trunque)[0]
     trunk_seq = path_tools.set_first_pt_in_seq(trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0])
     trunk_seq = path_tools.cut_repetition(trunk_seq)
+    # TODO: ver se aqui tem como arrumar esses tamanhos
     tng_end = path_tools.draw_tangent_from_seq(list(reversed(trunk_seq)), path_radius_bridg*4, np.zeros_like(linhas_do_limite))
     tng_start = path_tools.draw_tangent_from_seq(trunk_seq, path_radius_bridg*4, np.zeros_like(linhas_do_limite))
     possible_c1_c2 = np.zeros_like(linhas_do_limite)

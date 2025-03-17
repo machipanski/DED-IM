@@ -77,12 +77,12 @@ class Level:
         self.path = path
         self.outer_areas = []
         self.hole_areas = []
-        self.area_lost = []
+        self.area_lost = np.zeros_like(img)
 
     def create_level(
         self,
-        mask_full: np.ndarray,
-        mask_double: np.ndarray,
+        mask_trail: np.ndarray,
+        mask_distancer: np.ndarray,
         nome_filho,
         path,
         first=False,
@@ -90,13 +90,13 @@ class Level:
         """Erode + Openning = New Offset Level"""
         # img = folders.load_img(self.img)
         if first:
-            new_lvl_img = mt.erosion(self.img, kernel_img=mask_full)
-            new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_full)
-            new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_full)
+            new_lvl_img = mt.erosion(self.img, kernel_img=mask_trail)
+            new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_trail)
+            new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_trail)
         else:
-            new_lvl_img = mt.erosion(self.img, kernel_img=mask_double)
-            new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_double)
-            new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_full)
+            new_lvl_img = mt.erosion(self.img, kernel_img=mask_distancer)
+            new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_distancer)
+            new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_trail)
         return Level(new_lvl_img, nome_filho, self.name, new_lvl_area, path)
 
     def create_loops(
@@ -244,6 +244,8 @@ class OffsetRegions:
                         levels[l - 1].area,
                         np.logical_not(levels[l].area),
                     )
+                all_trails = it.sum_imgs([x.trail for x in levels[l].outer_loops+levels[l].hole_loops])
+                levels[l].area_lost = np.logical_or(all_trails, levels[l].area_lost)
                 not_used_area = levels[l].divide_areas(base_frame, path_radius)
                 if (np.sum(not_used_area) > 0) and (l > 0):
                     levels[l - 1].area_lost = np.logical_or(
@@ -266,8 +268,8 @@ class OffsetRegions:
     def create_levels(
         self,
         rest_of_picture_f1,
-        mask_full,
-        mask_double,
+        trail_mask, #TODO: AQUI DA PRA COLOCAR A SOBRA DE MATERIAL ESPERADO PARA DESGASTE!!!!
+        distancer_mask,
         layer_name,
         island_name,
     ):
@@ -283,8 +285,8 @@ class OffsetRegions:
             f"/{layer_name}/{island_name}/offsets/levels",
         )
         atual = atual.create_level(
-            mask_full,
-            mask_double,
+            trail_mask,
+            distancer_mask,
             f"Lvl_{n_levels:03d}",
             f"/{layer_name}/{island_name}/offsets/levels",
             first=True,
@@ -292,8 +294,8 @@ class OffsetRegions:
         levels.append(atual)
         n_levels += 1
         atual = atual.create_level(
-            mask_full,
-            mask_double,
+            trail_mask,
+            distancer_mask,
             f"Lvl_{n_levels:03d}",
             f"/{layer_name}/{island_name}/offsets/levels",
         )
@@ -301,8 +303,8 @@ class OffsetRegions:
             levels.append(atual)
             n_levels += 1
             atual = atual.create_level(
-                mask_full,
-                mask_double,
+                trail_mask,
+                distancer_mask,
                 f"Lvl_{n_levels:03d}",
                 f"/{layer_name}/{island_name}/offsets/levels",
             )

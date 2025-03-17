@@ -115,54 +115,67 @@ def hitmiss_ends_v2(img):
     return sk.find_tips(img)
 
 
-def make_mask(layer: Layer, size: str, percentage:float=50) -> np.ndarray:
+def make_mask(layer: Layer, size: str) -> np.ndarray:
+    """Cria um elemento de máscara para operações morfológicas"""
+    if size == "full_tw":
+        mask = disk(round(layer.path_radius_tw))
+    if size == "half_tw":
+        mask = disk(round(layer.path_radius_tw * 0.5))
+    if size == "3_4_tw": 
+        mask = disk(round(layer.path_radius_tw * 0.75))
+    if size == "3_2_tw":
+        mask = disk(round(layer.path_radius_tw * 1.5))
+    if size == "double_tw":
+        mask = disk(round(layer.path_radius_tw * 2))
+    if size == "full_cont":
+        mask = disk(round(layer.path_radius_cont))
+    if size == "half_cont":
+        mask = disk(round(layer.path_radius_cont * 0.5))
+    if size == "3_4_cont":
+        mask = disk(round(layer.path_radius_cont * 0.75))
+    if size == "3_2_cont":
+        mask = disk(round(layer.path_radius_cont * 1.5))
+    if size == "double_cont":
+        mask = disk(round(layer.path_radius_cont * 2))
+    if size == "full_bridg":
+        mask = disk(round(layer.path_radius_bridg))
+    if size == "half_bridg":
+        mask = disk(round(layer.path_radius_bridg * 0.5))
+    if size == "3_4_bridg":
+        mask = disk(round(layer.path_radius_bridg * 0.75))
+    if size == "3_2_bridg":
+        mask = disk(round(layer.path_radius_bridg * 1.5))
+    if size == "double_bridg":
+        mask = disk(round(layer.path_radius_bridg * 2))
+    if size == "full_larg":
+        mask = disk(round(layer.path_radius_larg))
+    if size == "half_larg":
+        mask = disk(round(layer.path_radius_larg * 0.5))
+    if size == "3_4_larg":
+        mask = disk(round(layer.path_radius_larg * 0.75))
+    if size == "3_2_larg":
+        mask = disk(round(layer.path_radius_larg * 1.5))
+    if size == "double_larg":
+        mask = disk(round(layer.path_radius_larg * 2))
+    return mask
+
+
+def make_distancer(layer: Layer, region: str, percentage:float=50) -> np.ndarray:
     """Cria um elemento de máscara para operções morfológicas
-        a percentagem representa a sobreposição entre trilhas 
+        quando é feito um distanciador para sobreposição entre trilhas 
         de solda em relação ao seu diâmetro total. Portanto,
         50%(standart) retorna o elemento do tamanho da trilha
         solitária (diam real do programa de solda)"""
-    percentage_inverse = 2*(1 - percentage/100) 
-    #new_radius = round((((100-percentage)*layer.diam_cont_real)/100)/2 * layer.pxl_per_mm)
-    if size == "full_tw":
-        mask = disk(round(layer.path_radius_tw * percentage_inverse))
-    if size == "half_tw":
-        mask = disk(round(layer.path_radius_tw * 0.5 * percentage_inverse))
-    if size == "3_4_tw": 
-        mask = disk(round(layer.path_radius_tw * 0.75 * percentage_inverse))
-    if size == "3_2_tw":
-        mask = disk(round(layer.path_radius_tw * 1.5 * percentage_inverse))
-    if size == "double_tw":
-        mask = disk(round(layer.path_radius_tw * 2 * percentage_inverse))
-    if size == "full_cont":
-        mask = disk(round(layer.path_radius_cont * percentage_inverse))
-    if size == "half_cont":
-        mask = disk(round(layer.path_radius_cont * 0.5 * percentage_inverse))
-    if size == "3_4_cont":
-        mask = disk(round(layer.path_radius_cont * 0.75 * percentage_inverse))
-    if size == "3_2_cont":
-        mask = disk(round(layer.path_radius_cont * 1.5 * percentage_inverse))
-    if size == "double_cont":
-        mask = disk(round(layer.path_radius_cont * 2 * percentage_inverse))
-    if size == "full_bridg":
-        mask = disk(round(layer.path_radius_bridg * percentage_inverse))
-    if size == "half_bridg":
-        mask = disk(round(layer.path_radius_bridg * 0.5 * percentage_inverse))
-    if size == "3_4_bridg":
-        mask = disk(round(layer.path_radius_bridg * 0.75 * percentage_inverse))
-    if size == "3_2_bridg":
-        mask = disk(round(layer.path_radius_bridg * 1.5 * percentage_inverse))
-    if size == "double_bridg":
-        mask = disk(round(layer.path_radius_bridg * 2 * percentage_inverse))
-    if size == "full_larg":
-        mask = disk(round(layer.path_radius_larg * percentage_inverse))
-    if size == "half_larg":
-        mask = disk(round(layer.path_radius_larg * 0.5 * percentage_inverse))
-    if size == "3_4_larg":
-        mask = disk(round(layer.path_radius_larg * 0.75 * percentage_inverse))
-    if size == "3_2_larg":
-        mask = disk(round(layer.path_radius_larg * 1.5 * percentage_inverse))
-    if size == "double_larg":
-        mask = disk(round(layer.path_radius_larg * 2 * percentage_inverse))
+    if region == "tw":
+        orig_diam_mm = layer.diam_tw_real
+    if region == "cont":
+        orig_diam_mm = layer.diam_cont_real
+    if region == "bridg":
+        orig_diam_mm = layer.diam_bridg_real
+    if region == "larg":
+        orig_diam_mm = layer.diam_larg_real
+    deslocamento = orig_diam_mm*((100-percentage)/100) #para isolar o diametro real da trilha
+    mask = disk(round(deslocamento*layer.pxl_per_mm))
     return mask
 
 

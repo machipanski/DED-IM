@@ -15,7 +15,7 @@ Developed in Python, the method takes a 3D model as input, along with machine-sp
 
 # Using the Program
 
-
+The program can be used by executing the cells of the jupiter notebook file named `main.ipynb`. Executing each step in sequence, the program creates a srtuctured file of the `.hdf5` format. By the end of the file it is possible to generate a `Gcode` file with the paths generated.
 
 ## Example Models
 

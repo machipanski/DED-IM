@@ -25,59 +25,9 @@ The 3D models used to test the algorithm are all present into the  `<your-local-
 **Atention:** Due to the stert of the process relying on a older version of the `slicing with images` project, some of the models can be rotated to diferent positions, so it may be necessary to save the models in different orientations before generating the desired slices.
 
 
-# Show the CNN output
-
-You can also generate images from trained models. For this purpose, access the `src/utils/cnn` folder and find the `generate_inference.py` script. This script will pass the image patch through the selected model and generate a PNG image with the prediction. You need to define the `IMAGE_NAME` constant with the desired image, and set the `IMAGE_PATH` constant with the path where this image can be found. It is important to define `MASK_ALGORITHM` with the approach you want to use, `N_CHANNELS` and `N_FILTERS` with the number of channels used and number of filters of the model. Make sure that the trained weights defined in `WEIGHTS_FILE` is consistent with the parameters defined. After that you can run:
-
-```
-python generate_inference.py
-```
-
-You may want to compare the output produced by the different architectures and also the masks. The script `generate_figures.py` applies the different networks trained on all patches from the image defined in the `IMAGE_NAME` constant. The output folder will have the outputs produced by the CNNs, the available masks and an image path with the combination of channels 7, 6 and 2 in a PNG format. This script can be run using:
-```
-python generate_figures.py
-```
+# Outputs
 
 # Useful stuff
-
-In `src/utils` you will find some scripts that may help you understand the images and masks you are working with. For example, you may want to know how many fire pixels are in a mask, for this you can use the `count_fire_pixels.py` script. You just define the `IMAGE_NAME` with the desired mask name and run:
-
-```shell
-python count_fire_pixels.py
-```
-
-Alternatively you can define a partial name in `IMAGE_NAME` and a pattern to be found in `PATCHES_PATTERN`, and count fire pixels from many patches.
-
-You may need to find an image with at least some minimal amount of fire pixels, the script `masks_with_at_least_n_fire_pixels.py` prints on the screen the image path of the masks in the `MASK_PATH` directory that has more fire pixels than `NUM_PIXELS` defined in the script. After defining the path and the amount of pixels you can run:
-```
-python masks_with_at_least_n_fire_pixels.py
-```
-
-The masks have the value 1 where fire occurs and 0 otherwise, because of that the masks will not display "white" and "black" if open in an image viewing program. To help you see the mask you can use the script `transform_mask.py`, this script will convert the image to a PNG with white and black pixels. You just need to define the mask you want to convert in the `MASK_PATH` constant and run:
-
-```shell
-python transform_mask.py
-```
-
-The images available in the dataset are also difficult to view, as they are 10-channel images. You can convert them into a visible format, with the combination of bands 7, 6 and 2, using the `convert_patch_to_3channels_image.py` script. You just need to set the path to the desired image in the `IMAGE` constant and run:
-
-```shell
-python convert_patch_to_3channels_image.py
-```
-
-If you trained the models from scratch and want to use those weights to compare against the manual annotations, use the `copy_trained_weights_to_manual_annotations_evaluation.py` script to copy the trained weights to the directories used to evaluate the models against the manual annotations:
-
-```shell
-python copy_trained_weights_to_manual_annotations_evaluation.py
-```
-
-The evaluation processes will generate many txt files, you can use the `purge_logs.py` script to erase them:
-
-```shell
-python purge_logs.py
-```
-
-In order to save space, only fire masks are available. In our code, the masks without fire are generated on the fly when needed, but you may want to see all annotations. You can use the `generate_nonfire_masks.py` script to generate the missing masks. It will create one mask for each patch filled with zeroes, using the metadata from the original patch. If a mask already exists it will be ignored. To run it:
 
 ```shell
 python generate_nonfire_masks.py

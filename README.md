@@ -15,9 +15,15 @@ Developed in Python, the method takes a 3D model as input, along with machine-sp
 
 # Using the Program
 
-The program can be used by executing the cells of the jupiter notebook file named `main.ipynb`. Executing each step in sequence, the program creates a srtuctured file of the `.hdf5` format. By the end of the file it is possible to generate a `Gcode` file with the paths generated.
+The program can be used by executing the cells of the jupiter notebook file named `main.ipynb`. Executing each step in sequence, the program creates a srtuctured file of the `.hdf5` format. By the end of the file it creates a `Gcode` file with the paths generated.
 
-## Example Models
+## Mapping 
+
+The first cell calls for the input of an `.stl` or `.pgm` file. After this, it uses the [An Optimal Algorithm for 3D Triangle Mesh Slicing project]([https://github.com/rminetto](https://github.com/rminetto/slicing)) to generate images for each layer and creates the `.hdf5` file with the structural vision of the layers and its properties.
+
+
+
+# Example Models
 
 There are single-layer simulations represented by single images into the  `<your-local-repository>/input` folder.
 The 3D models used to test the algorithm are all present into the  `<your-local-repository>/input/stl_models` folder.
@@ -28,6 +34,8 @@ The 3D models used to test the algorithm are all present into the  `<your-local-
 # Outputs
 
 # Useful stuff
+
+The site for the `-hdf5` file visualizer is [here](https://www.hdfgroup.org/solutions/hdf5/)
 
 ```shell
 python generate_nonfire_masks.py

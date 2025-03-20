@@ -15,13 +15,25 @@ Developed in Python, the method takes a 3D model as input, along with machine-sp
 
 # Using the Program
 
-The program can be used by executing the cells of the jupiter notebook file named `main.ipynb`. Executing each step in sequence, the program creates a srtuctured file of the `.hdf5` format. By the end of the file it creates a `Gcode` file with the paths generated.
+To use the program, simply execute the cells in the Jupyter Notebook file named `main.ipynb` in sequence. The program processes each step to generate a structured .hdf5 file, culminating in the creation of a Gcode file containing the generated paths.
 
-## Mapping 
+## Mapping
 
-The first cell calls for the input of an `.stl` or `.pgm` file. After this, it uses the [An Optimal Algorithm for 3D Triangle Mesh Slicing project]([https://github.com/rminetto](https://github.com/rminetto/slicing)) to generate images for each layer and creates the `.hdf5` file with the structural vision of the layers and its properties.
+### Step 1: Input and Initial Processing
 
+The first cell prompts you to input an `.stl` or `.pgm` file. It then utilizes the [Optimal Algorithm for 3D Triangle Mesh Slicing]([https://github.com/rminetto](https://github.com/rminetto/slicing) project to generate images for each layer. These images are used to create a `.hdf5` file, which stores the structural visualization of the layers along with their properties.
 
+### Step 2: Thin Wall Detection
+
+The second cell identifies thin features in the images that might disappear if an offset operation is performed. These regions, known as `Thin Wall regions`, are enclosed as geometric shapes within each layer. The detected regions are saved back into the `.hdf5` file, and you can visualize the mapped regions for each layer.
+
+### Step 3: Contour and Void Analysis
+
+The third cell requests input for the maximum number of contours allowed and the maximum size of void elements tolerated in the process. It then calculates the maximum number of contours that can be generated without exceeding the acceptable void size relative to the melting pool area. The resulting areas are referred to as `Offset Regions`.
+
+### Step 4: Contour Connections and Bottleneck Detection
+
+The fourth cell generates connections between internal and external contours, creating `Offset Bridges`. These bridges are later used as part of the contour, reducing the need to interrupt material deposition. Additionally, it scans the areas within the contours to identify any potential bottlenecks in the internal filling process.
 
 # Example Models
 

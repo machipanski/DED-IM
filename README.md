@@ -15,13 +15,13 @@ Developed in Python, the method takes a 3D model as input, along with machine-sp
 
 # Using the Program
 
-To use the program, simply execute the cells in the Jupyter Notebook file named `main.ipynb` in sequence. The program processes each step to generate a structured .hdf5 file, culminating in the creation of a Gcode file containing the generated paths.
+To use the program, simply execute the cells in the Jupyter Notebook file named `main.ipynb` in sequence. The program processes each step to generate a structured `.hdf5` file, culminating in the creation of a Gcode file containing the generated paths.
 
 ## Mapping
 
 ### Step 1: Input and Initial Processing
 
-The first cell prompts you to input an `.stl` or `.pgm` file. It then utilizes the [Optimal Algorithm for 3D Triangle Mesh Slicing]([https://github.com/rminetto](https://github.com/rminetto/slicing) project to generate images for each layer. These images are used to create a `.hdf5` file, which stores the structural visualization of the layers along with their properties.
+The first cell prompts you to input an `.stl` or `.pgm` file. It then utilizes the [Optimal Algorithm for 3D Triangle Mesh Slicing](https://github.com/rminetto/slicing) project to generate images for each layer. These images are used to create a `.hdf5` file, which stores the structural visualization of the layers along with their properties.
 
 ### Step 2: Thin Wall Detection
 
@@ -34,8 +34,43 @@ The third cell requests input for the maximum number of contours allowed and the
 ### Step 4: Contour Connections and Bottleneck Detection
 
 The fourth cell generates connections between internal and external contours, creating `Offset Bridges`. These bridges are later used as part of the contour, reducing the need to interrupt material deposition. Additionally, it scans the areas within the contours to identify any potential bottlenecks in the internal filling process.
+The new `Bottleneck regions` are again separated from the rest of the image as spaces to utilize different filling strategies. 
 
-# Example Models
+If there is any superposition between Offset Bridges and Bottleneck regions, the Bottleneck is denominated `Crossover Bridge` and is included into the contours path planning. Otherwise the Bottleneck regios is a `Zigzag Bridge` and is included into the internal filling path planning.
+
+### Step 5: Zigzag regions
+
+The last regions to be mapped are processed in the fifth cell. Any area big enought is now divided by monotonic areas in the orientation of the raster of an zigzag-style filling strategy. 
+
+### Step 6: Mapping visualization
+
+Every layer is shown as a combination of its mapped regions: blue for Zigzags, black for Thin Walls, green for Offsets, purple for Zigzag bridges, red for Offset bridges and orange for Crossover bridges.
+
+## Path Plannig
+
+### Step 7: Individual Offset routes
+
+### Step 8: Individual Bridges routes
+
+### Step 9: Individual Zigzag routes
+
+### Step 10: Internar weaving
+
+### Step 11: Individual Thin wall routes
+
+### Step 12: Paths Start and End definition for each island
+
+### Step 13: External routes unification
+
+### Step 14: Internal routes unification
+
+### Step 15: Thin walls integration
+
+### Step 16: Final route
+
+### Step 17: G-code generation
+
+## Example Models
 
 There are single-layer simulations represented by single images into the  `<your-local-repository>/input` folder.
 The 3D models used to test the algorithm are all present into the  `<your-local-repository>/input/stl_models` folder.
@@ -43,11 +78,11 @@ The 3D models used to test the algorithm are all present into the  `<your-local-
 **Atention:** Due to the stert of the process relying on a older version of the `slicing with images` project, some of the models can be rotated to diferent positions, so it may be necessary to save the models in different orientations before generating the desired slices.
 
 
-# Outputs
+## Outputs
 
 # Useful stuff
 
-The site for the `-hdf5` file visualizer is [here](https://www.hdfgroup.org/solutions/hdf5/)
+The site for the `.hdf5` file visualizer is [here](https://www.hdfgroup.org/solutions/hdf5/)
 
 ```shell
 python generate_nonfire_masks.py

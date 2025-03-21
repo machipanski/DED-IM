@@ -50,9 +50,22 @@ Every layer is shown as a combination of its mapped regions: blue for Zigzags, b
 
 ### Step 7: Individual Offset routes
 
+Every offset region is individualy divided by the sequential contours with an offset defined by the configurations in the `solda_config.yaml` file. After this, each region has its loops connected in order to generate a closed-loop unique route. 
+
+> [!NOTE]
+> The filling strategies pesent in this version of the code are still been studied. We plan to implement different choices of compactible strategies for each region
+
 ### Step 8: Individual Bridges routes
 
+The generation of routes for Offset bridges is a simple pair of traces in order to connect the two regions it connects.
+
+Zigzag bridges are filled with a weaving pattern, folowing the direction between the Zigzag regions they connect.
+
+Crossover Bridges are filled with the same weaving pattern, but the ends of the lines are directly directed to stay the closest possible to each o the Offset regions each bridge connects.
+
 ### Step 9: Individual Zigzag routes
+
+
 
 ### Step 10: Internar weaving
 
@@ -77,7 +90,7 @@ The 3D models used to test the algorithm are all present into the  `<your-local-
 
 **Atention:** Due to the stert of the process relying on a older version of the `slicing with images` project, some of the models can be rotated to diferent positions, so it may be necessary to save the models in different orientations before generating the desired slices.
 
-
+<!-- 
 ## Outputs
 
 # Useful stuff
@@ -124,8 +137,7 @@ keywords = {Active fire detection, Active fire segmentation, Active fire dataset
 ```
 
 Or access the [preprinted version](https://arxiv.org/abs/2101.03409).
-
-
+-->
 # License
 
 This work is licensed under a

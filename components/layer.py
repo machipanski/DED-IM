@@ -20,7 +20,7 @@ from components import points_tools as pt
 import matplotlib.pyplot as plt
 
 if TYPE_CHECKING:
-    from files import System_Paths
+    from components.files import System_Paths
     from components.zigzag import ZigZag
     from typing import List
 

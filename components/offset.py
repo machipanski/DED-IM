@@ -14,7 +14,7 @@ import concurrent.futures
 from components import skeleton as sk
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from files import System_Paths
+    from components.files import System_Paths
     from typing import List
     from components.layer import Layer
 

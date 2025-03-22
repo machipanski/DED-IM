@@ -7,7 +7,7 @@ import cv2
 import numpy as np
 from components import skeleton as sk
 from skimage.morphology import disk, thin
-from elements import (
+from components.elements import (
     MEIO_DO_CAMINHO,
     PONTAS_SOLTAS,
     INTERSECCOES,

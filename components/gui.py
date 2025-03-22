@@ -1,5 +1,5 @@
 from easygui import multenterbox, fileopenbox, buttonbox, choicebox, msgbox
-from files import System_Paths
+from components.files import System_Paths
 import os
 import re
 from typing import List

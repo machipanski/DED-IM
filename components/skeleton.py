@@ -1,7 +1,7 @@
 from cProfile import label
 import cv2
 import numpy as np
-import ploters
+import components.ploters as ploters
 import networkx as nx
 from components import morphology_tools as mt, path_tools
 from skimage.morphology import disk

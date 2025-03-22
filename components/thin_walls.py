@@ -3,7 +3,7 @@ from bdb import effective
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from files import System_Paths
+    from components.files import System_Paths
     from typing import List
 import numpy as np
 from components import images_tools as it

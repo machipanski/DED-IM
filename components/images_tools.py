@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from components.layer import Layer
     from typing import List
-    from files import System_Paths
+    from components.files import System_Paths
 import itertools
 import cv2
 import numpy as np

@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from components.zigzag import ZigZag
     from typing import List
     from components.layer import Layer, Island
-    from files import System_Paths
+    from components.files import System_Paths
     from components.bottleneck import Bridge
 
 """Parte do código direcionado para grafos e sequencias determinadas de pontos"""
@@ -2252,3 +2252,28 @@ def skel_to_graph(sem_galhos, separation_degree):
     # nx.draw(F, nx.get_node_attributes(F, 'coords'), with_labels=True)
     # F.nodes._nodes["J1"]
     return F, aaaa, trunks_pxls
+
+
+def comprimento_da_trajetoria():
+    import os
+    import numpy as np
+    import math
+    with open("traj interna.txt") as f:
+        lido = f.readlines()
+        f.close()
+    lido = [x.strip("\n") for x in lido] 
+    lido = [x.split(", ") for x in lido] 
+    lido = lido[:-1]
+    lido = [[float(x[0]), float(x[1])] for x in lido]
+    modulos = [math.sqrt((x[0]**2)+(x[1]**2)) for x in lido]
+    comprimento = np.sum(modulos)
+    print(f'comprimento da trajetoria={comprimento}')
+
+    area_preench = 11 #mm² do imageJ
+    raio_toroide = 37.5 # mm medido
+    comp_traj = comprimento #mm do codigo G calculado acima
+    diam_fio = 1.2 #mm medido
+    area_fio = math.pi*((diam_fio/2)**2) #mm²
+    vol_preench = (2*math.pi*raio_toroide*area_preench)
+    Ws_Vd = vol_preench/(area_fio*comp_traj)
+    print(f'Relação de velocidades:{Ws_Vd}')

@@ -15,7 +15,73 @@ Developed in Python, the method takes a 3D model as input, along with machine-sp
 
 # Using the Program
 
+To use the program, simply execute the cells in the Jupyter Notebook file named `main.ipynb` in sequence. The program processes each step to generate a structured `.hdf5` file, culminating in the creation of a Gcode file containing the generated paths.
 
+## Mapping
+
+### Step 1: Input and Initial Processing
+
+The first cell prompts you to input an `.stl` or `.pgm` file. It then utilizes the [Optimal Algorithm for 3D Triangle Mesh Slicing](https://github.com/rminetto/slicing) project to generate images for each layer. These images are used to create a `.hdf5` file, which stores the structural visualization of the layers along with their properties.
+
+### Step 2: Thin Wall Detection
+
+The second cell identifies thin features in the images that might disappear if an offset operation is performed. These regions, known as `Thin Wall regions`, are enclosed as geometric shapes within each layer. The detected regions are saved back into the `.hdf5` file, and you can visualize the mapped regions for each layer.
+
+### Step 3: Contour and Void Analysis
+
+The third cell requests input for the maximum number of contours allowed and the maximum size of void elements tolerated in the process. It then calculates the maximum number of contours that can be generated without exceeding the acceptable void size relative to the melting pool area. The resulting areas are referred to as `Offset Regions`.
+
+### Step 4: Contour Connections and Bottleneck Detection
+
+The fourth cell generates connections between internal and external contours, creating `Offset Bridges`. These bridges are later used as part of the contour, reducing the need to interrupt material deposition. Additionally, it scans the areas within the contours to identify any potential bottlenecks in the internal filling process.
+The new `Bottleneck regions` are again separated from the rest of the image as spaces to utilize different filling strategies. 
+
+If there is any superposition between Offset Bridges and Bottleneck regions, the Bottleneck is denominated `Crossover Bridge` and is included into the contours path planning. Otherwise the Bottleneck regios is a `Zigzag Bridge` and is included into the internal filling path planning.
+
+### Step 5: Zigzag regions
+
+The last regions to be mapped are processed in the fifth cell. Any area big enought is now divided by monotonic areas in the orientation of the raster of an zigzag-style filling strategy. 
+
+### Step 6: Mapping visualization
+
+Every layer is shown as a combination of its mapped regions: blue for Zigzags, black for Thin Walls, green for Offsets, purple for Zigzag bridges, red for Offset bridges and orange for Crossover bridges.
+
+## Path Plannig
+
+### Step 7: Individual Offset routes
+
+Every offset region is individualy divided by the sequential contours with an offset defined by the configurations in the `solda_config.yaml` file. After this, each region has its loops connected in order to generate a closed-loop unique route. 
+
+> [!NOTE]
+> The filling strategies pesent in this version of the code are still been studied. We plan to implement different choices of compactible strategies for each region
+
+### Step 8: Individual Bridges routes
+
+The generation of routes for Offset bridges is a simple pair of traces in order to connect the two regions it connects.
+
+Zigzag bridges are filled with a weaving pattern, folowing the direction between the Zigzag regions they connect.
+
+Crossover Bridges are filled with the same weaving pattern, but the ends of the lines are directly directed to stay the closest possible to each o the Offset regions each bridge connects.
+
+### Step 9: Individual Zigzag routes
+
+
+
+### Step 10: Internar weaving
+
+### Step 11: Individual Thin wall routes
+
+### Step 12: Paths Start and End definition for each island
+
+### Step 13: External routes unification
+
+### Step 14: Internal routes unification
+
+### Step 15: Thin walls integration
+
+### Step 16: Final route
+
+### Step 17: G-code generation
 
 ## Example Models
 
@@ -24,10 +90,12 @@ The 3D models used to test the algorithm are all present into the  `<your-local-
 
 **Atention:** Due to the stert of the process relying on a older version of the `slicing with images` project, some of the models can be rotated to diferent positions, so it may be necessary to save the models in different orientations before generating the desired slices.
 
-
-# Outputs
+<!-- 
+## Outputs
 
 # Useful stuff
+
+The site for the `.hdf5` file visualizer is [here](https://www.hdfgroup.org/solutions/hdf5/)
 
 ```shell
 python generate_nonfire_masks.py
@@ -69,8 +137,7 @@ keywords = {Active fire detection, Active fire segmentation, Active fire dataset
 ```
 
 Or access the [preprinted version](https://arxiv.org/abs/2101.03409).
-
-
+-->
 # License
 
 This work is licensed under a

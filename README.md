@@ -1,6 +1,6 @@
 # DED-IM: A Novel Method for Mapping and Path Planning in Wire Arc Directed Energy Deposition
 
-![screenshot](imageabstract.png)
+![screenshot](images_readme/imageabstract.png)
 
 ## Authors
 

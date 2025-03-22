@@ -17,7 +17,7 @@ from cv2 import getStructuringElement, MORPH_RECT
 from scipy.spatial import distance_matrix, distance
 from scipy.ndimage import distance_transform_edt
 from skimage.segmentation import flood_fill
-from timer import Timer
+from components.timer import Timer
 
 
 class DivisionLine:

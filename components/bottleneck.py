@@ -22,7 +22,7 @@ from scipy.ndimage import distance_transform_edt
 from scipy import ndimage as ndi
 from skimage.segmentation import watershed
 from skimage.feature import peak_local_max
-from timer import Timer
+from components.timer import Timer
 from skimage.feature import corner_harris, corner_subpix, corner_peaks
 
 

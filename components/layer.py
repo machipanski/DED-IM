@@ -9,7 +9,7 @@ from components.thin_walls import ThinWallRegions
 from components.offset import OffsetRegions
 from components.zigzag import ZigZagRegions
 from components.bottleneck import BridgeRegions
-from timer import Timer
+from components.timer import Timer
 import numpy as np
 import concurrent.futures
 from functools import wraps

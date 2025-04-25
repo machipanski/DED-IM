@@ -1,0 +1,8 @@
+.aider*
+.env
+welding_config - BACKUP.yaml
+input/stl_models/nao funfando
+input/single layer examples/nao funfante
+input/sliced/*
+# !input/sliced/
+components/requirementsbackup.txt

@@ -220,6 +220,7 @@ class Bridge:
             if num == 1:
                 linked_offsets.append(offset_region.name)
         self.linked_offset_regions = linked_offsets
+        return
 
     def get_linked_zigzags(self, zigzag_regions):
         linked_zigzags = []
@@ -229,6 +230,7 @@ class Bridge:
             if num == 1:
                 linked_zigzags.append(zr.name)
         self.linked_zigzag_regions = linked_zigzags
+        return
 
 
 class BridgeRegions:
@@ -485,6 +487,18 @@ class BridgeRegions:
                     counter += 1
             return
 
+        def filter_trunks_if_tip_minimum(norm_reduced_origins):
+            filtered_trunks = []
+            for trunk in norm_reduced_origins:
+                tips = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
+                if not tips:
+                    continue
+                tip_values = [trunk[tip[0], tip[1]] for tip in tips]
+                non_zero_min = np.min(trunk[trunk > 0])
+                if not non_zero_min in tip_values:
+                    filtered_trunks.append(trunk)
+            return filtered_trunks
+
         norm_trunks, norm_dist_map = separate_trunks()
         minus_bigger_than_2wd = break_too_big_parts(norm_trunks, norm_dist_map)
         origin_candidates = separate_truks_with_botlenecks(minus_bigger_than_2wd)
@@ -492,8 +506,13 @@ class BridgeRegions:
             reduce_origin(x, necks_max_paths, norm_dist_map) for x in origin_candidates
         ]
         norm_reduced_origins = [y[0] for y in reduced]
+        norm_reduced_filtered_origins = filter_trunks_if_tip_minimum(
+            norm_reduced_origins
+        )
         initial_points = [x[1] for x in reduced]
-        close_bridges(norm_reduced_origins, initial_points, self.medial_transform)
+        close_bridges(
+            norm_reduced_filtered_origins, initial_points, self.medial_transform
+        )
         return
 
     def make_cross_over_bridges(self, prohibited_areas, offsets_mst):

@@ -897,18 +897,21 @@ def find_points_of_contact(
             a2 = zigzags[int(edge[1][1:])]
             grow = 1
             interface = dilate_and_search(a1, a2, 1)
-            while np.sum(interface) == 0:
+            while np.sum(interface) == 0 and grow < path_radius_larg * 2:
                 grow = grow + 1
                 interface = dilate_and_search(a1, a2, grow)
             separated, _, num = it.divide_by_connected(interface)
             if num > 1:
                 sums = [np.sum(x) for x in separated]
                 interface = separated[np.argmax(sums)]
-            interface_pts = pt.x_y_para_pontos(np.nonzero(interface))
-            center = pt.points_center(interface_pts)
-            interfaces.append(interface)
-            centers.append(center)
-            interface_types.append(has_bridge)
+            if np.sum(interface) > 0:
+                interface_pts = pt.x_y_para_pontos(np.nonzero(interface))
+                center = pt.points_center(interface_pts)
+                interfaces.append(interface)
+                centers.append(center)
+                interface_types.append(has_bridge)
+            else:
+                print("Error: no interface found")
     return interfaces, centers, interface_types
 
 
@@ -982,38 +985,46 @@ def generate_guide_line(region, base_frame, prohibited_areas):
         |______3_____|
     """
     region.make_contour(base_frame)
-    bound_box = boundingRect(region.area_contour[0])
-    region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
-    end_of_lines = [
-        [bound_box[0], region.center_coords[0]],
-        [region.center_coords[1], bound_box[1]],
-        [bound_box[0] + bound_box[2], region.center_coords[0]],
-        [region.center_coords[1], bound_box[1] + bound_box[3]],
-    ]
-    end_of_lines = pt.invert_x_y(end_of_lines)
-    candidates = end_of_lines.copy()
-    master_line = []
-    while np.sum(master_line) == 0:
-        if candidates:
-            closest_point_indx = np.argmin(
-                distance_matrix([list(region.center_coords)], candidates, 2)
-            )
-            closest_point = random.choice(candidates)
-            line = it.draw_line(
-                np.zeros(base_frame), region.center_coords, closest_point
-            )
-            dilated_line = mt.dilation(line, kernel_size=16)
-            master_line = line
-        else:
-            candidates = end_of_lines.copy()
-            closest_point_indx = np.argmin(
-                distance_matrix([list(region.center_coords)], candidates, 2)
-            )
-            closest_point = candidates[closest_point_indx]
-            master_line = it.draw_line(
-                np.zeros(base_frame), region.center_coords, closest_point
-            )
-    return master_line, end_of_lines.index(closest_point)
+    # bound_box = boundingRect(region.area_contour[0])
+    # region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
+    region.center_coords = pt.calculate_centroid(region.img)
+    # end_of_lines = [
+    #     [bound_box[0], region.center_coords[0]],
+    #     [region.center_coords[1], bound_box[1]],
+    #     [bound_box[0] + bound_box[2], region.center_coords[0]],
+    #     [region.center_coords[1], bound_box[1] + bound_box[3]],
+    # ]
+    # end_of_lines = pt.invert_x_y(end_of_lines)
+    # candidates = end_of_lines.copy()
+    all_loops = np.zeros(base_frame)
+    for loop in region.loops:
+        all_loops = np.logical_or(all_loops, loop.route)
+    cutter_line, _, direction_index = it.extend_line_random_to_touch(
+        all_loops, region.center_coords, minimum=2
+    )
+    # master_line = []
+    # while np.sum(master_line) == 0:
+    #     if candidates:
+    #         closest_point_indx = np.argmin(
+    #             distance_matrix([list(region.center_coords)], candidates, 2)
+    #         )
+    #         closest_point = random.choice(candidates)
+    #         line = it.draw_line(
+    #             np.zeros(base_frame), region.center_coords, closest_point
+    #         )
+    #         dilated_line = mt.dilation(line, kernel_size=16)
+    #         master_line = line
+    #     else:
+    #         candidates = end_of_lines.copy()
+    #         closest_point_indx = np.argmin(
+    #             distance_matrix([list(region.center_coords)], candidates, 2)
+    #         )
+    #         closest_point = candidates[closest_point_indx]
+    #         master_line = it.draw_line(
+    #             np.zeros(base_frame), region.center_coords, closest_point
+    #         )
+    # return master_line, end_of_lines.index(closest_point)
+    return cutter_line, direction_index
 
 
 def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
@@ -2280,7 +2291,8 @@ def points_from_region(
     for reg in region_list:
         image_routes = reg.route
         if hasattr(reg, "route_b"):
-            image_routes = np.logical_or(image_routes, reg.route_b)
+            if np.sum(reg.route_b) > 0:
+                image_routes = np.logical_or(image_routes, reg.route_b)
         image_routes = mt.dilation(image_routes, kernel_size=6)
         points_poutes = pt.img_to_points(image_routes)
         # A2 = pt.img_to_points(mt.dilation(reg.route_b, kernel_size=6))

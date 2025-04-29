@@ -1,6 +1,7 @@
 from __future__ import annotations
 import copy
 import itertools
+import random
 import cv2
 import numpy as np
 from components import morphology_tools as mt
@@ -382,3 +383,36 @@ def take_the_bigger_area(img: np.ndarray):
         separated_areas.append(area)
     area_sums = list(map(lambda x: np.sum(x), separated_areas))
     return separated_areas[np.argmax(area_sums)]
+
+
+def extend_line_random_to_touch(image, origin, minimum=1):
+    directions = [
+        (0, -1),  # Left
+        (-1, 0),  # Up
+        (0, 1),  # Right
+        (1, 0),  # Down
+        # (-1, -1),  # Up-Left
+        # (-1, 1),  # Up-Right
+        # (1, -1),  # Down-Left
+        # (1, 1),  # Down-Right
+    ]
+    touches_counter = 0
+    flag_touch = False
+    direction = random.choice(directions)
+    direction_index = directions.index(direction)
+    extended_line = np.zeros_like(image)
+    y, x = origin
+    while 0 <= y < image.shape[0] and 0 <= x < image.shape[1]:
+        if image[y, x] > 0 and (y, x) != origin:
+            touches_counter += 1
+        extended_line[y, x] = 1
+        y += direction[0]
+        x += direction[1]
+        if touches_counter == minimum:
+            flag_touch = True
+            break
+    if flag_touch:
+        print("tried to extend in another direction")
+        return extended_line, flag_touch, direction_index
+    else:
+        return extend_line_random_to_touch(image, origin, minimum=minimum)

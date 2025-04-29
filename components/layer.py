@@ -707,7 +707,7 @@ class Layer:
     def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
-        mask_distancer = mt.make_distancer(self, "bridg", percentage=sob_int_ext_per)
+        mask_distancer = mt.make_distancer(self, "int_ext", percentage=sob_int_ext_per)
         internal_mask_dist = mt.make_distancer(
             self, "bridg", percentage=self.sob_bridg_per
         )
@@ -788,16 +788,20 @@ class Layer:
 
     def make_zigzag_routes(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
+        mask_distancer = mt.make_distancer(
+            self, "int_ext", percentage=self.sob_int_ext_per
+        )
         for isl in self.islands:
             with Timer(f"Generating zigzag routes, Layer:{self.name}"):
                 folders.load_zigzags_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
-                        self.base_frame, self.path_radius_larg, self.path_radius_int_ext
+                        self.base_frame, self.path_radius_larg, mask_distancer
                     )
 
         with Timer("Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
+            folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
     def connect_zigzags(self, folders: System_Paths):

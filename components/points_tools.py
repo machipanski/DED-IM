@@ -114,6 +114,15 @@ def points_center(pts_list):
     return center_coords
 
 
+def calculate_centroid(binary_image):
+    filled_pixels = np.argwhere(binary_image > 0)
+    if filled_pixels.size == 0:
+        raise ValueError("No filled pixels found in the image.")
+    centroid = np.mean(filled_pixels, axis=0)
+    centroid = tuple(np.round(centroid).astype(int))
+    return centroid
+
+
 def x_y_para_pontos(Xlist_Ylist):
     """[listX, listY] to list(y,x)"""
     pts_list = []

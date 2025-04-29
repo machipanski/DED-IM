@@ -3,6 +3,7 @@
 welding_config - BACKUP.yaml
 input/stl_models/nao funfando
 input/single layer examples/nao funfante
+components/requirementsbackup.txt
+output/*
 input/sliced/*
 # !input/sliced/
-components/requirementsbackup.txt

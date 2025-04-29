@@ -4,6 +4,7 @@ import numpy as np
 from components import skeleton as sk
 from skimage.morphology import disk, thin
 from typing import TYPE_CHECKING
+
 if TYPE_CHECKING:
     from components.layer import Layer
 from components.elements import (
@@ -15,7 +16,6 @@ from components.elements import (
     EXCESSIVE_DIAGONALS,
     CROSSES,
 )
-
 
 
 def closing(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
@@ -120,7 +120,7 @@ def make_mask(layer: Layer, size: str) -> np.ndarray:
         mask = disk(round(layer.path_radius_tw))
     if size == "half_tw":
         mask = disk(round(layer.path_radius_tw * 0.5))
-    if size == "3_4_tw": 
+    if size == "3_4_tw":
         mask = disk(round(layer.path_radius_tw * 0.75))
     if size == "3_2_tw":
         mask = disk(round(layer.path_radius_tw * 1.5))
@@ -159,12 +159,12 @@ def make_mask(layer: Layer, size: str) -> np.ndarray:
     return mask
 
 
-def make_distancer(layer: Layer, region: str, percentage:float=50) -> np.ndarray:
+def make_distancer(layer: Layer, region: str, percentage: float = 50) -> np.ndarray:
     """Creates a mask element for morphological operations
-     when a spacer is made for overlap between welding tracks 
-     in relation to their total diameter. Therefore,
-     50% (standard) returns the element the size of the solitary track
-     (real diameter of the welding program)"""
+    when a spacer is made for overlap between welding tracks
+    in relation to their total diameter. Therefore,
+    50% (standard) returns the element the size of the solitary track
+    (real diameter of the welding program)"""
     if region == "tw":
         orig_diam_mm = layer.diam_tw_real
     if region == "cont":
@@ -173,8 +173,12 @@ def make_distancer(layer: Layer, region: str, percentage:float=50) -> np.ndarray
         orig_diam_mm = layer.diam_bridg_real
     if region == "larg":
         orig_diam_mm = layer.diam_larg_real
-    displacement = orig_diam_mm*((100-percentage)/100) #para isolar o diametro real da trilha
-    mask = disk(round(displacement*layer.pxl_per_mm))
+    if region == "int_ext":
+        orig_diam_mm = layer.diam_larg_real
+    displacement = orig_diam_mm * (
+        (100 - percentage) / 100
+    )  # para isolar o diametro real da trilha
+    mask = disk(round(displacement * layer.pxl_per_mm))
     return mask
 
 

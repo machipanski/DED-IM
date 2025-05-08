@@ -45,7 +45,7 @@ def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
         if errmsg == "":
             break
         fieldValues = multenterbox(errmsg, title, fieldNames, fieldValues)
-        print("Reply was:", fieldValues)
+        print("   Reply was:", fieldValues)
     fieldValues = [float(x) for x in fieldValues]
     return fieldValues
 
@@ -109,7 +109,7 @@ def ask_parameters_internal_routes():
     msg = "Internal routes parameters"
     title = "Internal routes parameters"
     fieldNames = ["Internal-external overlap(%)"]
-    fieldDefs = [40]
+    fieldDefs = [20]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 

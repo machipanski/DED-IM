@@ -12,7 +12,7 @@ class Timer(object):
 
     def __exit__(self, type, value, traceback):
         print(
-            "finnished -> "
+            "     Finnished -> "
             + str(self.name)
             + " - Total time: "
             + str((time.time() - self.tstart))

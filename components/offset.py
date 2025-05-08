@@ -318,7 +318,7 @@ class OffsetRegions:
                 f"Lvl_{n_levels:03d}",
                 f"/{layer_name}/{island_name}/offsets/levels",
             )
-        print(f"Island: {island_name} Levels number: {n_levels}")
+        print(f"   Island: {island_name} Levels number: {n_levels}")
         self.levels = levels
         self.n_levels = n_levels
         return
@@ -523,8 +523,9 @@ class OffsetRegions:
                     else:
                         maior = 0
                     print(
-                        str(loop)
-                        + " Void total:"
+                        "   "
+                        + str(loop)
+                        + "   Void total:"
                         + str(candidate.lost_area_sum)
                         + " biggest void:"
                         + str(maior)
@@ -537,8 +538,9 @@ class OffsetRegions:
                 else:
                     if len(sums) > 0:
                         print(
-                            str(loop)
-                            + " Void total:"
+                            "   "
+                            + str(loop)
+                            + "   Void total:"
                             + str(candidate.lost_area_sum)
                             + " biggest void:"
                             + str(sums[np.argmax(sums)] / ideal_sum)
@@ -546,8 +548,9 @@ class OffsetRegions:
                         )
                     else:
                         print(
-                            str(loop)
-                            + " Void total:"
+                            "   "
+                            + str(loop)
+                            + "   Void total:"
                             + str(candidate.lost_area_sum)
                             + "Bw -> blocked by maximum offsets"
                         )

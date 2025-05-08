@@ -152,23 +152,93 @@ class Subregion:
                 a.name = i
         return new_list_areas
 
+    def analyze_images_with_erosion(self, areas, path_radius):
+        """
+        Analyzes a list of binary images. For each image, computes the difference between
+        the image and its erosion by a structuring element of path_radius diameter.
+        For each connected body in the difference, if the number of pixels is greater
+        than the size of the structuring element, appends the body to a list.
+
+        Args:
+            images (list of numpy.ndarray): List of binary images (values 0 and 1).
+            path_radius (int): Radius of the structuring element used for erosion.
+
+        Returns:
+            list of numpy.ndarray: List of connected bodies that meet the size criteria.
+        """
+        result_bodies = []
+        images = [x.img for x in areas]
+        structuring_element = mt.disk(path_radius)
+        structuring_element_size = np.sum(structuring_element)
+        for image in images:
+            eroded_image = mt.erosion(image, kernel_size=1.25 * path_radius)
+            if np.sum(eroded_image) > 0:
+                reconstructed_image = mt.dilation(
+                    eroded_image, kernel_size=1.25 * path_radius
+                )
+                difference = np.logical_and(image, np.logical_not(reconstructed_image))
+                aaa, labeled_image, num_features = it.divide_by_connected(difference)
+                for region_id in range(1, num_features + 1):
+                    # connected_body = it.sum_imgs(
+                    #     [labeled_image == region_id, reconstructed_image]
+                    # )
+                    connected_body = labeled_image == region_id
+                    connected_body = mt.opening(
+                        connected_body, kernel_size=path_radius * 0.5
+                    )
+                    # y_coords_orig, x_coords_orig = np.nonzero(image)
+                    # x_size_orig = np.max(x_coords_orig) - np.min(x_coords_orig)
+                    if np.sum(connected_body) > 0:
+                        y_coords_rec, x_coords_rec = np.nonzero(connected_body)
+                        x_size_rec = np.max(x_coords_rec) - np.min(x_coords_rec)
+                        # difference_x = x_size_orig - x_size_rec
+                        if (
+                            # np.sum(connected_body) > structuring_element_size
+                            # or
+                            # difference_x
+                            np.sum(connected_body) > 2 * structuring_element_size
+                            and x_size_rec > path_radius * 4
+                        ):
+                            result_bodies.append(labeled_image == region_id)
+        if len(result_bodies) > 0:
+            aaaaa = it.sum_imgs_colored(result_bodies)
+            counter = len(areas)
+            for i, j in itertools.product(areas, result_bodies):
+                if np.sum(np.logical_and(i.img, j)) > 0:
+                    indx = areas.index(i)
+                    areas[indx].img = np.logical_and(i.img, np.logical_not(j))
+                    areas.append(ShadowArea(counter, j))
+        return areas
+
     def scan_monotonic(self, path_radius, base_frame, ideal_sum):
         shadow_img, areas = self.create_shadow_img(path_radius)
+        areas = self.analyze_images_with_erosion(areas, path_radius)
+        divided_small_img = it.sum_imgs_colored([x.img for x in areas])
+        # if len(divided_segments) > 0:
+        #     aaaaa = it.sum_imgs(divided_segments)
+        # counter = len(areas)
+        # for i, j in itertools.product(areas, divided_segments):
+        #     if np.sum(np.logical_and(i.img, j)) > 0:
+        #         indx = areas.index(i)
+        #         areas[indx].img = np.logical_and(i.img, np.logical_not(j))
+        #         areas.append(ShadowArea(counter, j))
         areas = it.neighborhood_imgs(areas)
-        if len(areas) == 1:
-            if np.sum(mt.opening(self.img, kernel_size=path_radius * 2)) > 0:
-                self.labeled_monotonic_regions = self.img
-                self.areas_somadas = self.img
-                self.regions.append(ZigZag(0, self.labeled_monotonic_regions))
-        else:
+        if len(areas) > 1:
             monotonic_regions, self.labeled_monotonic_regions, self.areas_somadas = (
                 self.unite_small_monotonic_areas(
                     areas, path_radius, base_frame, ideal_sum
                 )
             )
+            aaaaaaaaaa = self.labeled_monotonic_regions
             for i, mr in enumerate(monotonic_regions):
                 if np.sum(mt.opening(mr.img, kernel_size=path_radius)) > 0:
                     self.regions.append(ZigZag(i, mr.img))
+        else:
+            if np.sum(mt.opening(self.img, kernel_size=path_radius * 2)) > 0:
+                self.labeled_monotonic_regions = self.img
+                self.areas_somadas = self.img
+                self.regions.append(ZigZag(0, self.labeled_monotonic_regions))
+        # aaaaaaa = it.sum_imgs_colored([x.img for x in self.regions])
         return
 
     def trace_divisions(self, rest_of_picture_f2, base_frame, limites):
@@ -253,8 +323,12 @@ class Subregion:
             # ideal_sum = np.sum(mt.make_mask())
             return max_radius / path_radius, sum_area / ideal_sum
 
+        divided_small_img = it.sum_imgs_colored([x.img for x in areas])
         monotonic_regions = copy.deepcopy(areas)
         for i in np.arange(0, len(monotonic_regions)):
+            # radius_pctg, _ = max_fit_inside(
+            #     monotonic_regions[i].img, path_radius, ideal_sum
+            # )
             radius_pctg, _ = max_fit_inside(
                 monotonic_regions[i].img, path_radius, ideal_sum
             )
@@ -273,6 +347,7 @@ class Subregion:
                             composed_image, base_frame, 1
                         )
                         interface_sizes.append(np.sum(interface))
+                    # vizinho_escolhido = vizinhos[np.argmax(interface_sizes)]
                     vizinho_escolhido = vizinhos[np.argmax(interface_sizes)]
                     region.unite_with = vizinho_escolhido
                     if monotonic_regions[vizinho_escolhido].unite_with:
@@ -343,7 +418,7 @@ class ZigZagRegions:
             mask_line = np.zeros(np.add(mask_full_larg.shape, [4, 4]))
             mask_line[:, int(mask_full_larg.shape[0] / 2)] = 1
             old_zigzag = all_internal_routes(macro_areas, base_frame)
-            with Timer("Finding internal voids"):
+            with Timer("   Finding internal voids"):
                 separated_fail_imgs = find_internal_fails(
                     original_img,
                     base_frame,
@@ -354,12 +429,12 @@ class ZigZagRegions:
                     offsets,
                     thin_walls,
                 )
-            with Timer("Searching contacts"):
+            with Timer("   Searching contacts"):
                 connected_fails, interface_lines = connect_fails_to_zigzags(
                     old_zigzag, separated_fail_imgs, path_radius_larg
                 )
 
-            with Timer("Creating weavings"):
+            with Timer("   Creating weavings"):
                 # aaaa = it.sum_imgs(separated_fail_imgs+separated_connected_fails)
                 fail_internal_zigzags = []
                 succesfuly_weaved = []
@@ -458,7 +533,7 @@ class ZigZagRegions:
                 internal_border_img.astype(np.uint8), np.ones_like(internal_border_img)
             )
             opened = mt.opening(filled, kernel_size=path_radius)
-            with Timer("Creating the three possible options:"):
+            with Timer("   Creating the three possible options:"):
                 if np.sum(opened) > 0:
                     [new_zigzag_a, new_zigzag_b] = zig_zag_two_options(
                         internal_border_img,
@@ -486,7 +561,7 @@ class ZigZagRegions:
                     region.img, lines, n_lines, new_path_radius, contours, base_frame
                 )
                 zig_options.append(new_zigzag_c)
-            with Timer("Calculating best route:"):
+            with Timer("   Calculating best route:"):
                 zig_fills = [
                     mt.dilation(x.astype(np.uint8), kernel_size=path_radius)
                     for x in zig_options
@@ -1114,6 +1189,6 @@ def connect_fails_to_zigzags(old_zigzag, separated_fail_imgs, path_radius_larg):
         # new_separated = it.image_subtract(new_separated,new_line)
         new_conections.append(new_line)
         cleanned_separated.append(new_separated)
-    aaa = it.sum_imgs(separated + old_zigzag)
-    aaaa = it.sum_imgs(cleanned_separated + old_zigzag)
+    # aaa = it.sum_imgs(separated + old_zigzag)
+    # aaaa = it.sum_imgs(cleanned_separated + old_zigzag)
     return cleanned_separated, new_conections

@@ -1,11 +1,12 @@
 from __future__ import annotations
 import copy
 import datetime
+from operator import concat
 import numpy as np
 import concurrent.futures
 from cv2 import imread
 from functools import wraps
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Concatenate
 from components import images_tools as it, path_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
@@ -41,6 +42,8 @@ class Island:
         self.island_route: List[Path] = []
         self.prohibited_areas = []
         self.macro_areas_weaved = []
+        self.jumps = []
+        self.regions = []
         if args:
             self.name = args[0]
             self.img = args[1]
@@ -82,6 +85,7 @@ class Layer:
         self.mm_per_pxl: float = 0
         self.islands: List[Island]
         self.selected = []
+        self.layer_final_path = []
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -92,23 +96,24 @@ class Layer:
             folders.load_offsets_hdf5(self.name, island)
             folders.load_zigzags_hdf5(self.name, island)
             folders.load_bridges_hdf5(self.name, island)
-            with Timer("Finding the ext-int union point"):
+            with Timer("  Finding the ext-int union point"):
                 # if hasattr(island, "zigzags") and hasattr(island, "offsets"):
                 if len(island.offsets.regions) > 0:
-                    if len(island.zigzags.regions) > 0:
-                        island.ext_start, island.int_start = (
-                            path_tools.connect_internal_external(
-                                island, self.path_radius_int_ext
+                    if hasattr(island, "zigzags"):
+                        if len(island.zigzags.regions) > 0:
+                            island.ext_start, island.int_start = (
+                                path_tools.connect_internal_external(
+                                    island, self.path_radius_int_ext
+                                )
                             )
-                        )
                     else:
                         # if hasattr(island, "offsets"):
                         island.ext_start = pt.img_to_points(
                             island.offsets.regions[0].route.astype(np.uint8)
                         )[0]
                         island.int_start = []
-                print(island.ext_start)
-                with Timer("saving route images"):
+                print("   " + str(island.ext_start))
+                with Timer("  saving route images"):
                     folders.save_props_hdf5(
                         f"/{self.name}/{island.name}",
                         island.__dict__,
@@ -125,24 +130,25 @@ class Layer:
             itr = island.internal_tree_route
             etr = island.external_tree_route
             twtr = island.thinwalls_tree_route
-            with Timer("Finding the ext-int union point"):
+            with Timer("  Creating island route img"):
                 if etr.sequence == []:
+                    print("   No external route found")
                     pass
                 else:
-                    if itr.sequence == []:
-                        pass
-                    else:
+                    if not itr.sequence == []:
                         itr.sequence = [list(x) for x in itr.sequence]
+                    if not etr.sequence == []:
                         etr.sequence = [list(x) for x in etr.sequence]
+                    if not twtr.sequence == []:
                         twtr.sequence = [list(x) for x in twtr.sequence]
-                        island_route_path_for_img = (
-                            etr.sequence + itr.sequence + twtr.sequence
-                        )
-                        island_island_route_img = it.points_to_img(
-                            island_route_path_for_img, np.zeros(self.base_frame)
-                        )
+                    island_route_path_for_img = (
+                        etr.sequence + itr.sequence + twtr.sequence
+                    )
+                    island_island_route_img = it.points_to_img(
+                        island_route_path_for_img, np.zeros(self.base_frame)
+                    )
 
-            with Timer("Connecting all parts"):
+            with Timer("  Connecting all parts"):
                 internal_simpl = path_tools.simplifica_retas_masterV2(
                     itr.sequence, 0.002, itr.jumps
                 )
@@ -157,7 +163,7 @@ class Layer:
                     island_route_path, np.zeros(self.base_frame)
                 )
                 if self.odd_layer == 1:
-                    print("layer Rotated 90 degrees")
+                    print("   Layer Rotated 90 degrees")
                     etr.sequence = path_tools.rotate_path_odd_layer(
                         external_simpl, self.base_frame
                     )
@@ -174,29 +180,69 @@ class Layer:
                         island_route_path,
                         np.zeros([self.base_frame[1], self.base_frame[0]]),
                     )
-                island_new_regions = [itr.regions + etr.regions + twtr.regions]
-                island_saltos = [itr.jumps + etr.jumps + twtr.jumps]
+                island.regions = [itr.regions + etr.regions + twtr.regions]
+                island.jumps = [itr.jumps + etr.jumps + twtr.jumps]
                 island.island_route = Path(
                     "island_route",
                     island_route_path,
-                    island_new_regions,
-                    jumps=island_saltos,
+                    island.regions,
+                    jumps=island.jumps,
                     img=island_island_route_img,
                 )
 
-        with Timer("Saving route images"):
-            folders.save_final_routes_hdf5(self.name, self.islands)
+        if not isinstance(self.islands, list):
+            self.islands = [self.islands]
+        final_sequence = []
+        for island in self.islands:
+            pth = island.island_route.sequence
+            final_sequence.extend(pth)
+        final_jumps = []
+        for island in self.islands:
+            jps = island.island_route.jumps
+            final_jumps.extend(jps)
+        final_regions = []
+        for island in self.islands:
+            rgns = island.island_route.regions
+            final_regions.extend(rgns)
+        final_sequence_img = it.chain_to_lines(
+            final_sequence, np.zeros(self.base_frame)
+        )
+
+        if self.odd_layer == 1:
+            print("   Layer Rotated 90 degrees")
+            final_sequence = path_tools.rotate_path_odd_layer(
+                final_sequence, self.base_frame
+            )
+            final_sequence_img = it.chain_to_lines(
+                final_sequence,
+                np.zeros([self.base_frame[1], self.base_frame[0]]),
+            )
+            if len(final_jumps[0]) > 0:
+                final_jumps = path_tools.rotate_path_odd_layer(
+                    final_jumps[0], self.base_frame
+                )
+
+        self.layer_final_path = Path(
+            "layer_final_route",
+            final_sequence,
+            final_regions,
+            img=final_sequence_img,
+            jumps=final_jumps,
+        )
+
+        with Timer("  Saving route images"):
+            folders.save_final_routes_hdf5(self)
         return
 
     def close_routes_external(self, folders: System_Paths):
-        with Timer("Connecting external routes"):
+        with Timer("  Connecting external routes"):
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_offsets_hdf5(self.name, isl)
                 folders.load_zigzags_hdf5(self.name, isl)
                 folders.load_bridges_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
-                with Timer("Connecting Offset bridges"):
+                with Timer("  onnecting Offset bridges"):
                     isl.external_tree_route = path_tools.connect_offset_bridges(
                         isl,
                         self.base_frame,
@@ -204,11 +250,11 @@ class Layer:
                         self.path_radius_cont,
                         self.sob_cont_per,
                     )
-                with Timer("Conecting pontes de Crossover bridges"):
+                with Timer("  Conecting pontes de Crossover bridges"):
                     isl.external_tree_route = path_tools.connect_cross_over_bridges(isl)
                     isl.ext_start = isl.external_tree_route.sequence[0]
                 isl.external_tree_route.get_img(self.base_frame)
-        with Timer("Saving route images"):
+        with Timer("  Saving route images"):
             folders.save_external_routes_hdf5(self.name, self.islands)
         return
 
@@ -219,18 +265,18 @@ class Layer:
             folders.load_zigzags_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
-            with Timer("Connecting neighboring zigzags"):
+            with Timer("  Connecting neighboring zigzags"):
                 isl.internal_tree_route = path_tools.start_internal_route(
                     isl, mt.make_mask(self, "full_larg"), self.path_radius_larg
                 )
             if isl.internal_tree_route != []:
-                with Timer("Connecting zigzag bridges"):
+                with Timer("  Connecting zigzag bridges"):
                     isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
                     isl.internal_tree_route.get_img(self.base_frame)
             else:
-                print("No internal routes found")
+                print("   No internal routes found")
                 isl.internal_tree_route = Path("0", [], [])
-        with Timer("Saving route images"):
+        with Timer("  Saving route images"):
             folders.save_internal_routes_hdf5(self.name, self.islands)
         return
 
@@ -238,13 +284,13 @@ class Layer:
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.load_thin_walls_hdf5(self.name, isl)
-            with Timer("Converting thin walls"):
+            with Timer("  Converting thin walls"):
                 isl.thinwalls_tree_route = path_tools.connect_thin_walls(
                     isl, self.path_radius_cont
                 )
                 isl.thinwalls_tree_route.get_img(self.base_frame)
 
-        with Timer("Saving route images"):
+        with Timer("  Saving route images"):
             folders.save_thinwall_final_routes_hdf5(self.name, self.islands)
 
     def create_layers(
@@ -262,7 +308,7 @@ class Layer:
             return
 
         list_layers = []
-        with Timer("Creating layers"):
+        with Timer("  Creating layers"):
             if file_name.endswith(".stl") or file_name.endswith(".STL"):
                 hdf5_file_name = file_name.rsplit("/", 1)[-1]
                 hdf5_file_name = hdf5_file_name.replace(".stl", "")
@@ -282,7 +328,7 @@ class Layer:
                 list_layers = [layer]
             for layer in list_layers:
                 divide_islands(layer)
-        with Timer("Saving layers"):
+        with Timer("  Saving layers"):
             ts = datetime.datetime.now()
             folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
             folders.save_folders_structure(f"{hdf5_file_name}_{ts.date()}")
@@ -344,7 +390,7 @@ class Layer:
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/thin_walls")
 
-        with Timer("Creating thin walls"):
+        with Timer("  Creating thin walls"):
             processed_regions: List[Island] = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
@@ -356,7 +402,7 @@ class Layer:
             processed_regions.sort(key=lambda x: x.name)
             self.islands = processed_regions
 
-        with Timer("Removing thin walls from the layer"):
+        with Timer("  Removing thin walls from the layer"):
             for island in self.islands:
                 island.rest_of_picture_f1 = copy.deepcopy(self.original_img)
                 for reg in island.thin_walls.regions:
@@ -364,18 +410,18 @@ class Layer:
                         island.rest_of_picture_f1, reg.img
                     )
 
-        with Timer("saving images of the regions"):
+        with Timer("  Saving images of the regions"):
             folders.save_regs_thinwalls_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
     def make_thin_wall_routes(self, folders: System_Paths):
-        with Timer("Creating thin wall routes"):
+        with Timer("  Creating thin wall routes"):
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_thin_walls_hdf5(self.name, isl)
                 isl.thin_walls.make_routes_tw(self.path_radius_tw, self.sob_tw_per)
-        with Timer("Saving route images"):
+        with Timer("  Saving route images"):
             for isl in self.islands:
                 for reg in isl.thin_walls.regions:
                     folders.save_img_hdf5(
@@ -428,9 +474,10 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 island.offsets.create_levels(
-                    rest_of_picture_f1,
+                    rest_in_this_island,
                     mt.make_mask(self, "full_cont"),
                     mt.make_distancer(
                         self, region="cont", percentage=self.sob_cont_per
@@ -445,12 +492,13 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 for level in island.offsets.levels:
                     level.create_loops(
                         mt.make_mask(self, "full_cont"),
                         self.base_frame,
-                        rest_of_picture_f1,
+                        rest_in_this_island,
                         # self.name,
                         # island.name,
                         # level.name,
@@ -462,7 +510,8 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 island.offsets.create_influence_regions(self.base_frame)
             return island
 
@@ -471,10 +520,11 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 island.offsets.calculate_voids(
                     self.base_frame,
-                    rest_of_picture_f1,
+                    rest_in_this_island,
                     island.offsets.levels,
                     island.offsets.n_levels,
                     self.path_radius_cont,
@@ -486,9 +536,10 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 island.rest_of_picture_f2 = island.offsets.make_regions(
-                    rest_of_picture_f1,
+                    rest_in_this_island,
                     self.base_frame,
                     self.path_radius_cont,
                     self.void_max,
@@ -503,7 +554,8 @@ class Layer:
             rest_of_picture_f1 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f1"
             )
-            if np.sum(rest_of_picture_f1) > 0:
+            rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
+            if np.sum(rest_in_this_island) > 0:
                 island.offsets.all_valid_loops = island.offsets.make_valid_loops(
                     self.base_frame
                 )
@@ -520,25 +572,25 @@ class Layer:
         for isl in self.islands:
             folders.create_new_hdf5_group(f"/{self.name}/{isl.name}/offsets")
 
-        with Timer("Creating offset levels"):
+        with Timer("  Creating offset levels"):
             load_and_make_levels()
 
-        with Timer("Creating loops"):
+        with Timer("  Creating loops"):
             create_loops_in_island()
 
-        with Timer("Creating influence regions"):
+        with Timer("  Creating influence regions"):
             create_influence_regions_in_island()
 
-        with Timer("Creating Offset regions"):
+        with Timer("  Creating Offset regions"):
             calculate_island_voids()
 
-        with Timer("Removing regions from the layer"):
+        with Timer("  Removing regions from the layer"):
             make_regions_in_islands()
 
-        with Timer("Reunindo todos os loops em uma unica imagem"):
+        with Timer("  Reunindo todos os loops em uma unica imagem"):
             make_island_valid_loops()
 
-        with Timer("Saving region images"):
+        with Timer("  Saving region images"):
             folders.save_regs_offsets_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
@@ -553,7 +605,7 @@ class Layer:
                 self.path_radius_cont,
                 amendment_size,
             )
-        with Timer("Saving routes images"):
+        with Timer("  Saving routes images"):
             for isl in self.islands:
                 # if np.sum(isl.rest_of_picture_f2) > 0:
                 # if len(isl.rest_of_picture_f2) != 0:
@@ -667,16 +719,16 @@ class Layer:
 
         # removing areas outside the contours
         folders.load_offsets_hdf5(self.name, isl)
-        with Timer("Creating Offset bridges"):
+        with Timer("  Creating Offset bridges"):
             make_islands_offset_bridges()
 
-        with Timer("Creating Zigzag bridges"):
+        with Timer("  Creating Zigzag bridges"):
             make_islands_zigzag_bridges()
 
-        with Timer("Creating Crossover bridges"):
+        with Timer("  Creating Crossover bridges"):
             make_islands_cross_over_bridges()
 
-        with Timer("Removing bridges from layer"):
+        with Timer("  Removing bridges from layer"):
             for island in self.islands:
                 rest_of_picture_f2 = folders.load_img_hdf5(
                     f"/{self.name}/{island.name}", "rest_of_picture_f2"
@@ -685,7 +737,7 @@ class Layer:
                     rest_of_picture_f2, self.base_frame
                 )
         last_prohibited_areas = np.zeros_like(self.original_img)
-        with Timer("Generating prohibited areas"):
+        with Timer("  Generating prohibited areas"):
             if not int(self.name[2:]) == n_layers:
                 for isl in self.islands:
                     for reg in isl.bridges.offset_bridges:
@@ -697,7 +749,7 @@ class Layer:
                             last_prohibited_areas, reg.img
                         )
 
-        with Timer("Saving region images"):
+        with Timer("  Saving region images"):
             folders.save_regs_bridges_hdf5(self.name, self.islands)
             folders.save_img_hdf5(
                 f"/{self.name}", "prohibited_areas", self.prohibited_areas
@@ -724,7 +776,7 @@ class Layer:
                     self.base_frame,
                     isl.rest_of_picture_f2,
                 )
-            with Timer("Saving routes images"):
+            with Timer("  Saving routes images"):
                 folders.save_routes_bridges_hdf5(self.name, self.islands)
                 folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
@@ -777,11 +829,10 @@ class Layer:
         folders.load_islands_hdf5(self)
         for island in self.islands:
             folders.load_bridges_hdf5(self.name, island)
-        for isl in self.islands:
-            isl.zigzags = ZigZagRegions()
-        with Timer("Finding monotonic regions"):
+            island.zigzags = ZigZagRegions()
+        with Timer("  Finding monotonic regions"):
             find_islands_monotonic()
-        with Timer("Saving monotonic regions images"):
+        with Timer("  Saving monotonic regions images"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
@@ -792,14 +843,14 @@ class Layer:
             self, "int_ext", percentage=self.sob_int_ext_per
         )
         for isl in self.islands:
-            with Timer(f"Generating zigzag routes, Layer:{self.name}"):
+            with Timer(f"  Generating zigzag routes, Layer:{self.name}"):
                 folders.load_zigzags_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
                         self.base_frame, self.path_radius_larg, mask_distancer
                     )
 
-        with Timer("Saving images of zigzag routes"):
+        with Timer("  Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
@@ -845,9 +896,9 @@ class Layer:
 
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
-        with Timer("Creating region graphs"):
+        with Timer("  Creating region graphs"):
             make_island_graph()
-        with Timer("Connecting Zigzag bridges"):
+        with Timer("  Connecting Zigzag bridges"):
             get_island_linked_zigzags()
 
         for isl in self.islands:
@@ -858,7 +909,7 @@ class Layer:
                     self.base_frame,
                 )
 
-        with Timer("Saving graphs"):
+        with Timer("  Saving graphs"):
             zigzags_path = f"/{self.name}/{isl.name}/zigzags"
             for isl in self.islands:
                 if hasattr(isl, "zigzags"):
@@ -881,7 +932,7 @@ class Layer:
         return
 
     def internal_weaving(self, internal_weaving, folders: System_Paths):
-        with Timer("Generating internal weavings"):
+        with Timer("  Generating internal weavings"):
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_offsets_hdf5(self.name, isl)
@@ -907,12 +958,12 @@ class Layer:
                     )
                     if np.sum(isl.zigzags.all_zigzags) == 0:
                         isl.zigzags.all_zigzags = original_all_zigzags
-                        print("something whent wrong, restoring all zigzags")
+                        print("   Something whent wrong, restoring all zigzags")
                     if np.sum(isl.zigzags.macro_areas_weaved) == 0:
                         isl.zigzags.macro_areas_weaved = original_macro_areas_weaved
-                        print("something whent wrong, restoring macro areas weaved")
+                        print("   Something whent wrong, restoring macro areas weaved")
 
-        with Timer("Saving routes"):
+        with Timer("  Saving routes"):
             for isl in self.islands:
                 if hasattr(isl, "zigzags"):
                     folders.save_img_hdf5(

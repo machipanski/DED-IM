@@ -412,7 +412,7 @@ def extend_line_random_to_touch(image, origin, minimum=1):
             flag_touch = True
             break
     if flag_touch:
-        print("tried to extend in another direction")
+        print("   Tried to extend in another direction")
         return extended_line, flag_touch, direction_index
     else:
         return extend_line_random_to_touch(image, origin, minimum=minimum)

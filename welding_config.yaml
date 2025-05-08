@@ -1,16 +1,6 @@
 file: welding_config.yaml
 lista_programas:
-- bead_diameter: 4
-  bead_superposition: 50.0
-  filling_strategy: line simples 360spd
-  name: thinw 4diam
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: Thin Walls
-  voltage: 16.6
-  wire_speed: 3.6
-- bead_diameter: 4
+- bead_diameter: 4.5
   bead_superposition: 50.0
   filling_strategy: line simples 360spd
   name: thinw 4.5diam
@@ -20,66 +10,16 @@ lista_programas:
   used_region: Thin Walls
   voltage: 16.6
   wire_speed: 3.6
-- bead_diameter: 4
-  bead_superposition: 50
-  filling_strategy: offsets
-  name: offsets 4diam 50sobr 360spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: contours
-  voltage: 16.6
-  wire_speed: 1.8
-- bead_diameter: 4
-  bead_superposition: 20
-  filling_strategy: offsets
-  name: offsets 4diam 20sobr 360spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: contours
-  voltage: 16.6
-  wire_speed: 1.8
 - bead_diameter: 4.5
   bead_superposition: 20
   filling_strategy: offsets
-  name: offsets 4.5diam 20sobr 360spd CAM1
+  name: offsets 4.5diam 20sobr 360spd
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 360.0
   used_region: contours
   voltage: 16.6
   wire_speed: 1.8
-- bead_diameter: 4
-  bead_superposition: 23
-  filling_strategy: offsets
-  name: offsets 4diam 23sobr 360spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: contours
-  voltage: 16.6
-  wire_speed: 1.8
-- bead_diameter: 4.0
-  bead_superposition: 70.0
-  filling_strategy: zigzag vai e volta
-  name: largas 4diam 70sobr 425spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 425.0
-  used_region: wide_areas
-  voltage: 16.6
-  wire_speed: 3.6
-- bead_diameter: 4
-  bead_superposition: 50.0
-  filling_strategy: zigzag vai e volta
-  name: largas 4diam 50sobr 425spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 425
-  used_region: wide_areas
-  voltage: 16.6
-  wire_speed: 3.6
 - bead_diameter: 4
   bead_superposition: 20.0
   filling_strategy: zigzag vai e volta
@@ -90,16 +30,6 @@ lista_programas:
   used_region: wide_areas
   voltage: 16.6
   wire_speed: 3.6
-- bead_diameter: 4
-  bead_superposition: 50.0
-  filling_strategy: weaving
-  name: estrang 4diam 50sobr 400spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 400.0
-  used_region: bottleneck
-  voltage: 16.4
-  wire_speed: 3.0
 - bead_diameter: 4
   bead_superposition: 20.0
   filling_strategy: weaving
@@ -120,33 +50,3 @@ lista_programas:
   used_region: bottleneck
   voltage: 16.6
   wire_speed: 1.8
-- bead_diameter: 4
-  bead_superposition: 30
-  filling_strategy: weaving
-  name: estrang 4diam 30sobr 360spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: bottleneck
-  voltage: 16.6
-  wire_speed: 1.8
-- bead_diameter: 4
-  bead_superposition: 50
-  filling_strategy: weaving
-  name: estrang 4diam 50sobr 360spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 360.0
-  used_region: bottleneck
-  voltage: 16.6
-  wire_speed: 1.8
-- bead_diameter: 4
-  bead_superposition: 50.0
-  filling_strategy: weaving
-  name: estrang 4diam 50sobr 300spd
-  off_pause: 600.0
-  on_pause: 800.0
-  travel_speed: 300
-  used_region: bottleneck
-  voltage: 16.6
-  wire_speed: 1.5

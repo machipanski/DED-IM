@@ -452,9 +452,9 @@ class BridgeRegions:
                             inicial_pnt,
                         )
                     )
-                    print("Closed a bridge")
+                    print("   Closed a bridge")
                 except Exception:
-                    print("Bridge failed")
+                    print("   Bridge failed")
                     bridge_img = []
                     pass
                 counter = 0
@@ -523,7 +523,7 @@ class BridgeRegions:
         for n, [zigzag_bridge, offset_bridge] in enumerate(combinations):
             if np.equal(zigzag_bridge.contour[0], zigzag_bridge.contour[1]).all():
                 # print("Aqui eu não deixei a parede unica virar crossover")
-                print("ERROR: special case")
+                print("   ERROR: special case")
             elif set(zigzag_bridge.linked_offset_regions) == set(
                 offset_bridge.linked_offset_regions
             ):
@@ -560,7 +560,7 @@ class BridgeRegions:
             maior_prioridade = posicoes[
                 np.argmax([substitutions[x][2] for x in posicoes])
             ]
-            print("Element:", elementos, "Higher priority:", maior_prioridade)
+            print("   Element:", elementos, "Higher priority:", maior_prioridade)
             substitutions_filtradas.append(substitutions[maior_prioridade][1])
         for zigzag_bridge, offset_bridge in substitutions_filtradas:
             origin_marks = zigzag_bridge.origin_mark
@@ -604,7 +604,7 @@ class BridgeRegions:
         rest_of_picture,
     ):
         """Calls the make_route() function for each region"""
-        with Timer("Making Offset bridges routes"):
+        with Timer("   Making Offset bridges routes"):
             processed_regions_ob = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
@@ -621,7 +621,7 @@ class BridgeRegions:
                     processed_regions_ob.append(l.result())
             processed_regions_ob.sort(key=lambda x: x.name)
             self.offset_bridges = processed_regions_ob
-        with Timer("Making Zigzag bridges routes"):
+        with Timer("   Making Zigzag bridges routes"):
             processed_regions_zb = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
@@ -639,7 +639,7 @@ class BridgeRegions:
                     processed_regions_zb.append(l.result())
             processed_regions_zb.sort(key=lambda x: x.name)
             self.zigzag_bridges = processed_regions_zb
-        with Timer("Making Crossover bridges routes"):
+        with Timer("   Making Crossover bridges routes"):
             processed_regions_cob = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
@@ -771,7 +771,7 @@ def close_bridge_contour(
         lines_do_limite = overlap == 2
         _, labeled, labeled_n = it.divide_by_connected(lines_do_limite)
         if labeled_n == 1:
-            print("Special case: Only one line around origin")
+            print("   Special case: Only one line around origin")
             possible_c1_c2, counter_accepted, curvature_points = (
                 decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg)
             )
@@ -801,7 +801,7 @@ def close_bridge_contour(
             # line1 = labeled == 1
             return line1, line2
         else:
-            print("ERROR: No lines around origin")
+            print("   ERROR: No lines around origin")
             return np.zeros_like(trunk), np.zeros_like(trunk)
         points_trunk = pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool)))
         points_line1 = pt.img_to_points(mt.hitmiss_ends_v2(line1.astype(bool)))
@@ -874,7 +874,7 @@ def close_bridge_contour(
                 bridge_img = np.logical_and(bridge_img, rest_of_picture)
                 linetopo = linebaixo = np.zeros_like(line1)
             else:
-                print("Special case: no solution yet")
+                print("   Special case: no solution yet")
                 # TODO: still need to find a workaround here
         else:
             unique_points = []
@@ -1015,7 +1015,7 @@ def remove_zigzag_bridges_conflict(bridge_a, bridge_b, rest_of_picture):
         bridge_b.img = new_bridge_b
         bridge_b.contour = new_contour_elements_b
     else:
-        print("Special case: no solution yet")
+        print("   Special case: no solution yet")
         # TODO: still need to find a workaround here
     return
 
@@ -1545,7 +1545,7 @@ def reduce_origin(candidate, necks_max_paths, norm_dist_map):
     separated, _, n = it.divide_by_connected(reduced_origin)
     if n > 1:
         reduced_origin = it.take_the_bigger_area(reduced_origin)
-        print("ERROR")
+        print("   ERROR")
     return reduced_origin * norm_dist_map, origin_chain[0]
 
 
@@ -1761,7 +1761,7 @@ def weaving_zigzag(
             extr_int_pts[1],
             extr_int_pts[3],
         ]
-        print("Corrected sequence: b and c inverted")
+        print("   Corrected sequence: b and c inverted")
         new_zigzag = internal_cut(
             new_contour, lines_transversais, extr_int_pts, sentido
         )
@@ -1774,7 +1774,7 @@ def weaving_zigzag(
         if n > 1:
             new_zigzag = ddd
     if len(reference_points_b) < 2:
-        print("ERROR: no solution yet")
+        print("   ERROR: no solution yet")
     return new_zigzag
 
 

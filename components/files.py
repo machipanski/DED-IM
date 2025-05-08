@@ -149,11 +149,24 @@ class System_Paths:
             layer.islands = []
             for l_key, l_item in layer_group.items():
                 if isinstance(l_item, h5py.Group):
-                    island_group = layer_group.get(l_key)
-                    layer.islands.append(Island(**island_group.attrs))
-                    for i_key, i_item in island_group.items():
-                        if isinstance(i_item, h5py.Dataset):
-                            setattr(layer.islands[-1], i_key, np.array(i_item))
+                    if l_key == "layer_final_path":
+                        if (
+                            not hasattr(layer, "layer_final_path")
+                            or len(layer.layer_final_path) == 0
+                        ):
+                            layer.layer_final_path = Path("layer_final_path", [])
+                        for name_atributo, valor_atributo in layer_group[
+                            l_key
+                        ].attrs.items():
+                            setattr(
+                                layer.layer_final_path, name_atributo, valor_atributo
+                            )
+                    else:
+                        island_group = layer_group.get(l_key)
+                        layer.islands.append(Island(**island_group.attrs))
+                        for i_key, i_item in island_group.items():
+                            if isinstance(i_item, h5py.Dataset):
+                                setattr(layer.islands[-1], i_key, np.array(i_item))
         f.close()
         os.chdir(self.home)
         return
@@ -345,7 +358,7 @@ class System_Paths:
             # else:
             local.create_dataset(name, data=adj_matrix)
         except:
-            print("ERROR: didn´t saved the graph")
+            print("   ERROR: didn´t saved the graph")
             pass
         finally:
             f.close()
@@ -369,15 +382,25 @@ class System_Paths:
                         pass
         else:
             for key, value in dict.items():
-                if isinstance(value, object):
-                    pass
-                    # if value.dtype == "O":
-                    #     pass
-                if len(np.array(value).tobytes()) <= 64 * 1024:
-                    try:
+                # if isinstance(value, object):
+                #     if not hasattr(value, "dtype"):
+                #         if isinstance(value, int):
+                #             local.attrs[key] = int(value)
+                #         elif isinstance(value, str):
+                #             local.attrs[key] = str(value)
+                #         elif isinstance(value, float):
+                #             local.attrs[key] = float(value)
+                #         else:
+                #             pass
+                try:
+                    if len(np.array(value).tobytes()) <= 64 * 1024:
                         local.attrs[key] = value
-                    except:
-                        pass
+                except:
+                    if isinstance(value, str):
+                        newvalue = [
+                            item if item else [999999, 999999] for item in value
+                        ]
+                        local.attrs[key] = newvalue
         f.close()
         os.chdir(self.home)
         return
@@ -393,7 +416,7 @@ class System_Paths:
             # else:
             local.create_dataset(name, data=seq)
         except:
-            print("ERROR: didn´t saved the sequence")
+            print("   ERROR: didn´t saved the sequence")
             pass
         finally:
             f.close()
@@ -544,27 +567,38 @@ class System_Paths:
         for isl in islands:
             if np.sum(isl.rest_of_picture_f3) > 0:
                 path_bridges = f"/{layer_name}/{isl.name}/bridges"
-                for reg in isl.bridges.offset_bridges:
-                    region_path = f"{path_bridges}/offset_bridges/{reg.name}"
-                    self.save_img_hdf5(region_path, "route", reg.route.astype(bool))
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_props_hdf5(region_path, reg.__dict__)
-                for reg in isl.bridges.zigzag_bridges:
-                    region_path = f"{path_bridges}/zigzag_bridges/{reg.name}"
-                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_props_hdf5(region_path, reg.__dict__)
-                for reg in isl.bridges.cross_over_bridges:
-                    region_path = f"{path_bridges}/cross_over_bridges/{reg.name}"
-                    self.save_img_hdf5(region_path, f"route", reg.route.astype(bool))
-                    self.save_img_hdf5(
-                        region_path, f"route_b", reg.route_b.astype(bool)
-                    )
-                    self.save_img_hdf5(region_path, f"trail", reg.trail.astype(bool))
-                    self.save_img_hdf5(
-                        region_path, f"trail_b", reg.trail_b.astype(bool)
-                    )
-                    self.save_props_hdf5(region_path, reg.__dict__)
+                if hasattr(isl, "bridges"):
+                    for reg in isl.bridges.offset_bridges:
+                        region_path = f"{path_bridges}/offset_bridges/{reg.name}"
+                        self.save_img_hdf5(region_path, "route", reg.route.astype(bool))
+                        self.save_img_hdf5(
+                            region_path, f"trail", reg.trail.astype(bool)
+                        )
+                        self.save_props_hdf5(region_path, reg.__dict__)
+                    for reg in isl.bridges.zigzag_bridges:
+                        region_path = f"{path_bridges}/zigzag_bridges/{reg.name}"
+                        self.save_img_hdf5(
+                            region_path, f"route", reg.route.astype(bool)
+                        )
+                        self.save_img_hdf5(
+                            region_path, f"trail", reg.trail.astype(bool)
+                        )
+                        self.save_props_hdf5(region_path, reg.__dict__)
+                    for reg in isl.bridges.cross_over_bridges:
+                        region_path = f"{path_bridges}/cross_over_bridges/{reg.name}"
+                        self.save_img_hdf5(
+                            region_path, f"route", reg.route.astype(bool)
+                        )
+                        self.save_img_hdf5(
+                            region_path, f"route_b", reg.route_b.astype(bool)
+                        )
+                        self.save_img_hdf5(
+                            region_path, f"trail", reg.trail.astype(bool)
+                        )
+                        self.save_img_hdf5(
+                            region_path, f"trail_b", reg.trail_b.astype(bool)
+                        )
+                        self.save_props_hdf5(region_path, reg.__dict__)
         return
 
     def save_external_routes_hdf5(self, layer_name, islands: List[Island]):
@@ -582,19 +616,36 @@ class System_Paths:
             self.save_img_hdf5(element_path, "img", isl.external_tree_route.img)
         return
 
-    def save_final_routes_hdf5(self, layer_name, islands: List[Island]):
-        for isl in islands:
+    def save_final_routes_hdf5(self, layer: Layer):
+        layer_name = layer.name
+        for isl in layer.islands:
             element_path = f"/{layer_name}/{isl.name}/island_route"
             self.delete_item_hdf5(element_path)
             self.create_new_hdf5_group(element_path)
             self.save_props_hdf5(element_path, isl.island_route.__dict__)
-            # self.delete_item_hdf5(element_path + "/sequence")
             self.save_seq_hdf5(element_path, "sequence", isl.island_route.sequence)
             self.save_seq_hdf5(element_path, "jumps", isl.island_route.jumps)
             self.delete_item_hdf5(element_path + "/img")
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.island_route.img)
-            print(isl.island_route.sequence)
+            # self.delete_item_hdf5(element_path + "/sequence")
+            # print("   " + str(isl.island_route.sequence))
+        # self.delete_item_hdf5(f"/{layer_name}/layer_final_path")
+        self.create_new_hdf5_group(f"/{layer_name}/layer_final_path")
+        self.save_seq_hdf5(
+            f"/{layer_name}/layer_final_path",
+            "sequence",
+            layer.layer_final_path.sequence,
+        )
+        self.save_seq_hdf5(
+            f"/{layer_name}/layer_final_path", "jumps", layer.layer_final_path.jumps
+        )
+        self.save_props_hdf5(
+            f"/{layer_name}/layer_final_path", layer.layer_final_path.__dict__
+        )
+        self.save_seq_hdf5(
+            f"/{layer_name}/layer_final_path", "img", layer.layer_final_path.img
+        )
         return
 
     # save_final_routes_hdf5
@@ -638,7 +689,7 @@ class System_Paths:
             else:
                 local.create_dataset(name, compression="gzip", data=img)
         except:
-            print("ERROR: failed to save the image!")
+            print("   ERROR: failed to save the image!")
             pass
         finally:
             f.close()
@@ -656,9 +707,9 @@ class System_Paths:
         else:
             try:
                 del f[path]
-                print(f"Deleted: {path}")
+                print(f"   Deleted: {path}")
             except:
-                print("error to delete")
+                print("   error to delete")
                 pass
             finally:
                 f.close()

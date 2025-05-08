@@ -503,6 +503,10 @@ def connect_internal_external(island: Island, path_radius_int_ext):
             external_pts = pt.img_to_points(most_external)
             chosen_external = random.choice(external_pts)
             chosen_internal = []
+        if chosen_external == []:
+            print("Error: no solution yet")
+            chosen_external = random.choice(pt.img_to_points(most_external))
+            chosen_internal = []
     return chosen_external, chosen_internal
 
 
@@ -618,14 +622,18 @@ def connect_offset_bridges(
     lens = [len(x) for x in rotas_isoladas]
     circunf = 2 * 3.14 * path_radius_cont
     for i, rota in enumerate(rotas_isoladas):
-        if lens[i] > 2 * circunf:
-            lista_de_rotas.append(Path(i, rota))
-            lista_de_rotas[-1].sequence = set_first_pt_in_seq(
-                lista_de_rotas[-1].sequence,
-                list(island.ext_start),
-            )
-            lista_de_rotas[-1].get_img(base_frame)
-            lista_de_rotas[-1].get_regions(island)
+        # if lens[i] > 2 * circunf:
+        lista_de_rotas.append(Path(i, rota))
+        if len(island.ext_start) == 0:
+            island.ext_start = lista_de_rotas[-1].sequence[0]
+        lista_de_rotas[-1].sequence = set_first_pt_in_seq(
+            lista_de_rotas[-1].sequence,
+            list(island.ext_start),
+        )
+        lista_de_rotas[-1].get_img(base_frame)
+        lista_de_rotas[-1].get_regions(island)
+    if len(lista_de_rotas) == 0:
+        print("No offset bridges")
     return lista_de_rotas
 
 
@@ -985,9 +993,18 @@ def generate_guide_line(region, base_frame, prohibited_areas):
         |______3_____|
     """
     region.make_contour(base_frame)
+    region.center_coords = pt.calculate_centroid(region.img)
+    all_loops = np.zeros(base_frame)
+    loops_counter = 0
+    for loop in region.loops:
+        all_loops = np.logical_or(all_loops, loop.route)
+        loops_counter += 1
+    cutter_line, _, direction_index = it.extend_line_random_to_touch(
+        all_loops, region.center_coords, minimum=loops_counter
+    )
+    return cutter_line, direction_index
     # bound_box = boundingRect(region.area_contour[0])
     # region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
-    region.center_coords = pt.calculate_centroid(region.img)
     # end_of_lines = [
     #     [bound_box[0], region.center_coords[0]],
     #     [region.center_coords[1], bound_box[1]],
@@ -996,12 +1013,6 @@ def generate_guide_line(region, base_frame, prohibited_areas):
     # ]
     # end_of_lines = pt.invert_x_y(end_of_lines)
     # candidates = end_of_lines.copy()
-    all_loops = np.zeros(base_frame)
-    for loop in region.loops:
-        all_loops = np.logical_or(all_loops, loop.route)
-    cutter_line, _, direction_index = it.extend_line_random_to_touch(
-        all_loops, region.center_coords, minimum=2
-    )
     # master_line = []
     # while np.sum(master_line) == 0:
     #     if candidates:
@@ -1024,7 +1035,6 @@ def generate_guide_line(region, base_frame, prohibited_areas):
     #             np.zeros(base_frame), region.center_coords, closest_point
     #         )
     # return master_line, end_of_lines.index(closest_point)
-    return cutter_line, direction_index
 
 
 def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
@@ -1286,7 +1296,7 @@ def organize_points_cw(pts, origin=[]):
 def rotate_path_odd_layer(coords, base_frame):
     new_coords = []
     for p in coords:
-        if p == [0, 0]:
+        if list(p) == [0, 0]:
             new_coords.append(p)
         else:
             (y, x) = p

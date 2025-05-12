@@ -252,9 +252,11 @@ class OffsetRegions:
                         levels[l - 1].area,
                         np.logical_not(levels[l].area),
                     )
-                all_trails = it.sum_imgs(
-                    [x.trail for x in levels[l].outer_loops + levels[l].hole_loops]
-                )
+                all_trails = np.zeros(base_frame)
+                if len(levels[l].outer_loops + levels[l].hole_loops) > 0:
+                    all_trails = it.sum_imgs(
+                        [x.trail for x in levels[l].outer_loops + levels[l].hole_loops]
+                    )
                 levels[l].area_lost = np.logical_or(all_trails, levels[l].area_lost)
                 not_used_area = levels[l].divide_areas(base_frame, path_radius)
                 if (np.sum(not_used_area) > 0) and (l > 0):
@@ -569,8 +571,8 @@ class OffsetRegions:
             size_label_now = np.sum(label_img)
             if size_label_now > bead_size / 2:
                 rest_f2 = it.sum_imgs([rest_f2, label_img])
-
-        if self.regions[0]:
+        inside_first_offset = np.zeros(base_frame)
+        if len(self.regions) > 0:
             inside_first_offset = it.fill_internal_area(
                 self.regions[0].loops[0].img,
                 rest_f2,

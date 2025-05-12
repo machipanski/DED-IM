@@ -264,7 +264,8 @@ def connect_thin_walls(island: Island, path_radius_tw):
             thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
             thinwall_path_list = []
             for i, tw in enumerate(thinwall_list):
-                tw, _, _ = sk.create_prune_skel(tw, path_radius_tw)
+                # tw, _, _ = sk.create_prune_skel(tw, path_radius_tw)
+                tw, _, _ = sk.create_prune_skel(tw, 0)
                 tw_path = img_to_chain(tw.astype(np.uint8))[0]
                 one_of_the_tips = pt.x_y_para_pontos(
                     np.nonzero(mt.hitmiss_ends_v2(tw))
@@ -377,7 +378,20 @@ def connect_cross_over_bridges(island: Island) -> Path:
 
     start_path = list(
         filter(lambda x: "Reg_000" in x.regions["offsets"], island.external_tree_route)
-    )[0]
+    )
+    if len(start_path) > 0:
+        start_path = start_path[0]
+    else:
+        start_path = list(
+            filter(
+                lambda x: "Reg_000" in x.regions["thin_walls"],
+                island.external_tree_route,
+            )
+        )
+        if len(start_path) > 0:
+            start_path = start_path[0]
+        else:
+            raise ValueError("Error: no start path found")
     offssets_included = set(start_path.regions["offsets"])
     cross_overs_included = set(start_path.regions["cross_over_bridges"])
     offset_bridges_included = set(start_path.regions["offset_bridges"])
@@ -1938,6 +1952,162 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
 #     return
 
 
+def get_program_params(program, lista_programas):
+    A = list(filter(lambda x: x["name"] == program, lista_programas))[0]
+    diam = A["bead_diameter"]
+    sobrep = A["bead_superposition"]
+    vel = A["travel_speed"]
+    on_pause = A["on_pause"]
+    off_pause = A["off_pause"]
+    return diam, sobrep, vel, on_pause, off_pause
+
+
+def turn_on(output, flag_on, on_pause):
+    if flag_on == 0:
+        output += ";-------Turn ON Welding------\n"
+        output += "M42 P4 S0\n"
+        # output += f"G4 P{p_trigger_longa}\n"
+        output += f"G4 P{on_pause}\n"
+        # output += "M42 P4 S255\n"
+        # output += f"G4 P{on_pause-p_trigger_longa}\n"
+        output += ";------------------------\n"
+    return output, 1
+
+
+def turn_off(output, flag_on, off_pause=3000):
+    if flag_on == 1:
+        output += ";-------Turn OFF Welding------\n"
+        # output += "M42 P4 S0\n"
+        # output += f"G4 P{p_trigger_longa}\n"
+        output += "M42 P4 S255\n"
+        output += f"G4 P{off_pause}\n"
+        # output += f"G4 P{off_pause-p_trigger_longa}\n"
+        output += ";-------------------------\n"
+    return output, 0
+
+
+def program_change(
+    output,
+    now,
+    next_program,
+    flag_on_before,
+    vel_cont,
+    vel_bridg,
+    vel_larg,
+    vel_tw,
+    vel_vazio,
+    p_entre_int_ext,
+    p_trigger_curta,
+    p_trigger_longa,
+    off_pause_cont,
+    off_pause_bridg,
+    off_pause_larg,
+    off_pause_tw,
+    on_pause_cont,
+    on_pause_bridg,
+    on_pause_larg,
+    on_pause_tw,
+    flag_path_type,
+    off_pause=3000,
+):
+    if flag_on_before == 1:
+        output, _ = turn_off(output, flag_on_before, off_pause)
+    if next_program == 1:
+        vel = vel_cont
+        texto_mudanca = ";----Contour----\n;TYPE:WALL-OUTER\n"
+        const_perf = 5
+        off_pause = off_pause_cont
+        on_pause = on_pause_cont
+    elif next_program == 2:
+        vel = vel_bridg
+        texto_mudanca = ";----Bottleneck----\n;TYPE:SKIN\n"
+        const_perf = 8
+        off_pause = off_pause_bridg
+        on_pause = on_pause_bridg
+    elif next_program == 3:
+        vel = vel_larg
+        texto_mudanca = ";----Wide area----\n;TYPE:WALL-INNER\n"
+        const_perf = 0.5
+        off_pause = off_pause_larg
+        on_pause = on_pause_larg
+    elif next_program == 4:
+        vel = vel_tw
+        texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
+        const_perf = 0.5
+        off_pause = off_pause_tw
+        on_pause = on_pause_tw
+    else:
+        vel = vel_vazio
+        texto_mudanca = ";----Lost----\n"
+        off_pause = 0
+        on_pause = on_pause_cont
+        const_perf = 0
+    output += f";-------Changing program {now}->{next_program}------\n"
+    print(f"Switched to {flag_path_type}")
+    output += texto_mudanca
+    diferenca = next_program - now
+    if diferenca < 0:
+        diferenca = 4 + diferenca
+    if now == 1:
+        output += "M400\n"
+        output += f"G4 P{p_entre_int_ext}\n"
+    for toque in range(diferenca):
+        output += "M400\n"
+        output += "M42 P4 S0\n"
+        output += f"G4 P{p_trigger_curta}\n"
+        output += "M42 P4 S255\n"
+        output += f"G4 P{p_trigger_curta}\n"
+        output += f"G4 P{p_trigger_curta}\n"
+    output += ";-------------------------\n"
+    output += f"G1 F{vel}; speed g1\n"
+    if flag_on_before == 1:
+        output, _ = turn_on(output, 0, on_pause)
+    return output, off_pause, on_pause
+
+
+def cleanning_position(output, coords, vel_vazio, p_entre_layers):
+    output += ";-------CLEANNING POSITION------\n"
+    # output += f";POS de Corte\n"
+    output += f"G90\n"
+    output += f"G0 Y{coords[0]} F{vel_vazio}\n"
+    output += f"M400\n"
+    output += f"G0 x{coords[1]} F{vel_vazio}\n"
+    output += f"M400\n"
+    output += f"G4 P{p_entre_layers}\n"
+    output += f"G91\n"
+    output += ";------------------------\n"
+    return output
+
+
+def initial_position(output, coords, layer_heights, n_layer, vel_vazio):
+    # output += f";_______LAYER{n_layer + 1}_____\n"
+    output += f";LAYER:{n_layer}\n"
+    output += ";-------INITIAL POSITION------\n"
+    output += f"G90\n"
+    # output += f";LAYER:{i}\n"
+    output += f"G1 Z{layer_heights[n_layer]} ; Layer + 10mm\n"
+    output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
+    output += f"M400\n"
+    output += f"G91\n"
+    output += ";------------------------\n"
+    return output
+
+
+def region_points(layer: Layer, island: Island, folders: System_Paths):
+    # folders.load_bridges_hdf5(layer.name, island)
+    # print(f"name: {layer.name}/{island.name}")
+    pts_bridg = points_from_region(layer.name, folders, island, bridges=True)
+    pts_tw = points_from_region(layer.name, folders, island, tw=True)
+    pts_cont = points_from_region(layer.name, folders, island, offsets=True)
+    pts_larg = points_from_region(layer.name, folders, island, zigzags=True)
+    if layer.odd_layer == 1:
+        pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
+        pts_tw = rotate_path_odd_layer(pts_tw, layer.base_frame)
+        pts_cont = rotate_path_odd_layer(pts_cont, layer.base_frame)
+        pts_larg = rotate_path_odd_layer(pts_larg, layer.base_frame)
+    return pts_bridg, pts_tw, pts_cont, pts_larg
+
+
 def layers_to_Gcode(
     layers: List[Layer],
     folders: System_Paths,
@@ -1952,7 +2122,7 @@ def layers_to_Gcode(
     """Originaly used in an Okerlion machine using 2T mode to operate the soldering (FCT-NOVA in Portugal)"""
 
     def code_start(output, flag_ligado):
-        output, flag_ligado = turn_off(output, flag_ligado, off_pause)
+        output, flag_ligado = turn_off(output, flag_ligado)
         output += ";-------MAPPING------\n"
         output += f";DPI: {layers[0].dpi} ppp\n"
         output += f";Void_max: {layers[0].void_max} % of path_radius\n"
@@ -1965,8 +2135,8 @@ def layers_to_Gcode(
         output += f";Bead superposition: {sobrep_cont} % raio real \n"
         output += f";Travel_speed: {vel_cont} mm/min \n"
         output += f";Path_radius: {layers[0].path_radius_cont} pixels\n"
-        output += f";On_pause: {on_pause_cont} ms \n"
-        output += f";Off_pause: {off_pause_cont} ms \n"
+        # output += f";On_pause: {on_pause_cont} ms \n"
+        # output += f";Off_pause: {off_pause_cont} ms \n"
         output += ";-------Welding program 2 bottlenecks------\n"
         output += f";Program name: {layers[0].program_bridg}\n"
         output += f";Bead diameter: {diam_bridg} mm\n"
@@ -2009,168 +2179,21 @@ def layers_to_Gcode(
         # output += f"G1 F360; speed g1\n"
         return output
 
-    def turn_on(output, flag_on, on_pause):
-        if flag_on == 0:
-            output += ";-------Turn ON Welding------\n"
-            output += "M42 P4 S0\n"
-            # output += f"G4 P{p_trigger_longa}\n"
-            output += f"G4 P{on_pause}\n"
-            # output += "M42 P4 S255\n"
-            # output += f"G4 P{on_pause-p_trigger_longa}\n"
-            output += ";------------------------\n"
-        return output, 1
-
-    def turn_off(output, flag_on, off_pause):
-        if flag_on == 1:
-            output += ";-------Turn OFF Welding------\n"
-            # output += "M42 P4 S0\n"
-            # output += f"G4 P{p_trigger_longa}\n"
-            output += "M42 P4 S255\n"
-            output += f"G4 P{off_pause}\n"
-            # output += f"G4 P{off_pause-p_trigger_longa}\n"
-            output += ";-------------------------\n"
-        return output, 0
-
-    def program_change(output, now, next_program, flag_on_before, off_pause):
-        if flag_on_before == 1:
-            output, _ = turn_off(output, flag_on_before, off_pause)
-        if next_program == 1:
-            vel = vel_cont
-            texto_mudanca = ";----Contour----\n;TYPE:WALL-OUTER\n"
-            const_perf = 5
-            off_pause = off_pause_cont
-            on_pause = on_pause_cont
-        elif next_program == 2:
-            vel = vel_bridg
-            texto_mudanca = ";----Bottleneck----\n;TYPE:SKIN\n"
-            const_perf = 8
-            off_pause = off_pause_bridg
-            on_pause = on_pause_bridg
-        elif next_program == 3:
-            vel = vel_larg
-            texto_mudanca = ";----Wide area----\n;TYPE:WALL-INNER\n"
-            const_perf = 0.5
-            off_pause = off_pause_larg
-            on_pause = on_pause_larg
-        elif next_program == 4:
-            vel = vel_tw
-            texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
-            const_perf = 0.5
-            off_pause = off_pause_tw
-            on_pause = on_pause_tw
-        else:
-            vel = vel_vazio
-            texto_mudanca = ";----Lost----\n"
-            off_pause = 0
-            on_pause = on_pause_cont
-            const_perf = 0
-        output += f";-------Changing program {now}->{next_program}------\n"
-        print(f"Switched to {flag_path_type}")
-        output += texto_mudanca
-        diferenca = next_program - now
-        if diferenca < 0:
-            diferenca = 4 + diferenca
-        if now == 1:
-            output += "M400\n"
-            output += f"G4 P{p_entre_int_ext}\n"
-        for toque in range(diferenca):
-            output += "M400\n"
-            output += "M42 P4 S0\n"
-            output += f"G4 P{p_trigger_curta}\n"
-            output += "M42 P4 S255\n"
-            output += f"G4 P{p_trigger_curta}\n"
-            output += f"G4 P{p_trigger_curta}\n"
-        output += ";-------------------------\n"
-        output += f"G1 F{vel}; speed g1\n"
-        if flag_on_before == 1:
-            output, _ = turn_on(output, 0, on_pause)
-        return output, off_pause, on_pause
-
-    def cleanning_position(output, coords):
-        output += ";-------CLEANNING POSITION------\n"
-        # output += f";POS de Corte\n"
-        output += f"G90\n"
-        output += f"G0 Y{coords[0]} F{vel_vazio}\n"
-        output += f"M400\n"
-        output += f"G0 x{coords[1]} F{vel_vazio}\n"
-        output += f"M400\n"
-        output += f"G4 P{p_entre_layers}\n"
-        output += f"G91\n"
-        output += ";------------------------\n"
-        return output
-
-    def initial_position(output, coords, i):
-        output += f";_______LAYER{n_layer + 1}_____\n"
-        output += ";-------INITIAL POSITION------\n"
-        output += f"G90\n"
-        output += f";LAYER:{i}\n"
-        output += f"G1 Z{layer_heights[n_layer]} ; Layer + 10mm\n"
-        output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
-        output += f"M400\n"
-        output += f"G91\n"
-        output += ";------------------------\n"
-        return output
-
-    def region_points(layer: Layer, island):
-        # folders.load_bridges_hdf5(layer.name, island)
-        # print(f"name: {layer.name}/{island.name}")
-        pts_bridg = points_from_region(layer.name, folders, island, bridges=True)
-        pts_tw = points_from_region(layer.name, folders, island, tw=True)
-        pts_cont = points_from_region(layer.name, folders, island, offsets=True)
-        pts_larg = points_from_region(layer.name, folders, island, zigzags=True)
-        if layer.odd_layer == 1:
-            pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
-            pts_tw = rotate_path_odd_layer(pts_tw, layer.base_frame)
-            pts_cont = rotate_path_odd_layer(pts_cont, layer.base_frame)
-            pts_larg = rotate_path_odd_layer(pts_larg, layer.base_frame)
-        return pts_bridg, pts_tw, pts_cont, pts_larg
-
-    mm_per_pixel = layers[0].mm_per_pxl
-    A = list(
-        filter(
-            lambda x: x["name"] == layers[0].program_cont, configuracoes.lista_programas
-        )
-    )[0]
-    diam_cont = A["bead_diameter"]
-    sobrep_cont = A["bead_superposition"]
-    vel_cont = A["travel_speed"]
-    on_pause_cont = A["on_pause"]
-    off_pause_cont = A["off_pause"]
-    B = list(
-        filter(
-            lambda x: x["name"] == layers[0].program_bridg,
-            configuracoes.lista_programas,
-        )
-    )[0]
-    diam_bridg = B["bead_diameter"]
-    sobrep_bridg = B["bead_superposition"]
-    vel_bridg = B["travel_speed"]
-    on_pause_bridg = B["on_pause"]
-    off_pause_bridg = B["off_pause"]
-    C = list(
-        filter(
-            lambda x: x["name"] == layers[0].program_larg, configuracoes.lista_programas
-        )
-    )[0]
-    diam_larg = C["bead_diameter"]
-    sobrep_larg = C["bead_superposition"]
-    vel_larg = C["travel_speed"]
-    on_pause_larg = C["on_pause"]
-    off_pause_larg = C["off_pause"]
-    D = list(
-        filter(
-            lambda x: x["name"] == layers[0].program_tw, configuracoes.lista_programas
-        )
-    )[0]
-    diam_tw = D["bead_diameter"]
-    sobrep_tw = D["bead_superposition"]
-    vel_tw = D["travel_speed"]
-    on_pause_tw = D["on_pause"]
-    off_pause_tw = D["off_pause"]
-    off_pause = A["off_pause"]
-    on_pause = A["on_pause"]
-    p_trigger_longa = 2000
+    diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+        get_program_params(layers[0].program_cont, configuracoes.lista_programas)
+    )
+    diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
+        get_program_params(layers[0].program_bridg, configuracoes.lista_programas)
+    )
+    diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+        get_program_params(layers[0].program_larg, configuracoes.lista_programas)
+    )
+    diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
+        layers[0].program_tw, configuracoes.lista_programas
+    )
+    p_trigger_longa = 800
     p_trigger_curta = 300
+    coords = [0, 0]
     bfr = [0, 0]
     base_frame = layers[0].base_frame
     ts = datetime.datetime.now()
@@ -2179,27 +2202,40 @@ def layers_to_Gcode(
     flag_path_type = 0
     output = ""
     output = code_start(output, flag_on)
+    mm_per_pixel = layers[0].mm_per_pxl
     for n_layer, layer in enumerate(layers):
+        diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+            get_program_params(layer.program_cont, configuracoes.lista_programas)
+        )
+        diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
+            get_program_params(layer.program_bridg, configuracoes.lista_programas)
+        )
+        diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+            get_program_params(layer.program_larg, configuracoes.lista_programas)
+        )
+        diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
+            layer.program_tw, configuracoes.lista_programas
+        )
         layer_tot_lenght = 0
-        output = initial_position(output, base_coords, n_layer)
         bfr = base_coords
+        output = initial_position(
+            output, base_coords, layer_heights, n_layer, vel_vazio
+        )
         folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             counter = 0
-            # flag_path_type = 0
             last_flag = 0
             flag_on = 0
-            pts_bridg, pts_tw, pts_cont, pts_larg = region_points(layer, island)
+            pts_bridg, pts_tw, pts_cont, pts_larg = region_points(
+                layer, island, folders
+            )
             folders.load_island_paths_hdf5(layer.name, island)
             chain = [list(x) for x in island.island_route.sequence]
-            # print(chain)
             for i, p in enumerate(chain):
                 if i <= 2:
-                    # output, flag_ligado = desligamento(output, flag_ligado, off_pause)
-                    # const_perf = 0
                     flag_salto = 1
                 if p == [0, 0]:
-                    output, flag_on = turn_off(output, flag_on, off_pause)
+                    output, flag_on = turn_off(output, flag_on)
                     const_perf = 0
                     flag_salto = 1
                 else:
@@ -2218,24 +2254,34 @@ def layers_to_Gcode(
                         flag_path_type = 4
                     else:
                         flag_path_type = 0
-                    # if i == 1:
-                    #     output, flag_ligado = religamento(output, flag_ligado, on_pause)
                     if flag_path_type != last_flag:
-                        # output, flag_ligado = desligamento(output, flag_ligado, off_pause)
-                        # if last_flag == 1:
-                        #     output += f"G4 P{p_entre_int_ext}\n"
                         output, off_pause, on_pause = program_change(
-                            output, last_flag, flag_path_type, flag_on, off_pause
+                            output,
+                            last_flag,
+                            flag_path_type,
+                            flag_on,
+                            vel_cont,
+                            vel_bridg,
+                            vel_larg,
+                            vel_tw,
+                            vel_vazio,
+                            p_entre_int_ext,
+                            p_trigger_curta,
+                            p_trigger_longa,
+                            off_pause_cont,
+                            off_pause_bridg,
+                            off_pause_larg,
+                            off_pause_tw,
+                            on_pause_cont,
+                            on_pause_bridg,
+                            on_pause_larg,
+                            on_pause_tw,
+                            flag_path_type,
                         )
-                        # output, flag_ligado = religamento(output, flag_ligado, on_pause)
                         output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
                         last_flag = flag_path_type
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
-                    # if flag_salto == 1 or flag_ligado == 0:
-                    #     output, flag_ligado = desligamento(output, flag_ligado, off_pause)
-                    #     const_perf = 0
-                    # extrus = dist*const_perf
                     layer_tot_lenght += dist
                     output += (
                         f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
@@ -2246,15 +2292,14 @@ def layers_to_Gcode(
                     if flag_salto == 1:
                         output, flag_on = turn_on(output, flag_on, on_pause)
                         flag_salto = 0
-            output = cleanning_position(output, coords_corte)
-            output += ";____________________________________\n"
-            output += f"G28 X0 Y0\n"
-            print(
-                f"Total travel distance {n_layer} = {layer_tot_lenght*mm_per_pixel}mm"
-            )
-            print(
-                f"Estimated time with speed {vel_cont}mm/min = {layer_tot_lenght*mm_per_pixel/vel_cont}min\n"
-            )
+        output, flag_on = turn_off(output, flag_on, off_pause)
+        output = cleanning_position(output, coords_corte, vel_vazio, p_entre_layers)
+        output += ";____________________________________\n"
+        output += f"G28 X0 Y0\n"
+        print(f"Total travel distance {n_layer} = {layer_tot_lenght*mm_per_pixel}mm")
+        print(
+            f"Estimated time with speed {vel_cont}mm/min = {layer_tot_lenght*mm_per_pixel/vel_cont}min\n"
+        )
     output += f"G1 Z20\n"
     output += f"G28 X0\n"
     output += f"G28 Y0\n"

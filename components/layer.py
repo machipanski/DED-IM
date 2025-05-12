@@ -242,17 +242,29 @@ class Layer:
                 folders.load_zigzags_hdf5(self.name, isl)
                 folders.load_bridges_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
-                with Timer("  onnecting Offset bridges"):
-                    isl.external_tree_route = path_tools.connect_offset_bridges(
-                        isl,
-                        self.base_frame,
-                        mt.make_mask(self, "3_4_cont"),
-                        self.path_radius_cont,
-                        self.sob_cont_per,
-                    )
-                with Timer("  Conecting pontes de Crossover bridges"):
-                    isl.external_tree_route = path_tools.connect_cross_over_bridges(isl)
-                    isl.ext_start = isl.external_tree_route.sequence[0]
+                if isl.offsets.regions == []:
+                    with Timer(" Only TW"):
+                        isl.external_tree_route = Path(
+                            "OnlyTW",
+                            path_tools.img_to_chain(
+                                isl.thin_walls.regions[0].route.astype(np.uint8)
+                            )[0],
+                        )
+                        isl.external_tree_route.get_regions(isl)
+                else:
+                    with Timer(" Connecting Offset bridges"):
+                        isl.external_tree_route = path_tools.connect_offset_bridges(
+                            isl,
+                            self.base_frame,
+                            mt.make_mask(self, "3_4_cont"),
+                            self.path_radius_cont,
+                            self.sob_cont_per,
+                        )
+                    with Timer("  Conecting pontes de Crossover bridges"):
+                        isl.external_tree_route = path_tools.connect_cross_over_bridges(
+                            isl
+                        )
+                        isl.ext_start = isl.external_tree_route.sequence[0]
                 isl.external_tree_route.get_img(self.base_frame)
         with Timer("  Saving route images"):
             folders.save_external_routes_hdf5(self.name, self.islands)

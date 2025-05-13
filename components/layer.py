@@ -391,6 +391,20 @@ class Layer:
             )
             return island
 
+        def check_islands_thinWalls(island: Island, mm_per_pxl) -> List[Island, dict]:
+            island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
+            if len(island.thin_walls.regions) > 0:
+                island.thin_walls.check_thin_walls(
+                    self.name,
+                    island.name,
+                    island_img,
+                    self.base_frame,
+                    self.path_radius_tw,
+                    mt.make_mask(self, "full_tw"),
+                    mm_per_pxl,
+                )
+            return island
+
         self.pxl_per_mm = self.dpi / 25.4
         self.program_tw = name_prog
         self.mm_per_pxl = 1 / self.pxl_per_mm
@@ -407,6 +421,18 @@ class Layer:
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
                     executor.submit(make_islands_thinWalls, island, self.mm_per_pxl)
+                    for island in self.islands  # self.islands
+                ]
+                for l in concurrent.futures.as_completed(results):
+                    processed_regions.append(l.result())
+            processed_regions.sort(key=lambda x: x.name)
+            self.islands = processed_regions
+
+        with Timer("  Checking thin walls"):
+            processed_regions: List[Island] = []
+            with concurrent.futures.ThreadPoolExecutor() as executor:
+                results = [
+                    executor.submit(check_islands_thinWalls, island, self.mm_per_pxl)
                     for island in self.islands  # self.islands
                 ]
                 for l in concurrent.futures.as_completed(results):

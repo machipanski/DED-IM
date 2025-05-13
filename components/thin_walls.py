@@ -185,3 +185,37 @@ class ThinWallRegions:
         for i in self.regions:
             i.make_route(path_radius, sobrep)
         return
+
+    def check_thin_walls(
+        self,
+        layer_name,
+        island_name,
+        island_img: np.ndarray,
+        base_frame,
+        path_radius,
+        mask,
+        mm_per_pxl,
+    ):
+        filtered_tw = []
+        for tw in self.regions:
+            # img = np.logical_and(tw.img, island_img)
+            # origin = np.logical_and(tw.origin, island_img)
+            eroded_island_img = mt.erosion(island_img, kernel_size=path_radius)
+            _, eroded_island_border = mt.detect_contours(
+                eroded_island_img, return_img=True, only_external=True
+            )
+            result_first_offset = it.fill_internal_area(
+                mt.dilation(eroded_island_border, kernel_size=path_radius),
+                island_img,
+            )
+            not_using_tw = np.logical_and(tw.img, result_first_offset)
+            if 2 * np.sum(tw.img) / 3 > np.sum(not_using_tw):
+                filtered_tw.append(tw)
+
+        self.regions = filtered_tw
+        self.all_thin_walls = np.zeros_like(island_img)
+        self.all_origins = np.zeros_like(island_img)
+        for tw in self.regions:
+            self.all_thin_walls = np.logical_or(self.all_thin_walls, tw.img)
+            self.all_origins = np.logical_or(self.all_origins, tw.origin)
+        return

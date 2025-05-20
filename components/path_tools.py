@@ -529,64 +529,123 @@ def connect_offset_bridges(
 ) -> Path:
 
     def integrate_bridge(
-        todas_espirais, path_radius, extreme_points, base_frame, sob_cont_per
+        todas_espirais, path_radius, extreme_points, base_frame, sob_cont_per, origin
     ):
 
-        def filtrar_pontos(y_val, x_val):
-            validos_no_y = [p for p in todas_espirais_points if p[0] == y_val]
-            validos_no_yx = [
-                p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)
-            ]
-            return validos_no_yx
+        # def filtrar_pontos(y_val, x_val):
+        #     validos_no_y = [p for p in todas_espirais_points if p[0] == y_val]
+        #     validos_no_yx = [
+        #         p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)
+        #     ]
+        #     return validos_no_yx
 
-        def find_contacts(pontos, condicao):
-            contacts = [p for p in pontos if condicao(p[1])]
-            if len(contacts) == 0:
-                contacts = pontos
-            return contacts
+        # def find_contacts(pontos, condicao):
+        #     contacts = [p for p in pontos if condicao(p[1])]
+        #     if len(contacts) == 0:
+        #         contacts = pontos
+        #     return contacts
 
-        def closest_to_center(pontos):
-            return pontos[np.argmin([pt.distance_pts(midle_point, p) for p in pontos])]
+        # def closest_to_center(pontos):
+        #     return pontos[np.argmin([pt.distance_pts(midle_point, p) for p in pontos])]
 
-        bridge_middle_y = extreme_points[0][0]
-        bridge_higher_y = (
-            bridge_middle_y - path_radius + np.round(path_radius * sob_cont_per / 200)
+        # bridge_middle_y = extreme_points[0][0]
+        # bridge_higher_y = (
+        #     bridge_middle_y - path_radius + np.round(path_radius * sob_cont_per / 200)
+        # )
+        # bridge_lower_y = (
+        #     bridge_middle_y + path_radius - np.round(path_radius * sob_cont_per / 200)
+        # )
+        # x_extreme_points = [x[1] for x in extreme_points]
+        # midle_point = [
+        #     bridge_middle_y,
+        #     int((x_extreme_points[0] + x_extreme_points[1]) / 2),
+        # ]
+        # limites_x = [
+        #     min(x_extreme_points) - 2 * path_radius,
+        #     max(x_extreme_points) + 2 * path_radius,
+        # ]
+        # todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
+        # same_y_up_inside = filtrar_pontos(bridge_higher_y, limites_x)
+        # if len(same_y_up_inside) < 2:
+        #     same_y_up_inside = filtrar_pontos(bridge_higher_y + 1, limites_x)
+        #     if len(same_y_up_inside) < 2:
+        #         same_y_up_inside = filtrar_pontos(bridge_higher_y + 2, limites_x)
+        # same_y_down_inside = filtrar_pontos(bridge_lower_y, limites_x)
+        # if len(same_y_down_inside) < 2:
+        #     same_y_down_inside = filtrar_pontos(bridge_lower_y - 1, limites_x)
+        #     if len(same_y_down_inside) < 2:
+        #         same_y_down_inside = filtrar_pontos(bridge_lower_y - 2, limites_x)
+        # contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
+        # contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
+        # contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
+        # contact_db = find_contacts(same_y_down_inside, lambda x: x > midle_point[1])
+        # ponto_esq_cima = closest_to_center(contact_ec)
+        # ponto_dir_cima = closest_to_center(contact_dc)
+        # ponto_esq_baixo = closest_to_center(contact_eb)
+        # ponto_dir_baixo = closest_to_center(contact_db)
+        # line_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
+        # line_baixo = it.draw_line(
+        #     np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
+        # )
+        # retangulo = it.draw_polyline(
+        #     np.zeros(base_frame),
+        #     [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
+        #     1,
+        # )
+        # retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
+        # new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
+        # new_todas_espirais = it.sum_imgs([new_todas_espirais, line_baixo, line_cima])
+        # cleaned_new_todas_espirais, _, _ = sk.create_prune_skel(
+        #     new_todas_espirais, path_radius
+        # )
+        distance_between_centers = int(
+            np.round(2 * path_radius * (100 - sob_cont_per) / 100)
         )
-        bridge_lower_y = (
-            bridge_middle_y + path_radius - np.round(path_radius * sob_cont_per / 200)
+        mask_line = np.zeros(
+            (distance_between_centers, distance_between_centers)
+        )  # TODO: adicionar a sobreposição
+        mask_line[:, int(distance_between_centers / 2)] = 1
+        origin_center = pt.points_center(pt.img_to_points(origin.astype(np.uint8)))
+        transversal_origin = mt.dilation(
+            it.points_to_img([origin_center], np.zeros(base_frame)),
+            kernel_img=mask_line,
         )
-        x_extreme_points = [x[1] for x in extreme_points]
-        midle_point = [
-            bridge_middle_y,
-            int((x_extreme_points[0] + x_extreme_points[1]) / 2),
-        ]
-        limites_x = [
-            min(x_extreme_points) - 2 * path_radius,
-            max(x_extreme_points) + 2 * path_radius,
-        ]
-        todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-        same_y_up_inside = filtrar_pontos(bridge_higher_y, limites_x)
-        if len(same_y_up_inside) < 2:
-            same_y_up_inside = filtrar_pontos(bridge_higher_y + 1, limites_x)
-            if len(same_y_up_inside) < 2:
-                same_y_up_inside = filtrar_pontos(bridge_higher_y + 2, limites_x)
-        same_y_down_inside = filtrar_pontos(bridge_lower_y, limites_x)
-        if len(same_y_down_inside) < 2:
-            same_y_down_inside = filtrar_pontos(bridge_lower_y - 1, limites_x)
-            if len(same_y_down_inside) < 2:
-                same_y_down_inside = filtrar_pontos(bridge_lower_y - 2, limites_x)
-        contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
-        contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
-        contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
-        contact_db = find_contacts(same_y_down_inside, lambda x: x > midle_point[1])
-        ponto_esq_cima = closest_to_center(contact_ec)
-        ponto_dir_cima = closest_to_center(contact_dc)
-        ponto_esq_baixo = closest_to_center(contact_eb)
-        ponto_dir_baixo = closest_to_center(contact_db)
-        line_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
-        line_baixo = it.draw_line(
-            np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
+        transversal_origin = np.logical_and(
+            transversal_origin,
+            np.logical_not(todas_espirais),
         )
+        distanced_points_img = mt.hitmiss_ends_v2(transversal_origin)
+        distanced_points = pt.img_to_points(distanced_points_img)
+        top_bottom_lines = np.zeros(base_frame)
+        for point in distanced_points:
+            for dir in [2, 0]:
+                this_line, _, _ = it.extend_line_random_to_touch(
+                    todas_espirais * 10,
+                    point,
+                    minimum=11,
+                    pre_dettermined=dir,
+                )
+                top_bottom_lines = np.logical_or(top_bottom_lines, this_line)
+        bbbbbbb = it.sum_imgs(
+            [origin, transversal_origin, top_bottom_lines, todas_espirais]
+        )
+        _, labeled, num_features = it.divide_by_connected(top_bottom_lines)
+        if num_features != 2:
+            raise ValueError("Image does not contain exactly two lines.")
+        lines = []
+        for i in range(1, num_features + 1):
+            coords = np.where(labeled == i)
+            y_mean = np.mean(coords[0])
+            lines.append((y_mean, i))
+        lines.sort()
+        line_cima = (labeled == lines[0][1]).astype(np.uint8)
+        line_baixo = (labeled == lines[1][1]).astype(np.uint8)
+        up_points = pt.img_to_points(mt.hitmiss_ends_v2(line_cima))
+        down_points = pt.img_to_points(mt.hitmiss_ends_v2(line_baixo))
+        ponto_dir_cima = up_points[np.argmax([x[1] for x in up_points])]
+        ponto_esq_cima = up_points[np.argmin([x[1] for x in up_points])]
+        ponto_dir_baixo = down_points[np.argmax([x[1] for x in up_points])]
+        ponto_esq_baixo = down_points[np.argmin([x[1] for x in up_points])]
         retangulo = it.draw_polyline(
             np.zeros(base_frame),
             [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
@@ -598,6 +657,7 @@ def connect_offset_bridges(
         cleaned_new_todas_espirais, _, _ = sk.create_prune_skel(
             new_todas_espirais, path_radius
         )
+
         return cleaned_new_todas_espirais
 
     def integrate_contact(todas_espirais, path_radius, bridge: Bridge, base_frame):
@@ -624,6 +684,7 @@ def connect_offset_bridges(
                     extreme_points,
                     base_frame,
                     sob_cont_per,
+                    bridge.origin,
                 )
             elif bridge.type == "contact_offset_bridge":
                 todas_espirais_img = integrate_contact(
@@ -1014,9 +1075,12 @@ def generate_guide_line(region, base_frame, prohibited_areas):
         all_loops = np.logical_or(all_loops, loop.route)
         loops_counter += 1
     cutter_line, _, direction_index = it.extend_line_random_to_touch(
-        all_loops, region.center_coords, minimum=loops_counter
+        all_loops.astype(np.uint8),
+        region.center_coords,
+        minimum=2,
+        touches=loops_counter,
     )
-    return cutter_line, direction_index
+    return (cutter_line == True).astype(np.uint8), direction_index
     # bound_box = boundingRect(region.area_contour[0])
     # region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
     # end_of_lines = [

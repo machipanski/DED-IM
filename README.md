@@ -13,6 +13,16 @@ This project is a novel image-based mapping and tool-path planning method for Wi
 
 Developed in Python, the method takes a 3D model as input, along with machine-specific parameters, and generates G-code instructions that can be customized for different WA-DED machines. DED-IM automatically segments 3D models into regions like thin walls, contours, bottlenecks, and large internal areas by processing binary images. These parameters are fully adjustable, allowing users to tailor the tool-path strategy to their specific needs. The modular design also makes it easy to integrate new strategies, such as custom zigzag patterns. To use DED-IM in a production workflow, practitioners will need to adjust the software according to their machine specifications.
 
+# Limitations and upgrades
+
+New features have been added since the publication of the original paper. As a result, the outcomes of the current versions may differ from those reported in the paper. These new features address special cases that were not covered in previous versions, such as:
+
+    Handling situations where multiple paths converge (ongoing development), among other edge cases.
+
+    Support for the .hdf5 format, allowing progress to be saved between processing steps and enabling the execution of different parts of the algorithm with distinct configurations.
+
+    Introduction of the welding_config.yaml file to ensure parameter consistency and improve the organization of welding profiles.
+
 # Getting Started
 
 To ensure you have the best experience with this algorithm, we recommend setting up a fresh conda environment. We’ve included a requirements.txt file with all the necessary dependencies, so you can quickly install everything needed for the project to run as intended.
@@ -243,9 +253,9 @@ If you find our work useful for your research, please [cite our paper](https://i
   journal={IEEE Transactions on Automation Science and Engineering}, 
   title={DED-IM: A Novel Method for Mapping and Path Planning in Wire Arc Directed Energy Deposition}, 
   year={2025},
-  volume={},
+  volume={22},
   number={},
-  pages={1-1},
+  pages={13286-13297},
   keywords={Filling;Three-dimensional displays;Solid modeling;Shape;Path planning;Image segmentation;Geometry;Automation;Transforms;Surface treatment;Wire Arc Directed Energy Deposition;Region mapping;Path planning;Image processing;Geometry decomposition;Image-based tool-path},
   doi={10.1109/TASE.2025.3553309}}
 ```

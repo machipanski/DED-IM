@@ -385,7 +385,9 @@ def take_the_bigger_area(img: np.ndarray):
     return separated_areas[np.argmax(area_sums)]
 
 
-def extend_line_random_to_touch(image, origin, minimum=1):
+def extend_line_random_to_touch(
+    image, origin, minimum=2, touches=1, pre_dettermined=9999
+):
     directions = [
         (0, -1),  # Left
         (-1, 0),  # Up
@@ -398,21 +400,31 @@ def extend_line_random_to_touch(image, origin, minimum=1):
     ]
     touches_counter = 0
     flag_touch = False
-    direction = random.choice(directions)
-    direction_index = directions.index(direction)
+    if pre_dettermined > 5:
+        direction = random.choice(directions)
+        direction_index = directions.index(direction)
+    else:
+        direction_index = pre_dettermined
+        direction = directions[direction_index]
     extended_line = np.zeros_like(image)
     y, x = origin
     while 0 <= y < image.shape[0] and 0 <= x < image.shape[1]:
-        if image[y, x] > 0 and (y, x) != origin:
-            touches_counter += 1
-        extended_line[y, x] = 1
-        y += direction[0]
-        x += direction[1]
-        if touches_counter == minimum:
+        if touches_counter == touches:
             flag_touch = True
             break
+        extended_line[y, x] = image[y, x] + 1
+        if extended_line[y, x] >= minimum and (y, x) != origin:
+            touches_counter += 1
+        y += direction[0]
+        x += direction[1]
     if flag_touch:
-        print("   Tried to extend in another direction")
+        print("   Touch found")
         return extended_line, flag_touch, direction_index
     else:
-        return extend_line_random_to_touch(image, origin, minimum=minimum)
+        print("   No touch found")
+        return extend_line_random_to_touch(
+            image,
+            origin,
+            minimum=minimum,
+            touches=touches,
+        )

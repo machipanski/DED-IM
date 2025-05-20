@@ -337,9 +337,95 @@ class BridgeRegions:
                     pontos_origem[1][0],
                     pontos_origem[1][1] + (0 * path_radius),
                 ]
+                trail_offsets_list = []
+                for y in line:
+                    trail_offsets_list.append(
+                        list(filter(lambda x: x.name == y, offsets_regs))
+                    )
+                trail_offsets_list = list(
+                    filter(lambda x: len(x) > 0, trail_offsets_list)
+                )
+                offsets_areas = it.sum_imgs([x[0].img for x in trail_offsets_list])
                 origin = it.draw_line(np.zeros(base_frame), ponto_origem, destiny_point)
-                img = mt.dilation(origin, kernel_img=mask_line)
-                img = np.logical_and(img, rest_of_picture)
+                origin = it.image_subtract(origin.astype(np.uint8), offsets_areas)
+                origin_center = pt.points_center(
+                    pt.img_to_points(origin.astype(np.uint8))
+                )
+                transversal_origin = mt.dilation(
+                    it.points_to_img([origin_center], np.zeros(base_frame)),
+                    kernel_img=mask_line,
+                )
+                transversal_origin = np.logical_and(
+                    transversal_origin,
+                    np.logical_not(offsets_areas),
+                )
+                distanced_points_img = mt.hitmiss_ends_v2(transversal_origin)
+                distanced_points = pt.img_to_points(distanced_points_img)
+                top_bottom_lines = np.zeros(base_frame)
+                for point in distanced_points:
+                    for dir in [2, 0]:
+                        this_line, _, _ = it.extend_line_random_to_touch(
+                            offsets_areas * 10,
+                            point,
+                            minimum=11,
+                            pre_dettermined=dir,
+                        )
+                        top_bottom_lines = np.logical_or(top_bottom_lines, this_line)
+                bbbbbbb = it.sum_imgs(
+                    [origin, transversal_origin, top_bottom_lines, offsets_areas]
+                )
+
+                AA, contour_connection = mt.detect_contours(
+                    np.logical_or(offsets_areas, top_bottom_lines),
+                    return_img=True,
+                )
+                contour_imgs = [pt.contour_to_list([x]) for x in AA]
+                contour_imgs = [
+                    it.points_to_img(x, np.zeros(base_frame)) for x in contour_imgs
+                ]
+                contour_connection_candidates = list(
+                    filter(
+                        lambda x: np.sum(np.logical_and(x, top_bottom_lines)) > 0,
+                        contour_imgs,
+                    )
+                )
+                contour_connection = contour_connection_candidates[
+                    np.argmin([np.sum(x) for x in contour_connection_candidates])
+                ]
+                img = it.fill_internal_area(
+                    contour_connection.astype(np.uint8),
+                    np.ones_like(contour_connection),
+                )
+
+                # cccc, dsdsd, fdfdfd = it.divide_by_connected(contour_connection)
+                # contour_connection = list(
+                #     filter(
+                #         lambda x: np.sum(np.logical_and(x, top_bottom_lines)) > 0, cccc
+                #     )
+                # )
+                # dddcontour_connection = list(
+                #     filter(
+                #         lambda x: np.sum(np.logical_and(x, top_bottom_lines)) > 0, cccc
+                #     )
+                # )[0]
+                # C = mt.detect_contours(
+                #     dddcontour_connection.astype(np.uint8),
+                #     return_img=True,
+                #     return_hierarchy=True,
+                # )
+                # D = it.chain_to_lines(
+                #     pt.contour_to_list([C[0][3]]), np.zeros(base_frame)
+                # )
+
+                # filled_connection = it.fill_internal_area(
+                #     contour_connection.astype(np.uint8),
+                #     np.ones_like(contour_connection),
+                # )
+                # filled_connection = np.logical_and(filled_connection, rest_of_picture)
+                # new_bridge = np.logical_or(filled_connection, top_bottom_lines)
+
+                # img = mt.dilation(origin, kernel_img=mask_line)
+                # img = np.logical_and(img, rest_of_picture)
                 self.offset_bridges.append(
                     Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
                 )

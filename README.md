@@ -32,7 +32,7 @@ conda create --name DED_IM --file requirements.txt python=3.11.9
 conda activate DED_IM
 ```
 
-## Environment preparation
+<!-- ## Environment preparation
 
 If still needed after the instalation as above, the main libraries used in this project are:
 
@@ -57,7 +57,7 @@ subprocess
 tkinter
 unittest
 yaml
-```
+``` -->
 
 # Using the Program
 
@@ -259,13 +259,17 @@ If you find our work useful for your research, please [cite our paper](https://i
   keywords={Filling;Three-dimensional displays;Solid modeling;Shape;Path planning;Image segmentation;Geometry;Automation;Transforms;Surface treatment;Wire Arc Directed Energy Deposition;Region mapping;Path planning;Image processing;Geometry decomposition;Image-based tool-path},
   doi={10.1109/TASE.2025.3553309}}
 ```
-
+<!-- 
 New features had been added after the writing and publishing process of the article, the most important of them are:
   - The use of the .hdf5 format, enabling saving the progress between cells and the possibility to execute different parts of the algorithm with different settings.
   - The welding_config.yaml file now is used as a way to grant more consistency of the parameters used and keep the soldering profiles better organized
   - 
-  -
+  - -->
 # License
+
+[![CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
+
+This work is licensed by [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).
 
 <!-- This work is licensed under a
 [Creative Commons Attribution 4.0 International License][cc-by].
@@ -278,6 +282,3 @@ New features had been added after the writing and publishing process of the arti
 
  -->
 
-[![CC BY-NC-SA 4.0](https://img.shields.io/badge/License-CC%20BY--NC--SA%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc-sa/4.0/)
-
-This work is licensed by [Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International License](https://creativecommons.org/licenses/by-nc-sa/4.0/).

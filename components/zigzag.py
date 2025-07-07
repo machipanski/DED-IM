@@ -530,7 +530,9 @@ class ZigZagRegions:
                 cut_in_lines(region.img, path_radius, mask_distancer, var_path_width=0)
             )
             filled = it.fill_internal_area(
-                internal_border_img.astype(np.uint8), np.ones_like(internal_border_img)
+                internal_border_img.astype(np.uint8),
+                np.ones_like(internal_border_img),
+                True,
             )
             opened = mt.opening(filled, kernel_size=path_radius)
             with Timer("   Creating the three possible options:"):
@@ -1113,7 +1115,7 @@ def connect_fails_to_zigzags(old_zigzag, separated_fail_imgs, path_radius_larg):
                     np.logical_or(new_fail, canvas), return_img=True, only_external=True
                 )
                 connected_fail = it.fill_internal_area(
-                    connected_fail, np.ones_like(canvas)
+                    connected_fail, np.ones_like(canvas), True
                 )
                 connected_fails.append(it.sum_imgs([connected_fail, zigzag_contact]))
                 all_connected_fails = np.logical_or(all_connected_fails, connected_fail)

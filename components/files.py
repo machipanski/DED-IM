@@ -1,6 +1,8 @@
 from __future__ import annotations
 from email.headerregistry import Group
 from typing import TYPE_CHECKING
+
+from more_itertools import last
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Region
 from components.thin_walls import ThinWallRegions, ThinWall
@@ -716,20 +718,31 @@ class System_Paths:
                 os.chdir(self.home)
         return
 
-    def call_slicer(self, file_name: str, path_input, dpi, layer_height):
+    def call_slicer(
+        self, file_name: str, path_input, dpi, layer_height, first_layer_height
+    ):
+        """Calls the slicer script to slice the input file."""
         list_layers = []
         os.chdir(self.slicer)
         subprocess.run(["./run-single-model.sh", path_input, str(dpi)])
         layers_imgs_names = self.list(origins=1)
         n_layers = len(layers_imgs_names)
         os.chdir(self.sliced)
+        last_layer_height = 0
         for i, file_path in enumerate(layers_imgs_names):
+            this_layer_height = last_layer_height + (
+                first_layer_height if i == 0 else layer_height
+            )
             img = imread(file_path, 0)
             if np.sum(img) > 0:
                 layer = Layer()
                 layer.make_input_img(
-                    f"L_{i:03d}", img, dpi, i % 2, layer_height, n_layers
+                    f"L_{i:03d}", img, dpi, i % 2, this_layer_height, n_layers
                 )
+            else:
+                print(f"ERROR: Layer {i} is empty, skipping...")
+                break
+            last_layer_height = this_layer_height
             list_layers.append(layer)
         os.chdir(self.home)
         return list_layers
@@ -773,6 +786,7 @@ class Config:
                     "used_region": prog["used_region"],
                     "filling_strategy": prog["filling_strategy"],
                     "bead_diameter": prog["bead_diameter"],
+                    "bead_diameter_first_layer": prog["bead_diameter_first_layer"],
                     "bead_superposition": prog["bead_superposition"],
                     "travel_speed": prog["travel_speed"],
                     "wire_speed": prog["wire_speed"],
@@ -794,6 +808,7 @@ class Config:
         used_region,
         filling_strategy,
         bead_diameter,
+        bead_diameter_first_layer,
         bead_superposition,
         travel_speed,
         wire_speed,
@@ -808,6 +823,7 @@ class Config:
                     used_region=used_region,
                     filling_strategy=filling_strategy,
                     bead_diameter=float(bead_diameter),
+                    bead_diameter_first_layer=float(bead_diameter_first_layer),
                     bead_superposition=float(bead_superposition),
                     travel_speed=float(travel_speed),
                     wire_speed=float(wire_speed),

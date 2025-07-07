@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 import itertools
 from pathlib import Path
 from components import morphology_tools as mt, path_tools
@@ -13,6 +14,7 @@ from skimage.segmentation import watershed
 import concurrent.futures
 from components import skeleton as sk
 from typing import TYPE_CHECKING
+import copy
 
 if TYPE_CHECKING:
     from components.files import System_Paths
@@ -125,14 +127,14 @@ class Level:
                 trail_img = mt.dilation(loop, kernel_img=mask)
                 self.outer_loops.append(Loop(out_counter, loop, self.name, trail_img))
                 self.outer_loops[-1].internal_area = it.fill_internal_area(
-                    self.outer_loops[-1].trail, rest_f1
+                    self.outer_loops[-1].trail, rest_f1, True
                 )
                 out_counter += 1
             else:
                 trail_img = mt.dilation(loop, kernel_img=mask)
                 self.hole_loops.append(Loop(in_counter, loop, self.name, trail_img))
                 self.hole_loops[-1].internal_area = it.fill_internal_area(
-                    self.hole_loops[-1].trail, rest_f1
+                    self.hole_loops[-1].trail, rest_f1, True
                 )
                 in_counter += 1
         return self
@@ -422,25 +424,32 @@ class OffsetRegions:
         mask_full,
         path_radius,
         amendment_size,
+        outer_spiral,
     ):
         prohibited_areas = np.zeros(base_frame)
 
-        def make_offset_route(region):
+        def make_offset_route(region: Region, outer_spiral: bool):
             route = np.zeros(base_frame)
             next_prohibited_area = np.zeros(base_frame)
             for loop in region.loops:
                 route = np.logical_or(route, loop.route)
             n_loops = len(region.loops)
-            if n_loops == 2:
-                amendment = disk(path_radius * amendment_size)
-                route, next_prohibited_area = link_spirals(
-                    route, n_loops, amendment, region, base_frame, prohibited_areas
+            if not n_loops == 1:
+                if n_loops == 2:
+                    amendment = disk(path_radius * amendment_size)
+                else:
+                    amendment = disk(2 * path_radius * amendment_size)
+                guide_line, idx = path_tools.generate_guide_line(
+                    region, base_frame, prohibited_areas
                 )
-            if n_loops > 2:
-                amendment = disk(2 * path_radius * amendment_size)
-                route, next_prohibited_area = link_spirals(
-                    route, n_loops, amendment, region, base_frame, prohibited_areas
-                )
+                if outer_spiral and region.name == "Reg_000":
+                    route, next_prohibited_area = link_spirals_spiral(
+                        route, amendment, guide_line
+                    )
+                else:
+                    route, next_prohibited_area = link_spirals_go_back(
+                        route, n_loops, amendment, guide_line, base_frame, idx
+                    )
             reparos = mt.find_failures(route, np.zeros_like(route))
             route = np.logical_or(reparos, route)
             route = mt.closing(route, kernel_size=1)
@@ -452,7 +461,8 @@ class OffsetRegions:
         processed_regions = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
-                executor.submit(make_offset_route, region) for region in self.regions
+                executor.submit(make_offset_route, region, outer_spiral)
+                for region in self.regions
             ]
             for l in concurrent.futures.as_completed(results):
                 processed_regions.append(l.result())
@@ -576,6 +586,7 @@ class OffsetRegions:
             inside_first_offset = it.fill_internal_area(
                 self.regions[0].loops[0].img,
                 rest_f2,
+                True,
             )
 
         rest_f2 = inside_first_offset
@@ -685,7 +696,9 @@ class Region:
         return
 
     def make_internal_area_and_center(self, original_img):
-        self.internal_area = it.fill_internal_area(self.area_contour_img, original_img)
+        self.internal_area = it.fill_internal_area(
+            self.area_contour_img, original_img, True
+        )
         self.center_coords = pt.points_center(pt.contour_to_list(self.area_contour))
 
     def make_limmit_coords(self, path_radius):
@@ -806,10 +819,7 @@ class Region:
         return
 
 
-def link_spirals(route, n_loops, mask, region, base_frame, prohibited_areas):
-    guide_line, idx = path_tools.generate_guide_line(
-        region, base_frame, prohibited_areas
-    )
+def link_spirals_go_back(route, n_loops, mask, guide_line, base_frame, idx):
     work_area = mt.dilation(guide_line, kernel_img=mask)
     _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
     # work_area_contour = points_tools.contour_to_list(work_area_contour)
@@ -826,7 +836,9 @@ def link_spirals(route, n_loops, mask, region, base_frame, prohibited_areas):
     route = np.logical_or(route, borda_cortada)
     if n_loops > 2:
         intersection_pol = it.draw_polyline(np.zeros(base_frame), points, True)
-        intersection_pol = it.fill_internal_area(intersection_pol, np.ones(base_frame))
+        intersection_pol = it.fill_internal_area(
+            intersection_pol, np.ones(base_frame), True
+        )
         guide_line = np.logical_and(guide_line, intersection_pol)
         rectangle_contour = mt.detect_contours(intersection_pol)
         rectangle_contour = pt.contour_to_list(rectangle_contour)
@@ -837,3 +849,26 @@ def link_spirals(route, n_loops, mask, region, base_frame, prohibited_areas):
         route = np.logical_or(route, cut_rectangle)
     next_prohibited_areas = work_area
     return route, next_prohibited_areas
+
+
+def link_spirals_spiral(route, mask, guide_line):
+    work_area = mt.dilation(guide_line, kernel_img=mask)
+    _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+    contours_imgs, _, _ = it.divide_by_connected(route)
+    contours_imgs_cut = [
+        np.logical_and(x, np.logical_not(work_area)) for x in contours_imgs
+    ]
+    points_contours = [
+        pt.img_to_points(mt.hitmiss_ends_v2(x)) for x in contours_imgs_cut
+    ]
+    connector_lines_points = [item for sublist in points_contours for item in sublist]
+    connector_lines_points = connector_lines_points[1:-1]
+    connector_lines_points = list(itertools.pairwise(connector_lines_points))
+
+    new_route = it.image_subtract(route, work_area)
+
+    for i, line in enumerate(connector_lines_points):
+        if not i % 2:
+            new_route = it.draw_line(new_route, line[0], line[1])
+    next_prohibited_areas = work_area
+    return new_route, next_prohibited_areas

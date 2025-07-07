@@ -1079,40 +1079,9 @@ def generate_guide_line(region, base_frame, prohibited_areas):
         region.center_coords,
         minimum=2,
         touches=loops_counter,
+        print_from_first=True,
     )
     return (cutter_line == True).astype(np.uint8), direction_index
-    # bound_box = boundingRect(region.area_contour[0])
-    # region.center_coords = pt.points_center(pt.contour_to_list(region.area_contour))
-    # end_of_lines = [
-    #     [bound_box[0], region.center_coords[0]],
-    #     [region.center_coords[1], bound_box[1]],
-    #     [bound_box[0] + bound_box[2], region.center_coords[0]],
-    #     [region.center_coords[1], bound_box[1] + bound_box[3]],
-    # ]
-    # end_of_lines = pt.invert_x_y(end_of_lines)
-    # candidates = end_of_lines.copy()
-    # master_line = []
-    # while np.sum(master_line) == 0:
-    #     if candidates:
-    #         closest_point_indx = np.argmin(
-    #             distance_matrix([list(region.center_coords)], candidates, 2)
-    #         )
-    #         closest_point = random.choice(candidates)
-    #         line = it.draw_line(
-    #             np.zeros(base_frame), region.center_coords, closest_point
-    #         )
-    #         dilated_line = mt.dilation(line, kernel_size=16)
-    #         master_line = line
-    #     else:
-    #         candidates = end_of_lines.copy()
-    #         closest_point_indx = np.argmin(
-    #             distance_matrix([list(region.center_coords)], candidates, 2)
-    #         )
-    #         closest_point = candidates[closest_point_indx]
-    #         master_line = it.draw_line(
-    #             np.zeros(base_frame), region.center_coords, closest_point
-    #         )
-    # return master_line, end_of_lines.index(closest_point)
 
 
 def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
@@ -2143,13 +2112,13 @@ def cleanning_position(output, coords, vel_vazio, p_entre_layers):
     return output
 
 
-def initial_position(output, coords, layer_heights, n_layer, vel_vazio):
+def initial_position(output, coords, height, vel_vazio, n_layer):
     # output += f";_______LAYER{n_layer + 1}_____\n"
     output += f";LAYER:{n_layer}\n"
     output += ";-------INITIAL POSITION------\n"
     output += f"G90\n"
     # output += f";LAYER:{i}\n"
-    output += f"G1 Z{layer_heights[n_layer]} ; Layer + 10mm\n"
+    output += f"G1 Z{height} ; Layer + 10mm\n"
     output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
     output += f"M400\n"
     output += f"G91\n"
@@ -2179,7 +2148,7 @@ def layers_to_Gcode(
     vel_vazio,
     p_entre_int_ext,
     p_entre_layers,
-    layer_heights,
+    # layer_heights,
     base_coords,
     coords_corte,
 ):
@@ -2232,7 +2201,9 @@ def layers_to_Gcode(
         output += f";N# of layers: {layers[0].n_layers}\n"
         output += f";Pause_between_interanal_and_external;: {p_entre_int_ext} ms \n"
         output += f";Pause_between_layers: {p_entre_layers} ms \n"
-        output += f";Layer_heights: {layer_heights} mm \n"
+        output += f";First Layer_height: {layers[0].layer_height} mm \n"
+        if len(layers) > 1:
+            output += f";Normal Layer_height: {layers[1].layer_height} mm \n"
         output += f";Coodinates_cleaning: {coords_corte} mm \n"
         output += f";Coordinates_base: {base_coords} mm \n"
         output += f";Empty_movement_speed: {vel_vazio} mm/min \n"
@@ -2282,9 +2253,8 @@ def layers_to_Gcode(
         )
         layer_tot_lenght = 0
         bfr = base_coords
-        output = initial_position(
-            output, base_coords, layer_heights, n_layer, vel_vazio
-        )
+        layer_height = layer.layer_height
+        output = initial_position(output, base_coords, layer_height, vel_vazio, n_layer)
         folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             counter = 0

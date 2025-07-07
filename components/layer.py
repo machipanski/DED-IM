@@ -71,11 +71,21 @@ class Layer:
         self.diam_cont_real: float = 0
         self.diam_larg_real: float = 0
         self.diam_bridg_real: float = 0
+        self.first_layer_height: float = 0
+        self.first_diam_tw_real: float = 0
+        self.first_diam_cont_real: float = 0
+        self.first_diam_larg_real: float = 0
+        self.first_diam_bridg_real: float = 0
         self.path_radius_tw: float = 0
         self.path_radius_cont: float = 0
         self.path_radius_bridg: float = 0
         self.path_radius_larg: float = 0
         self.path_radius_int_ext: float = 0
+        self.first_path_radius_tw: float = 0
+        self.first_path_radius_cont: float = 0
+        self.first_path_radius_bridg: float = 0
+        self.first_path_radius_larg: float = 0
+        self.first_path_radius_int_ext: float = 0
         self.sob_tw_per: float = 0
         self.sob_cont_per: float = 0
         self.sob_larg_per: float = 0
@@ -89,38 +99,6 @@ class Layer:
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
-
-    def islands_path_starts(self, folders: System_Paths):
-        folders.load_islands_hdf5(self)
-        for island in self.islands:
-            folders.load_offsets_hdf5(self.name, island)
-            folders.load_zigzags_hdf5(self.name, island)
-            folders.load_bridges_hdf5(self.name, island)
-            with Timer("  Finding the ext-int union point"):
-                # if hasattr(island, "zigzags") and hasattr(island, "offsets"):
-                if len(island.offsets.regions) > 0:
-                    if hasattr(island, "zigzags"):
-                        if len(island.zigzags.regions) > 0:
-                            island.ext_start, island.int_start = (
-                                path_tools.connect_internal_external(
-                                    island, self.path_radius_int_ext
-                                )
-                            )
-                    else:
-                        # if hasattr(island, "offsets"):
-                        island.ext_start = pt.img_to_points(
-                            island.offsets.regions[0].route.astype(np.uint8)
-                        )[0]
-                        island.int_start = []
-                print("   " + str(island.ext_start))
-                with Timer("  saving route images"):
-                    folders.save_props_hdf5(
-                        f"/{self.name}/{island.name}",
-                        island.__dict__,
-                        ext_start=island.ext_start,
-                        int_start=island.int_start,
-                    )
-        return
 
     def close_final_path(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
@@ -306,7 +284,12 @@ class Layer:
             folders.save_thinwall_final_routes_hdf5(self.name, self.islands)
 
     def create_layers(
-        folders: System_Paths, path_input: str, file_name: str, dpi: int, layer_height
+        folders: System_Paths,
+        path_input: str,
+        file_name: str,
+        dpi: int,
+        layer_height: float,
+        first_layer_height: float,
     ):
 
         def divide_islands(layer: Layer):
@@ -328,7 +311,7 @@ class Layer:
                 # hdf5_file_name = hdf5_file_name.replace("stl_models", "")
                 # hdf5_file_name = hdf5_file_name.replace("/", "")
                 list_layers = folders.call_slicer(
-                    file_name, path_input, dpi, layer_height
+                    file_name, path_input, dpi, layer_height, first_layer_height
                 )
             else:
                 hdf5_file_name = file_name.rsplit("/", 1)[-1]
@@ -336,7 +319,7 @@ class Layer:
                 # hdf5_file_name = hdf5_file_name.replace("/", "")
                 layer = Layer()
                 img = imread(path_input, 0)
-                layer.make_input_img("L_000", img, dpi, 0, layer_height, 1)
+                layer.make_input_img("L_000", img, dpi, 0, first_layer_height, 1)
                 list_layers = [layer]
             for layer in list_layers:
                 divide_islands(layer)
@@ -344,6 +327,172 @@ class Layer:
             ts = datetime.datetime.now()
             folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
             folders.save_folders_structure(f"{hdf5_file_name}_{ts.date()}")
+        return
+
+    def connect_zigzags(self, folders: System_Paths):
+
+        def parallelizando(func):
+            @wraps(func)
+            def wrapper(*args):
+                processed_isl = []
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    if [*args]:
+                        results = [
+                            executor.submit(func, island, *args)
+                            for island in self.islands
+                        ]
+                    else:
+                        results = [
+                            executor.submit(func, island) for island in self.islands
+                        ]
+                    for l in concurrent.futures.as_completed(results):
+                        processed_isl.append(l.result())
+                    processed_isl.sort(key=lambda x: x.name)
+                    self.islands = processed_isl
+
+            return wrapper
+
+        @parallelizando
+        def make_island_graph(island: Island) -> Island:
+            if np.sum(island.rest_of_picture_f3) > 0:
+                if hasattr(island, "zigzags"):
+                    island.zigzags.make_graph(
+                        island.bridges.zigzag_bridges, self.base_frame
+                    )
+            return island
+
+        @parallelizando
+        def get_island_linked_zigzags(island: Island) -> Island:
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for zb in island.bridges.zigzag_bridges:
+                    zb.get_linked_zigzags(island.zigzags.regions)
+            return island
+
+        for isl in self.islands:
+            folders.load_bridges_hdf5(self.name, isl)
+        with Timer("  Creating region graphs"):
+            make_island_graph()
+        with Timer("  Connecting Zigzag bridges"):
+            get_island_linked_zigzags()
+
+        for isl in self.islands:
+            if hasattr(isl, "zigzags"):
+                isl.zigzags.connect_island_zigzags(
+                    self.path_radius_larg,
+                    mt.make_mask(self, "full_larg"),
+                    self.base_frame,
+                )
+
+        with Timer("  Saving graphs"):
+            zigzags_path = f"/{self.name}/{isl.name}/zigzags"
+            for isl in self.islands:
+                if hasattr(isl, "zigzags"):
+                    folders.save_graph_hdf5(
+                        zigzags_path, f"zigzags_graph", isl.zigzags.zigzags_graph
+                    )
+                    folders.save_img_hdf5(
+                        zigzags_path, f"all_zigzags", isl.zigzags.all_zigzags
+                    )
+                    folders.save_img_hdf5(
+                        zigzags_path, f"macro_areas", isl.zigzags.macro_areas
+                    )
+                if hasattr(isl, "bridges"):
+                    if hasattr(isl.bridges, "zigzag_bridges"):
+                        for bridge in isl.bridges.zigzag_bridges:
+                            folders.save_props_hdf5(
+                                f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{bridge.name}",
+                                bridge.__dict__,
+                            )
+        return
+
+    def internal_weaving(self, internal_weaving, folders: System_Paths):
+        with Timer("  Generating internal weavings"):
+            folders.load_islands_hdf5(self)
+            for isl in self.islands:
+                folders.load_offsets_hdf5(self.name, isl)
+                folders.load_bridges_hdf5(self.name, isl)
+                folders.load_zigzags_hdf5(self.name, isl)
+                folders.load_thin_walls_hdf5(self.name, isl)
+                if hasattr(isl, "zigzags"):
+                    original_macro_areas_weaved = []
+                    original_all_zigzags = copy.deepcopy(isl.zigzags.all_zigzags)
+                    isl.zigzags.macro_areas_weaved, isl.zigzags.all_zigzags = (
+                        isl.zigzags.create_oscilatory_inner(
+                            isl.zigzags.macro_areas,
+                            self.original_img,
+                            self.base_frame,
+                            self.path_radius_larg,
+                            mt.make_mask(self, "full_larg"),
+                            isl.zigzags.regions,
+                            isl.bridges,
+                            isl.offsets.regions,
+                            isl.thin_walls.regions,
+                            internal_weaving,
+                        )
+                    )
+                    if np.sum(isl.zigzags.all_zigzags) == 0:
+                        isl.zigzags.all_zigzags = original_all_zigzags
+                        print("   Something whent wrong, restoring all zigzags")
+                    if np.sum(isl.zigzags.macro_areas_weaved) == 0:
+                        isl.zigzags.macro_areas_weaved = original_macro_areas_weaved
+                        print("   Something whent wrong, restoring macro areas weaved")
+
+        with Timer("  Saving routes"):
+            for isl in self.islands:
+                if hasattr(isl, "zigzags"):
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        f"all_zigzags",
+                        isl.zigzags.all_zigzags,
+                    )
+                    folders.delete_item_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags/macro_areas"
+                    )
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        f"macro_areas",
+                        isl.zigzags.macro_areas,
+                    )
+                    folders.delete_item_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags/macro_areas_weaved"
+                    )
+                    folders.save_img_hdf5(
+                        f"/{self.name}/{isl.name}/zigzags",
+                        f"macro_areas_weaved",
+                        isl.zigzags.macro_areas_weaved,
+                    )
+        return
+
+    def islands_path_starts(self, folders: System_Paths):
+        folders.load_islands_hdf5(self)
+        for island in self.islands:
+            folders.load_offsets_hdf5(self.name, island)
+            folders.load_zigzags_hdf5(self.name, island)
+            folders.load_bridges_hdf5(self.name, island)
+            with Timer("  Finding the ext-int union point"):
+                # if hasattr(island, "zigzags") and hasattr(island, "offsets"):
+                if len(island.offsets.regions) > 0:
+                    if hasattr(island, "zigzags"):
+                        if len(island.zigzags.regions) > 0:
+                            island.ext_start, island.int_start = (
+                                path_tools.connect_internal_external(
+                                    island, self.path_radius_int_ext
+                                )
+                            )
+                    else:
+                        # if hasattr(island, "offsets"):
+                        island.ext_start = pt.img_to_points(
+                            island.offsets.regions[0].route.astype(np.uint8)
+                        )[0]
+                        island.int_start = []
+                print("   " + str(island.ext_start))
+                with Timer("  saving route images"):
+                    folders.save_props_hdf5(
+                        f"/{self.name}/{island.name}",
+                        island.__dict__,
+                        ext_start=island.ext_start,
+                        int_start=island.int_start,
+                    )
         return
 
     def make_input_img(
@@ -633,7 +782,7 @@ class Layer:
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def make_offset_routes(self, amendment_size, folders: System_Paths):
+    def make_offset_routes(self, amendment_size, folders: System_Paths, outer_spiral):
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.load_offsets_hdf5(self.name, isl)
@@ -642,6 +791,7 @@ class Layer:
                 mt.make_mask(self, "full_cont"),
                 self.path_radius_cont,
                 amendment_size,
+                outer_spiral,
             )
         with Timer("  Saving routes images"):
             for isl in self.islands:
@@ -891,138 +1041,4 @@ class Layer:
         with Timer("  Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
-        return
-
-    def connect_zigzags(self, folders: System_Paths):
-
-        def parallelizando(func):
-            @wraps(func)
-            def wrapper(*args):
-                processed_isl = []
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    if [*args]:
-                        results = [
-                            executor.submit(func, island, *args)
-                            for island in self.islands
-                        ]
-                    else:
-                        results = [
-                            executor.submit(func, island) for island in self.islands
-                        ]
-                    for l in concurrent.futures.as_completed(results):
-                        processed_isl.append(l.result())
-                    processed_isl.sort(key=lambda x: x.name)
-                    self.islands = processed_isl
-
-            return wrapper
-
-        @parallelizando
-        def make_island_graph(island: Island) -> Island:
-            if np.sum(island.rest_of_picture_f3) > 0:
-                if hasattr(island, "zigzags"):
-                    island.zigzags.make_graph(
-                        island.bridges.zigzag_bridges, self.base_frame
-                    )
-            return island
-
-        @parallelizando
-        def get_island_linked_zigzags(island: Island) -> Island:
-            if np.sum(island.rest_of_picture_f3) > 0:
-                for zb in island.bridges.zigzag_bridges:
-                    zb.get_linked_zigzags(island.zigzags.regions)
-            return island
-
-        for isl in self.islands:
-            folders.load_bridges_hdf5(self.name, isl)
-        with Timer("  Creating region graphs"):
-            make_island_graph()
-        with Timer("  Connecting Zigzag bridges"):
-            get_island_linked_zigzags()
-
-        for isl in self.islands:
-            if hasattr(isl, "zigzags"):
-                isl.zigzags.connect_island_zigzags(
-                    self.path_radius_larg,
-                    mt.make_mask(self, "full_larg"),
-                    self.base_frame,
-                )
-
-        with Timer("  Saving graphs"):
-            zigzags_path = f"/{self.name}/{isl.name}/zigzags"
-            for isl in self.islands:
-                if hasattr(isl, "zigzags"):
-                    folders.save_graph_hdf5(
-                        zigzags_path, f"zigzags_graph", isl.zigzags.zigzags_graph
-                    )
-                    folders.save_img_hdf5(
-                        zigzags_path, f"all_zigzags", isl.zigzags.all_zigzags
-                    )
-                    folders.save_img_hdf5(
-                        zigzags_path, f"macro_areas", isl.zigzags.macro_areas
-                    )
-                if hasattr(isl, "bridges"):
-                    if hasattr(isl.bridges, "zigzag_bridges"):
-                        for bridge in isl.bridges.zigzag_bridges:
-                            folders.save_props_hdf5(
-                                f"/{self.name}/{isl.name}/bridges/zigzag_bridges/{bridge.name}",
-                                bridge.__dict__,
-                            )
-        return
-
-    def internal_weaving(self, internal_weaving, folders: System_Paths):
-        with Timer("  Generating internal weavings"):
-            folders.load_islands_hdf5(self)
-            for isl in self.islands:
-                folders.load_offsets_hdf5(self.name, isl)
-                folders.load_bridges_hdf5(self.name, isl)
-                folders.load_zigzags_hdf5(self.name, isl)
-                folders.load_thin_walls_hdf5(self.name, isl)
-                if hasattr(isl, "zigzags"):
-                    original_macro_areas_weaved = []
-                    original_all_zigzags = copy.deepcopy(isl.zigzags.all_zigzags)
-                    isl.zigzags.macro_areas_weaved, isl.zigzags.all_zigzags = (
-                        isl.zigzags.create_oscilatory_inner(
-                            isl.zigzags.macro_areas,
-                            self.original_img,
-                            self.base_frame,
-                            self.path_radius_larg,
-                            mt.make_mask(self, "full_larg"),
-                            isl.zigzags.regions,
-                            isl.bridges,
-                            isl.offsets.regions,
-                            isl.thin_walls.regions,
-                            internal_weaving,
-                        )
-                    )
-                    if np.sum(isl.zigzags.all_zigzags) == 0:
-                        isl.zigzags.all_zigzags = original_all_zigzags
-                        print("   Something whent wrong, restoring all zigzags")
-                    if np.sum(isl.zigzags.macro_areas_weaved) == 0:
-                        isl.zigzags.macro_areas_weaved = original_macro_areas_weaved
-                        print("   Something whent wrong, restoring macro areas weaved")
-
-        with Timer("  Saving routes"):
-            for isl in self.islands:
-                if hasattr(isl, "zigzags"):
-                    folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags",
-                        f"all_zigzags",
-                        isl.zigzags.all_zigzags,
-                    )
-                    folders.delete_item_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags/macro_areas"
-                    )
-                    folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags",
-                        f"macro_areas",
-                        isl.zigzags.macro_areas,
-                    )
-                    folders.delete_item_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags/macro_areas_weaved"
-                    )
-                    folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags",
-                        f"macro_areas_weaved",
-                        isl.zigzags.macro_areas_weaved,
-                    )
         return

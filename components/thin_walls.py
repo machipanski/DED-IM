@@ -200,9 +200,11 @@ class ThinWallRegions:
         for tw in self.regions:
             # img = np.logical_and(tw.img, island_img)
             # origin = np.logical_and(tw.origin, island_img)
-            eroded_island_img = mt.erosion(island_img, kernel_size=path_radius)
+            eroded_island_img = mt.erosion(island_img, kernel_size=2 * path_radius)
             _, eroded_island_border = mt.detect_contours(
-                eroded_island_img, return_img=True, only_external=True
+                eroded_island_img,
+                return_img=True,
+                # only_external=True,
             )
             result_first_offset = it.fill_internal_area(
                 mt.dilation(eroded_island_border, kernel_size=path_radius),

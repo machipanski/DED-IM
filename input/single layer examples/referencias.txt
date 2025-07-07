@@ -1,0 +1,35 @@
+meia ampulheta: 
+@article{ding2015practical,
+  title={A practical path planning methodology for wire and arc additive manufacturing of thin-walled structures},
+  author={Ding, Donghong and Pan, Zengxi and Cuiuri, Dominic and Li, Huijun},
+  journal={Robotics and Computer-Integrated Manufacturing},
+  volume={34},
+  pages={8--19},
+  year={2015},
+  publisher={Elsevier}
+}
+
+garvata:
+@article{wang2019sequential,
+  title={A sequential path-planning methodology for wire and arc additive manufacturing based on a water-pouring rule},
+  author={Wang, Xiaolong and Wang, Aimin and Li, Yuebo},
+  journal={The International Journal of Advanced Manufacturing Technology},
+  volume={103},
+  pages={3813--3830},
+  year={2019},
+  publisher={Springer}
+}
+
+variosburacos:
+@article{biegler2020automated,
+  title={Automated tool-path generation for rapid manufacturing of additive manufacturing directed energy deposition geometries},
+  author={Biegler, Max and Wang, Jiahan and Kaiser, Lukas and Rethmeier, Michael},
+  journal={steel research international},
+  volume={91},
+  number={11},
+  pages={2000017},
+  year={2020},
+  publisher={Wiley Online Library}
+}
+
+menosburacos e variosHs:

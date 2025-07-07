@@ -62,32 +62,6 @@ class Bottleneck:
         self.linked_zigzag_regions = linked_zigzag_regions
         return
 
-    # def make_offset_bridge_route(
-    #     self, offsets_regions, path_radius, base_frame, rest_of_picture
-    # ):
-    #     all_offsets = it.sum_imgs([x.img for x in offsets_regions])
-    #     _, outer = mt.detect_contours(self.img, return_img=True)
-    #     objective_lines = np.logical_and(
-    #         outer.astype(np.uint8),
-    #         np.logical_not(mt.dilation(all_offsets, kernel_size=1).astype(np.uint8)),
-    #     )
-    #     square_mask = getStructuringElement(
-    #         MORPH_RECT, (int(path_radius * 2), int(path_radius * 2))
-    #     )
-    #     objective_lines_dilated = mt.dilation(objective_lines, kernel_img=square_mask)
-    #     outer_offseted = np.logical_and(
-    #         self.img, np.logical_not(objective_lines_dilated)
-    #     )
-    #     outer_offseted = it.take_the_bigger_area(outer_offseted)
-    #     _, outer_new = mt.detect_contours(outer_offseted, return_img=True)
-    #     objective_lines_new = np.logical_and(
-    #         outer_new.astype(np.uint8),
-    #         np.logical_not(mt.dilation(all_offsets, kernel_size=1).astype(np.uint8)),
-    #     )
-    #     self.route = objective_lines_new
-    #     self.trail = mt.dilation(self.route, kernel_size=path_radius)
-    #     return
-
 
 class Bridge:
 
@@ -396,36 +370,6 @@ class BridgeRegions:
                     contour_connection.astype(np.uint8),
                     np.ones_like(contour_connection),
                 )
-
-                # cccc, dsdsd, fdfdfd = it.divide_by_connected(contour_connection)
-                # contour_connection = list(
-                #     filter(
-                #         lambda x: np.sum(np.logical_and(x, top_bottom_lines)) > 0, cccc
-                #     )
-                # )
-                # dddcontour_connection = list(
-                #     filter(
-                #         lambda x: np.sum(np.logical_and(x, top_bottom_lines)) > 0, cccc
-                #     )
-                # )[0]
-                # C = mt.detect_contours(
-                #     dddcontour_connection.astype(np.uint8),
-                #     return_img=True,
-                #     return_hierarchy=True,
-                # )
-                # D = it.chain_to_lines(
-                #     pt.contour_to_list([C[0][3]]), np.zeros(base_frame)
-                # )
-
-                # filled_connection = it.fill_internal_area(
-                #     contour_connection.astype(np.uint8),
-                #     np.ones_like(contour_connection),
-                # )
-                # filled_connection = np.logical_and(filled_connection, rest_of_picture)
-                # new_bridge = np.logical_or(filled_connection, top_bottom_lines)
-
-                # img = mt.dilation(origin, kernel_img=mask_line)
-                # img = np.logical_and(img, rest_of_picture)
                 self.offset_bridges.append(
                     Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
                 )
@@ -797,21 +741,9 @@ def connect_origin_parts(origin, eroded):
 def reduce_lines_overshoot(candidate, origin_points):
     """Determines the start and end for each trunk, then reduces the margins until all its bottlenecks are encompassed"""
     t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
-    # if len(t_ends) == 0:  # se for um ciclo fechado
-    #     start_pnt = random.choice(pt.x_y_para_pontos(np.nonzero(candidate)))
-    #     origin_chain = pt.invert_x_y(
-    #         path_tools.make_a_chain(candidate.astype(bool), start_pnt)
-    #     )
-    #     origin_chain_img = it.points_to_img(origin_chain, np.zeros_like(candidate))
-    #     new_ends = pt.img_to_points(sk.find_tips(origin_chain_img.astype(bool)))
-    #     origin_chain = path_tools.set_first_pt_in_seq(origin_chain, new_ends[0])
-    #     candidate = np.multiply(candidate, origin_chain_img)
-    # else:  # se for um trunk aberto
-    # start_pnt = []
     origin_chain = pt.invert_x_y(
         path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
     )
-    # reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
     new_ends = [pt.closest_point(x, origin_chain)[0] for x in origin_points]
     new_origin = origin_chain.copy()
     count_up = 0
@@ -849,7 +781,6 @@ def close_bridge_contour(
         all_borders, all_borders_img = mt.detect_contours(
             rest_of_picture, return_img=True
         )
-        # area_pescocal = mt.dilation(trunk.astype(bool), kernel_size=(dist + 1.5 * path_radius))
         area_pescocal = mt.dilation(
             trunk.astype(bool), kernel_size=(max_accepted * path_radius_bridg + 8)
         )
@@ -1024,10 +955,6 @@ def close_bridge_contour(
         bridge_border_seq = path_tools.img_to_chain(bridge_border)
     except:
         return [[], [], [], []]
-
-    # if np.sum(line1) == np.sum(line2):
-    #     extreme_external_points = [[], [], [], []]
-    # else:
     while np.sum(bridge_border == 2) > 4 and len(bridge_border_seq) > 1:
         opened = mt.opening(bridge_img, kernel_size=1)
         line1b = np.logical_and(line1, opened)

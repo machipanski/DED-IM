@@ -57,20 +57,25 @@ def ask_parameters_input():
     fieldNames = [
         "DPI",
         "Layer Height(mm)",
+        "First Layer Height(mm)",
     ]
-    fieldDefs = [300, 1.5]
+    fieldDefs = [300, 1.5, 2.0]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 
 def ask_parameters_thin_walls(configurations):
     """Asks for thin walls parameters, allowing changes to what is already standardized"""
-    d_tw, sob_tw_per, name_prog = select_or_input(configurations, thinwalls=True)
-    return d_tw, sob_tw_per, name_prog
+    d_tw, fst_d_tw, sob_tw_per, name_prog = select_or_input(
+        configurations, thinwalls=True
+    )
+    return d_tw, fst_d_tw, sob_tw_per, name_prog
 
 
 def ask_parameters_offsets(configurations):
     """Asks for offsets mapping parameters, allowing changes to what is already standardized"""
-    [d_cont, sob_cont_per, name_prog] = select_or_input(configurations, contours=True)
+    [d_cont, frst_d_cont, sob_cont_per, name_prog] = select_or_input(
+        configurations, contours=True
+    )
     msg = "Contour parameters"
     title = "Contour parameters"
     fieldNames = [
@@ -82,12 +87,20 @@ def ask_parameters_offsets(configurations):
     [void_max, external_max, internal_max] = ask_parameters_constructor(
         msg, title, fieldNames, fieldDefs
     )
-    return void_max, external_max, internal_max, d_cont, sob_cont_per, name_prog
+    return (
+        void_max,
+        external_max,
+        internal_max,
+        d_cont,
+        frst_d_cont,
+        sob_cont_per,
+        name_prog,
+    )
 
 
 def ask_parameters_bridges(configurations):
     """Asks for bridge mapping parameters, allowing changes to what is already standardized"""
-    d_bridg, sob_bridg_per, name_prog = select_or_input(
+    d_bridg, frst_d_bridg, sob_bridg_per, name_prog = select_or_input(
         configurations, bottlenecks=True
     )
     msg = "Bridges parameters"
@@ -95,13 +108,30 @@ def ask_parameters_bridges(configurations):
     fieldNames = ["Minimum internal passages"]
     fieldDefs = [2]
     n_max = ask_parameters_constructor(msg, title, fieldNames, fieldDefs)[0]
-    return n_max, d_bridg, sob_bridg_per, name_prog
+    return n_max, d_bridg, frst_d_bridg, sob_bridg_per, name_prog
 
 
 def ask_parameters_zigzags(configurations):
     """Asks for zigzag mapping parameters, allowing changes to what is already standardized"""
-    d_larg, sob_tw_larg, name_prog = select_or_input(configurations, wide=True)
-    return d_larg, sob_tw_larg, name_prog
+    d_larg, frst_d_larg, sob_tw_larg, name_prog = select_or_input(
+        configurations, wide=True
+    )
+    return d_larg, frst_d_larg, sob_tw_larg, name_prog
+
+
+def ask_parameters_offset_routes(configurations):
+    """Asks for offset route parameters, allowing changes to what is already standardized"""
+    msg = "Contour routes parameters"
+    title = "Contour routes parameters"
+    fieldNames = [
+        "Spiralize outer Contour",
+        "Ammendment percentage",
+    ]
+    fieldDefs = [1, 0.7]
+    [outer_spiral, amendment_size] = ask_parameters_constructor(
+        msg, title, fieldNames, fieldDefs
+    )
+    return outer_spiral, amendment_size
 
 
 def ask_parameters_internal_routes():
@@ -165,6 +195,7 @@ def select_or_input(
             "name",
             "filling_strategy",
             "bead_diameter",
+            "bead_diameter_in_first_layer",
             "bead_superposition",
             "travel_speed",
             "wire_speed",
@@ -182,12 +213,13 @@ def select_or_input(
                 used_region=called_region,
                 filling_strategy=field_values[1],
                 diambead_diameter_cord=field_values[2],
-                bead_superposition=field_values[3],
-                travel_speed=field_values[4],
-                wire_speed=field_values[5],
-                voltage=field_values[6],
-                on_pause=field_values[7],
-                off_pause=field_values[8],
+                diam_bead_first_layer=field_values[3],
+                bead_superposition=field_values[4],
+                travel_speed=field_values[5],
+                wire_speed=field_values[6],
+                voltage=field_values[7],
+                on_pause=field_values[8],
+                off_pause=field_values[9],
             )
             d_ext = field_values[2]
             sob_ext_per = field_values[3]
@@ -202,8 +234,9 @@ def select_or_input(
             filter(lambda x: x["name"] == selected_item, configuracoes.lista_programas)
         )[0]
         d_ext = perf_selecionado["bead_diameter"]
+        frst_d_ext = perf_selecionado["bead_diameter_first_layer"]
         sob_ext_per = perf_selecionado["bead_superposition"]
         name_prog = perf_selecionado["name"]
-        return float(d_ext), float(sob_ext_per), name_prog
+        return float(d_ext), float(frst_d_ext), float(sob_ext_per), name_prog
     else:
         msgbox("No selection made.", "Cancelled")

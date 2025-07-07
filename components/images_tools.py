@@ -161,12 +161,59 @@ def eliminate_duplicates(lista: List[np.ndarray]):
     return no_repetition
 
 
-def fill_internal_area(contour_img: np.ndarray, original_img: np.ndarray) -> np.ndarray:
-    internal_area = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)
-    internal_area = np.logical_or(internal_area, contour_img)  # OR reinsere a trilha
-    internal_area = np.logical_and(internal_area, original_img)
-    # AND para garantir os buracos
-    return internal_area
+def fill_internal_area(
+    contour_img: np.ndarray, original_img: np.ndarray, old_method=False
+) -> np.ndarray:
+    if old_method:
+        filled_img = flood_fill(np.logical_not(contour_img), (0, 0), 0, connectivity=1)
+        filled_img = np.logical_or(filled_img, contour_img)  # OR reinsere a trilha
+        filled_img = np.logical_and(filled_img, original_img)
+        return filled_img
+    else:
+        contours, hierarchy = cv2.findContours(
+            contour_img.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE
+        )
+        filled_img = np.zeros(contour_img.shape[:2], dtype=np.uint8)
+        all_contours = np.zeros(contour_img.shape[:2], dtype=np.uint8)
+        cv2.drawContours(all_contours, contours, -1, 1, 1)
+        cv2.drawContours(filled_img, contours, 0, 1, cv2.FILLED)
+        no_external = np.logical_and(
+            all_contours,
+            np.logical_not(
+                cv2.drawContours(
+                    np.zeros(contour_img.shape[:2], dtype=np.uint8), contours, 0, 1, 1
+                )
+            ),
+        )
+        if no_external.any():
+            contours, hierarchy = cv2.findContours(
+                no_external.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE
+            )
+            for i, contour in enumerate(contours):
+                # Check if the contour has no child
+                if hierarchy[0][i][2] < 0:
+                    # If contour has no child, fill the contour with black color
+                    cv2.drawContours(filled_img, [contour], -1, 0, cv2.FILLED)
+        return filled_img
+
+
+def filter_first_unique_images(image_list):
+    """
+    Returns only the first occurrence of each unique binary image in the list.
+    Args:
+        image_list (list of np.ndarray): List of binary images (same shape).
+    Returns:
+        list of np.ndarray: Filtered list with only the first occurrence of each unique image.
+    """
+    seen = set()
+    result = []
+    for img in image_list:
+        # Convert image to a hashable type (bytes)
+        img_bytes = img.tobytes()
+        if img_bytes not in seen:
+            seen.add(img_bytes)
+            result.append(img)
+    return result
 
 
 def final_mapping(layer: Layer, folders: System_Paths):
@@ -386,7 +433,7 @@ def take_the_bigger_area(img: np.ndarray):
 
 
 def extend_line_random_to_touch(
-    image, origin, minimum=2, touches=1, pre_dettermined=9999
+    image, origin, minimum=2, touches=1, pre_dettermined=9999, print_from_first=False
 ):
     directions = [
         (0, -1),  # Left
@@ -415,10 +462,12 @@ def extend_line_random_to_touch(
         extended_line[y, x] = image[y, x] + 1
         if extended_line[y, x] >= minimum and (y, x) != origin:
             touches_counter += 1
+        if print_from_first and touches_counter == 0:
+            extended_line[y, x] = 0
         y += direction[0]
         x += direction[1]
     if flag_touch:
-        print("   Touch found")
+        # print("   Touch found")
         return extended_line, flag_touch, direction_index
     else:
         print("   No touch found")
@@ -427,4 +476,5 @@ def extend_line_random_to_touch(
             origin,
             minimum=minimum,
             touches=touches,
+            print_from_first=print_from_first,
         )

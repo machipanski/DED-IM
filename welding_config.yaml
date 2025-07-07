@@ -1,49 +1,54 @@
 file: welding_config.yaml
 lista_programas:
-- bead_diameter: 4.5
+- bead_diameter: 5.8
+  bead_diameter_first_layer: 4.5
   bead_superposition: 50.0
   filling_strategy: line simples 360spd
-  name: thinw 4.5diam
+  name: thinw 6/4.5 diam
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 360.0
   used_region: Thin Walls
   voltage: 16.6
   wire_speed: 3.6
-- bead_diameter: 4.5
+- bead_diameter: 5.8
+  bead_diameter_first_layer: 4.5
   bead_superposition: 20
   filling_strategy: offsets
-  name: offsets 4.5diam 20sobr 360spd
+  name: offsets 6/4.5 diam 20sobr 360spd
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 360.0
   used_region: contours
   voltage: 16.6
   wire_speed: 1.8
-- bead_diameter: 4
+- bead_diameter: 5.8
+  bead_diameter_first_layer: 4.5
   bead_superposition: 20.0
   filling_strategy: zigzag vai e volta
-  name: Largas 4diam 20sobr 425spd
+  name: Largas 6/4.5 diam 20sobr 425spd
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 425
   used_region: wide_areas
   voltage: 16.6
   wire_speed: 3.6
-- bead_diameter: 4
+- bead_diameter: 5.8
+  bead_diameter_first_layer: 4.5
   bead_superposition: 20.0
   filling_strategy: weaving
-  name: estrang 4diam 20sobr 420spd
+  name: estrang 6/4.5diam 20sobr 420spd
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 420.0
   used_region: bottleneck
   voltage: 16.6
   wire_speed: 3.0
-- bead_diameter: 4
+- bead_diameter: 5.8
+  bead_diameter_first_layer: 4.5
   bead_superposition: 20.0
   filling_strategy: weaving
-  name: estrang 4diam 20sobr 360spd
+  name: estrang 6/4.5 diam 20sobr 360spd
   off_pause: 600.0
   on_pause: 800.0
   travel_speed: 360.0

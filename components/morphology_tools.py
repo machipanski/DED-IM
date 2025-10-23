@@ -109,9 +109,33 @@ def gradient(img, kernel_img=None, kernel_size=None):
     return grad
 
 
+def blackhat(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
+    if kernel_img is None:
+        blackhat = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_BLACKHAT, disk(kernel_size)
+        )
+    if kernel_size is None:
+        blackhat = cv2.morphologyEx(
+            img.astype(np.uint8), cv2.MORPH_BLACKHAT, kernel_img.astype(np.uint8)
+        )
+    return blackhat
+
+
 def hitmiss_ends_v2(img):
     # return pcv.morphology.find_tips(img.astype(np.uint8))
     return sk.find_tips(img)
+
+
+def make_parabola_kernel(size=7, center_value=3, edge_value=0.1):
+    assert size % 2 == 1, "O tamanho deve ser ímpar"
+    c = size // 2
+    y, x = np.ogrid[-c : size - c, -c : size - c]
+    dist2 = (x**2 + y**2) / (c**2)
+    a = edge_value - center_value
+    b = center_value
+    kernel = a * dist2 + b
+    kernel = np.maximum(kernel, 0)  # Zera valores negativos
+    return kernel
 
 
 def make_mask(layer: Layer, size: str) -> np.ndarray:
@@ -196,3 +220,8 @@ def opening(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
 
 def thinning(img):
     return thin(img, max_num_iter=None)
+
+
+def colored_dilation(image, kernel):
+    output = cv2.filter2D(src=image, ddepth=2, kernel=kernel)
+    return output

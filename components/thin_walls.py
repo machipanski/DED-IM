@@ -168,6 +168,7 @@ class ThinWallRegions:
         for tw in self.regions:
             self.all_thin_walls = np.logical_or(self.all_thin_walls, tw.img)
             self.all_origins = np.logical_or(self.all_origins, tw.origin)
+        aaaa = self.all_thin_walls
         return
 
     def apply_thin_walls(self, folders: System_Paths, original, base_frame):

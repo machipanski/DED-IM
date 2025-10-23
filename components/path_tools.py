@@ -2471,3 +2471,24 @@ def comprimento_da_trajetoria():
     vol_preench = 2 * math.pi * raio_toroide * area_preench
     Ws_Vd = vol_preench / (area_fio * comp_traj)
     print(f"Relação de velocidades:{Ws_Vd}")
+
+
+def rotate_if_last_is_closest(points):
+    """
+    Recebe uma sequência de pontos [[y,x], ...].
+    Mede qual ponto é mais próximo do último.
+    Se for o primeiro, rotaciona a sequência para que o último seja o novo primeiro
+    e o antigo primeiro se torne o segundo.
+    """
+
+    def distance(p1, p2):
+        return np.linalg.norm(np.array(p1) - np.array(p2))
+
+    last = points[-1]
+    distances = [distance(last, p) for p in points[:-1]]
+    closest_idx = np.argmin(distances)
+    if closest_idx == 0:
+        # Rotaciona: último vira primeiro, resto segue
+        rotated = [last] + points[:-1]
+        return rotated
+    return points

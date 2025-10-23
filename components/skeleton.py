@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 def create_prune_divide_skel(original_img: np.ndarray, size_prune):
     skel = skmorph.skeletonize(original_img.astype(bool))
     skel = skel.astype(np.uint16)
-    dist = distance_transform_edt(original_img)
+    dist = cv2.distanceTransform(original_img.astype(np.uint8), cv2.DIST_L2, 5)
     sem_galhos, segmented_img, segment_objects = prune(
         skel_img=skel.astype(np.uint16), size=size_prune
     )
@@ -36,17 +36,20 @@ def create_prune_divide_skel(original_img: np.ndarray, size_prune):
     return sem_galhos, dist, segment_objects
 
 
-def create_prune_skel(original_img: np.ndarray, size_prune):
+def create_prune_skel(original_img: np.ndarray, size_prune=0, distance=0):
     skel = skmorph.skeletonize(original_img.astype(bool))
     skel = skel.astype(np.uint16)
     dist = distance_transform_edt(original_img)
     sem_galhos, segmented_img, segment_objects = prune(
-        skel_img=skel.astype(np.uint16), size=size_prune
+        skel_img=skel.astype(np.uint16),
+        size=size_prune,
+        distance=distance,
+        dist_map=dist,
     )
     return sem_galhos, dist, segment_objects
 
 
-def prune(skel_img: np.ndarray, size=0, mask=None):
+def prune(skel_img: np.ndarray, size=0, distance=0, dist_map=[], mask=None, it_prune=0):
     """Prune the ends of skeletonized segments.
     The pruning algorithm proposed by https://github.com/karnoldbio
     Segments a skeleton into discrete pieces, prunes off all segments less than or
@@ -89,8 +92,33 @@ def prune(skel_img: np.ndarray, size=0, mask=None):
         cv2.drawContours(removed_barbs, removed_segments, -1, 1, 1, lineType=8)
         # Subtract all short segments from the skeleton image
         pruned_img = it.image_subtract(cleaned_img, removed_barbs)
-        pruned_img = _iterative_prune(pruned_img, 3)
+        # pruned_img = _iterative_prune(pruned_img, 3)
     # cleaned_img = _iterative_prune(pruned_img,2)
+    segmented_img, segment_objects = segment_skeleton(pruned_img, mask)
+    if distance > 0:
+        # If size>0 then check for segments that are smaller than size pixels long
+        # Sort through segments since we don't want to remove primary segments
+        secondary_objects, _, BBB = segment_sort(pruned_img, segment_objects)
+        # Keep segments longer than specified size
+        for i in range(0, len(secondary_objects)):
+            pontos_obj = [list(x[0]) for x in secondary_objects[i]]
+            obj_img = it.points_to_img(
+                pt.invert_x_y(pontos_obj), np.zeros_like(pruned_img)
+            )
+            transform_secondary = obj_img * dist_map
+            over_distance = transform_secondary > distance
+            if np.sum(over_distance) > 0:
+                removed_segments.append(secondary_objects[i])
+            else:
+                kept_segments.append(secondary_objects[i])
+        # Draw the contours that got removed
+        removed_barbs = np.zeros(cleaned_img.shape[:2], np.uint16)
+        cv2.drawContours(removed_barbs, removed_segments, -1, 1, 1, lineType=8)
+        # Subtract all short segments from the skeleton image
+        pruned_img = it.image_subtract(pruned_img, removed_barbs)
+        # pruned_img = _iterative_prune(pruned_img, 3)
+    if it_prune > 0:
+        pruned_img = _iterative_prune(pruned_img, it_prune)
     segmented_img, segment_objects = segment_skeleton(pruned_img, mask)
     return pruned_img, segmented_img, segment_objects
 
@@ -285,7 +313,10 @@ def segment_sort(skel_img: np.ndarray, objects, mask=None, first_stem=True):
     # Loop through segment contours
     for i, cnt in enumerate(objects):
         segment_plot = np.zeros(skel_img.shape[:2], np.uint8)
-        cv2.drawContours(segment_plot, objects, i, 255, 1, lineType=8)
+        if isinstance(objects, tuple):
+            cv2.drawContours(segment_plot, objects, i, 255, 1, lineType=8)
+        else:
+            segment_plot = it.points_to_img(cnt, segment_plot)
         overlap_img = np.logical_and(segment_plot, tips_img)
         # The first contour is the base, and while it contains a tip, it isn't a leaf
         if np.sum(overlap_img) == 0:
@@ -300,3 +331,17 @@ def segment_sort(skel_img: np.ndarray, objects, mask=None, first_stem=True):
     for i, cnt in enumerate(secondary_objects):
         cv2.drawContours(labeled_img, secondary_objects, i, (0, 255, 0), 4, lineType=8)
     return secondary_objects, primary_objects, labeled_img
+
+
+def reconstruct_img_from_skeleton(medial_img):
+    """
+    Receives an image (2D numpy array) where each pixel indicates the radius of the circle.
+    Returns a binary image with all circles filled.
+    """
+    output = np.zeros_like(medial_img, dtype=np.uint8)
+    coords = np.argwhere(medial_img > 0)
+    for y, x in coords:
+        radius = int(round(medial_img[y, x]))
+        if radius > 0:
+            cv2.circle(output, (x, y), radius, 1, thickness=-1)
+    return output

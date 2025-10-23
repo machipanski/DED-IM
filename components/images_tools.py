@@ -84,6 +84,22 @@ def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarra
     return separated_imgs, labels, num
 
 
+def filter_connected_by_points(binary_img: np.ndarray, points: list) -> np.ndarray:
+    """
+    Receives a binary image and a list of (row, col) points.
+    Returns a binary image with only the connected components that contain at least one of the points.
+    """
+    labeled = label(binary_img, connectivity=1)
+    labels_to_keep = set()
+    for y, x in points:
+        if 0 <= y < labeled.shape[0] and 0 <= x < labeled.shape[1]:
+            lbl = labeled[y, x]
+            if lbl > 0:
+                labels_to_keep.add(lbl)
+    result = np.isin(labeled, list(labels_to_keep))
+    return result.astype(binary_img.dtype)
+
+
 def draw_line(img, a, b):
     af = tuple(np.flip(a))
     bf = tuple(np.flip(b))
@@ -273,6 +289,180 @@ def final_mapping(layer: Layer, folders: System_Paths):
                     )
         isl_final_map = sum_imgs(regions_imgs)
     return isl_final_map
+
+
+def individual_routes(layer: Layer, folders: System_Paths):
+    isl_ind_routes = np.zeros(layer.base_frame)
+    regions_imgs = []
+    for isl in layer.islands:
+        folders.load_thin_walls_hdf5(layer.name, isl)
+        if hasattr(isl, "thin_walls"):
+            if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+                if (
+                    hasattr(isl.thin_walls.regions[0], "route")
+                    and len(isl.thin_walls.regions[0].route) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs([reg.route for reg in isl.thin_walls.regions]).astype(
+                            np.uint16
+                        )
+                        * 501
+                    )
+        folders.load_zigzags_hdf5(layer.name, isl)
+        if hasattr(isl, "zigzags"):
+            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
+                if (
+                    hasattr(isl.zigzags.regions[0], "route")
+                    and len(isl.zigzags.regions[0].route) > 0
+                ):
+                    # regions_imgs.append(
+                    #     sum_imgs_colored(
+                    #         [reg.route for reg in isl.zigzags.regions], limited=True
+                    #     ).astype(np.uint16)
+                    #     * 101
+                    # )
+                    aaaa = sum_imgs_colored([x.route for x in isl.zigzags.regions])
+                    regions_imgs.append(aaaa * 101)
+        folders.load_offsets_hdf5(layer.name, isl)
+        if hasattr(isl, "offsets"):
+            if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+                if (
+                    hasattr(isl.offsets.regions[0], "route")
+                    and len(isl.offsets.regions[0].route) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
+                            np.uint16
+                        )
+                        * 601
+                    )
+        folders.load_bridges_hdf5(layer.name, isl)
+        if hasattr(isl, "bridges"):
+            if hasattr(isl.bridges, "zigzag_bridges"):
+                if len(isl.bridges.zigzag_bridges) > 0:
+                    if (
+                        hasattr(isl.bridges.zigzag_bridges[0], "route")
+                        and len(isl.bridges.zigzag_bridges[0].route) > 0
+                    ):
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.route for reg in isl.bridges.zigzag_bridges]
+                            ).astype(np.uint16)
+                            * 701
+                        )
+            if hasattr(isl.bridges, "offset_bridges"):
+                if len(isl.bridges.offset_bridges) > 0:
+                    if (
+                        hasattr(isl.bridges.offset_bridges[0], "route")
+                        and len(isl.bridges.offset_bridges[0].route) > 0
+                    ):
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.route for reg in isl.bridges.offset_bridges]
+                            ).astype(np.uint16)
+                            * 801
+                        )
+            if hasattr(isl.bridges, "cross_over_bridges"):
+                if (
+                    hasattr(isl.bridges.cross_over_bridges[0], "route")
+                    and len(isl.bridges.cross_over_bridges[0].route) > 0
+                ):
+                    if len(isl.bridges.cross_over_bridges) > 0:
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.route for reg in isl.bridges.cross_over_bridges]
+                            ).astype(np.uint16)
+                            * 901
+                        )
+        isl_ind_routes = sum_imgs(regions_imgs)
+    return isl_ind_routes
+
+
+def individual_trails(layer: Layer, folders: System_Paths):
+    isl_ind_trails = np.zeros(layer.base_frame)
+    regions_imgs = []
+    for isl in layer.islands:
+        folders.load_thin_walls_hdf5(layer.name, isl)
+        if hasattr(isl, "thin_walls"):
+            if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+                if (
+                    hasattr(isl.thin_walls.regions[0], "trail")
+                    and len(isl.thin_walls.regions[0].trail) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs([reg.trail for reg in isl.thin_walls.regions]).astype(
+                            np.uint16
+                        )
+                        * 501
+                    )
+        folders.load_zigzags_hdf5(layer.name, isl)
+        if hasattr(isl, "zigzags"):
+            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
+                if (
+                    hasattr(isl.zigzags.regions[0], "trail")
+                    and len(isl.zigzags.regions[0].trail) > 0
+                ):
+                    # regions_imgs.append(
+                    #     sum_imgs_colored(
+                    #         [reg.trail for reg in isl.zigzags.regions], limited=True
+                    #     ).astype(np.uint16)
+                    #     * 101
+                    # )
+                    aaaa = sum_imgs_colored([x.trail for x in isl.zigzags.regions])
+                    regions_imgs.append(aaaa * 101)
+        folders.load_offsets_hdf5(layer.name, isl)
+        if hasattr(isl, "offsets"):
+            if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+                if (
+                    hasattr(isl.offsets.regions[0], "trail")
+                    and len(isl.offsets.regions[0].trail) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs([reg.trail for reg in isl.offsets.regions]).astype(
+                            np.uint16
+                        )
+                        * 601
+                    )
+        folders.load_bridges_hdf5(layer.name, isl)
+        if hasattr(isl, "bridges"):
+            if hasattr(isl.bridges, "zigzag_bridges"):
+                if len(isl.bridges.zigzag_bridges) > 0:
+                    if (
+                        hasattr(isl.bridges.zigzag_bridges[0], "trail")
+                        and len(isl.bridges.zigzag_bridges[0].trail) > 0
+                    ):
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.trail for reg in isl.bridges.zigzag_bridges]
+                            ).astype(np.uint16)
+                            * 701
+                        )
+            if hasattr(isl.bridges, "offset_bridges"):
+                if len(isl.bridges.offset_bridges) > 0:
+                    if (
+                        hasattr(isl.bridges.offset_bridges[0], "trail")
+                        and len(isl.bridges.offset_bridges[0].trail) > 0
+                    ):
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.trail for reg in isl.bridges.offset_bridges]
+                            ).astype(np.uint16)
+                            * 801
+                        )
+            if hasattr(isl.bridges, "cross_over_bridges"):
+                if (
+                    hasattr(isl.bridges.cross_over_bridges[0], "trail")
+                    and len(isl.bridges.cross_over_bridges[0].trail) > 0
+                ):
+                    if len(isl.bridges.cross_over_bridges) > 0:
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.trail for reg in isl.bridges.cross_over_bridges]
+                            ).astype(np.uint16)
+                            * 901
+                        )
+        isl_ind_trails = sum_imgs(regions_imgs)
+    return isl_ind_trails
 
 
 def has_contact(fail, new_zigzag):
@@ -478,3 +668,49 @@ def extend_line_random_to_touch(
             touches=touches,
             print_from_first=print_from_first,
         )
+
+
+def rectangle_middle_and_corner_points_expanded(shape):
+    """
+    Recebe o shape (altura, largura) de uma imagem e retorna uma lista com:
+    - os pontos médios das arestas,
+    - os quatro vértices do retângulo expandido com o dobro da área e mesmo centroide.
+    """
+    h, w = shape[:2]
+    area = h * w
+    new_area = area * 5
+    aspect = w / h
+
+    # Calcula novo h e w mantendo o centroide
+    new_h = int(round((new_area / aspect) ** 0.5))
+    new_w = int(round(new_h * aspect))
+
+    # Garante que a área seja pelo menos o dobro
+    if new_h * new_w < new_area:
+        new_w += 1
+
+    # Centro do retângulo original
+    cy = h // 2
+    cx = w // 2
+
+    # Calcula os limites do novo retângulo
+    top = cy - new_h // 2
+    bottom = top + new_h - 1
+    left = cx - new_w // 2
+    right = left + new_w - 1
+
+    # Pontos médios das arestas
+    top_middle = (top, (left + right) // 2)
+    bottom_middle = (bottom, (left + right) // 2)
+    left_middle = ((top + bottom) // 2, left)
+    right_middle = ((top + bottom) // 2, right)
+
+    # Vértices
+    corners = [
+        (top, left),  # canto superior esquerdo
+        (top, right),  # canto superior direito
+        (bottom, left),  # canto inferior esquerdo
+        (bottom, right),  # canto inferior direito
+    ]
+    middles = [top_middle, bottom_middle, left_middle, right_middle]
+    return middles + corners

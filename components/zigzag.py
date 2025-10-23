@@ -1,22 +1,36 @@
-import concurrent.futures
+# import concurrent.futures
 import itertools
+
 import math
 import copy
-from keyring import set_keyring
+import re
+
+# from stat import FILE_ATTRIBUTE_ARCHIVE
+# from keyring import set_keyring
+# from networkx import reconstruct_path
+# from components.layer import Island
+from scipy.ndimage import distance_transform_edt
 import numpy as np
-from components import path_tools
+from components import bottleneck, path_tools
 from components import images_tools as it
 from components import skeleton as sk
 from components import points_tools as pt
 from components import morphology_tools as mt
-from typing import List
 from skimage.measure import label
-from skimage.morphology import disk
+import networkx as nx
+from skimage.feature import corner_harris, corner_peaks
+
+# from skimage.morphology import disk
 from cv2 import getStructuringElement, MORPH_RECT
-from scipy.spatial import distance_matrix, distance
+
+# from scipy.spatial import distance_matrix, distance
 from scipy.ndimage import distance_transform_edt
-from skimage.segmentation import flood_fill
+from skimage.segmentation import flood_fill, watershed
 from components.timer import Timer
+from typing import TYPE_CHECKING
+from typing import List
+
+# if TYPE_CHECKING:
 
 
 class DivisionLine:
@@ -214,14 +228,6 @@ class Subregion:
         shadow_img, areas = self.create_shadow_img(path_radius)
         areas = self.analyze_images_with_erosion(areas, path_radius)
         divided_small_img = it.sum_imgs_colored([x.img for x in areas])
-        # if len(divided_segments) > 0:
-        #     aaaaa = it.sum_imgs(divided_segments)
-        # counter = len(areas)
-        # for i, j in itertools.product(areas, divided_segments):
-        #     if np.sum(np.logical_and(i.img, j)) > 0:
-        #         indx = areas.index(i)
-        #         areas[indx].img = np.logical_and(i.img, np.logical_not(j))
-        #         areas.append(ShadowArea(counter, j))
         areas = it.neighborhood_imgs(areas)
         if len(areas) > 1:
             monotonic_regions, self.labeled_monotonic_regions, self.areas_somadas = (
@@ -239,6 +245,106 @@ class Subregion:
                 self.areas_somadas = self.img
                 self.regions.append(ZigZag(0, self.labeled_monotonic_regions))
         # aaaaaaa = it.sum_imgs_colored([x.img for x in self.regions])
+        return
+
+    def scan_monotonic_v2(
+        self,
+        path_radius,
+        base_frame,
+        sem_galhos_nobridges,
+        sem_galhos_dist_nobridges,
+        trunks_nobridges,
+        zigzags_bridges,
+        rest_of_picture_f3,
+    ):
+        internal_area = rest_of_picture_f3
+        # prune_divisor = 6 * path_radius
+        # prune_internal = 6 * path_radius
+        prune_divisor = 0
+        prune_internal = path_radius * 2
+        if len(zigzags_bridges) > 0:
+            internal_area = it.sum_imgs(
+                [x.img for x in zigzags_bridges] + [rest_of_picture_f3]
+            )
+        # internal_area_opened = mt.opening(internal_area, kernel_size=path_radius * 3)
+        internal_area_opened = it.take_the_bigger_area(internal_area)
+        # sem_galhos = skmorph.skeletonize(internal_area_opened.astype(bool))
+        sem_galhos, dist, segment_objects = sk.create_prune_skel(
+            internal_area_opened, prune_divisor, distance=path_radius * 10
+        )
+        translated_lines = []
+        for i in segment_objects:
+            line = [list(x[0]) for x in i]
+            translated_lines.append(pt.invert_x_y(line))
+        segment_objects = translated_lines
+        seg_imgs = [
+            it.points_to_img(line, np.zeros_like(self.img)) for line in segment_objects
+        ]
+        new_divisor = rest_of_picture_f3
+        if len(zigzags_bridges) > 0:
+            new_divisor = it.sum_imgs(
+                rest_of_picture_f3.astype(np.uint8) + [x.img for x in zigzags_bridges]
+            )
+            new_divisor = np.logical_and(
+                new_divisor,
+                np.logical_not(
+                    mt.dilation(
+                        it.sum_imgs(sem_galhos + [x.origin for x in zigzags_bridges]),
+                        kernel_size=1,
+                    )
+                ),
+            )
+        else:
+            new_divisor = np.logical_and(
+                new_divisor,
+                np.logical_not(mt.dilation(sem_galhos, kernel_size=1)),
+            )
+        sem_galhos_new, dist_new, segment_objects_new = sk.create_prune_skel(
+            new_divisor.astype(bool), prune_internal
+        )
+        remade = []
+        for line in segment_objects_new:
+            x = line.tolist()
+            y = [a[0] for a in x]
+            remade.append(y)
+        reconstruct_path = sk.reconstruct_img_from_skeleton(sem_galhos_new * dist_new)
+        tree_deposition_diameter = path_radius * 6
+        filtered_segments = list(
+            filter(lambda x: len(x) > tree_deposition_diameter, remade)
+        )
+        seg_imgs = [
+            it.points_to_img(pt.invert_x_y(line), np.zeros_like(self.img))
+            for line in filtered_segments
+        ]
+        segs_labels = it.sum_imgs_colored(seg_imgs)
+        island_divisor = np.logical_and(new_divisor, self.img.astype(bool))
+        labels = watershed(
+            island_divisor, segs_labels, mask=island_divisor.astype(np.uint8)
+        )
+        a_filtrado_ecortado = it.sum_imgs([labels, sem_galhos_new * 10])
+
+        labels_ids = np.unique(labels)
+        labels_ids = labels_ids[labels_ids != 0]  # Ignora o fundo
+        separated = [(labels == lbl).astype(np.uint8) for lbl in labels_ids]
+        labeled_monotonic_regions = labels
+        areas_somadas = np.zeros_like(self.img)
+        self.regions = []
+        for i, label_img in enumerate(separated):
+            region_origin = np.logical_and(label_img.astype(bool), sem_galhos_new)
+            self.regions.append(ZigZag(i, label_img, origin=region_origin))
+            areas_somadas = np.logical_or(areas_somadas, label_img.astype(bool))
+
+        self.labeled_monotonic_regions = labeled_monotonic_regions
+        aaa = it.sum_imgs([self.labeled_monotonic_regions, sem_galhos_new])
+        aaaa = it.sum_imgs(
+            [
+                self.labeled_monotonic_regions,
+                mt.dilation(sem_galhos_new, kernel_size=path_radius) * 20,
+            ]
+        )
+        self.areas_somadas = areas_somadas
+        # ab, ac, aaaassss = sk.segment_sort(sem_galhos_new, segment_objects_new)
+        # abc, acc, aaaasssss = sk.segment_sort(sem_galhos, segment_objects)
         return
 
     def trace_divisions(self, rest_of_picture_f2, base_frame, limites):
@@ -382,10 +488,117 @@ class ZigZag:
         self.center = []
         self.remove = False
         self.region_path_radius = 0
+        self.origin = []
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
         return
+
+    def make_internal_border(
+        self, internal, filled_external_borders, eroded, origin_axis, path_radius_bridg
+    ):
+        def make_closest_path_to(
+            internal_borders, original_line, start_orig, end_orig, internal_extreme
+        ):
+            distance_map = np.multiply(
+                internal_borders, distance_transform_edt(np.logical_not(original_line))
+            )
+            # internal_borders_pts = pt.img_to_points(internal_borders)
+            start_ci, _ = pt.closest_point(start_orig, internal_extreme)
+            internal_extreme.remove(start_ci)
+            end_ci, _ = pt.closest_point(end_orig, internal_extreme)
+            internal_extreme.remove(end_ci)
+            G = path_tools.img_to_graph_com_distancias(distance_map)
+            _, path1 = nx.bidirectional_dijkstra(G, tuple(start_ci), tuple(end_ci))
+            line_ci = it.points_to_img(path1, np.zeros_like(internal_borders))
+            return line_ci
+
+        internal = np.logical_or(internal, origin_axis)
+        _, internal_borders = mt.detect_contours(internal, return_img=True)
+        internal_borders = np.logical_and(internal_borders, filled_external_borders)
+        _, labeled, labeled_n = it.divide_by_connected(internal_borders)
+        divided_contour = it.image_subtract(
+            internal_borders, mt.dilation(origin_axis, kernel_size=1)
+        )
+        # possible_c1_c2, counter_accepted, internal_extreme = (
+        #     decompose_pol_cont_by_corners(
+        #         internal_borders, origin_axis, path_radius_bridg
+        #     )
+        # )
+        # [line_ci1, line_ci2], labeled_divided, num = it.divide_by_connected(
+        #     possible_c1_c2 != 0
+        # )
+        [line_ci1, line_ci2], labeled_divided, num = it.divide_by_connected(
+            divided_contour != 0
+        )
+        # line_ci1 = np.zeros_like(self.img)
+        # line_ci2 = np.zeros_like(self.img)
+        # if labeled_n == 1:
+        #     internal_extreme = pt.img_to_points(mt.hitmiss_ends_v2(internal_borders))
+        #     if len(internal_extreme) == 0:
+        #         possible_c1_c2, counter_accepted, internal_extreme = (
+        #             decompose_pol_cont_by_corners(
+        #                 internal_borders, origin_axis, path_radius_bridg
+        #             )
+        #         )
+        #         # bbb = it.sum_imgs([tng_end,tng_start,all_borders_img])
+        #         labeled = possible_c1_c2
+        #         labeled_n = counter_accepted
+        #     line_ci1 = make_closest_path_to(
+        #         internal_borders,
+        #         self.contour[0],
+        #         self.extreme_points[0],
+        #         self.extreme_points[1],
+        #         internal_extreme,
+        #     )
+        #     if len(internal_extreme) >= 2:
+        #         line_ci2 = make_closest_path_to(
+        #             internal_borders,
+        #             self.contour[1],
+        #             self.extreme_points[2],
+        #             self.extreme_points[3],
+        #             internal_extreme,
+        #         )
+        #     else:
+        #         line_ci2 = line_ci1
+        # elif labeled_n > 2:
+        #     sums = []
+        #     for l in np.arange(0, labeled_n):
+        #         sums.append(np.sum(labeled == l + 1))
+        #     idx = [sums.index(i) for i in sorted(sums, reverse=True)][:2]
+        #     line_ci1 = labeled == idx[0] + 1
+        #     line_ci2 = labeled == idx[1] + 1
+        # elif labeled_n == 2:
+        #     line_ci1 = labeled == 1
+        #     line_ci2 = labeled == 2
+        # internal_borders_closed = np.add(
+        #     internal_borders, np.logical_or(self.contour[2], self.contour[3])
+        # )
+        # internal_borders_closed = np.logical_and(internal, internal_borders_closed)
+        # _, labeled, labeled_n = it.divide_by_connected(internal_borders_closed)
+        # if labeled_n > 1:
+        #     tri_1 = labeled == 1
+        #     tri_1 = it.fill_internal_area(tri_1.astype(np.uint8), np.ones_like(tri_1))
+        #     tri_2 = labeled == 2
+        #     tri_2 = it.fill_internal_area(tri_2.astype(np.uint8), np.ones_like(tri_2))
+        #     new_fig = np.logical_or(tri_1, tri_2)
+        #     new_fig = np.logical_or(new_fig, self.origin.astype(bool))
+        #     new_fig = np.logical_and(new_fig, filled_external_borders)
+        #     _, internal_borders_closed = mt.detect_contours(new_fig, return_img=True)
+        # line_ci1 = np.logical_and(eroded, line_ci1)
+        # line_ci1, _, _ = sk.create_prune_skel(line_ci1, 1)
+        # line_ci2 = np.logical_and(eroded, line_ci2)
+        # line_ci2, _, _ = sk.create_prune_skel(line_ci2, 1)
+        # if np.sum(line_ci1) == 0:
+        #     print("Error: no line 1")
+        # if np.sum(line_ci2) == 0:
+        #     print("Error: no line 2")
+        return line_ci1, line_ci2
+
+    def find_center(self):
+        contour = mt.detect_contours(self.img)
+        contour = pt.contour_to_list(contour)
+        pt.points_center(contour)
 
 
 class ZigZagRegions:
@@ -497,12 +710,35 @@ class ZigZagRegions:
         self.macro_areas = macro_area_list
         return
 
-    def find_monotonic(self, rest_of_picture_f3, base_frame, path_radius, ideal_sum):
-        sub_regions: Subregion = []
+    def find_monotonic(
+        self,
+        rest_of_picture_f3,
+        base_frame,
+        path_radius,
+        sem_galhos,
+        sem_galhos_dist,
+        trunks,
+        zigzags_bridges,
+        w_style,
+        ideal_sum,
+    ):
+        sub_regions: List[Subregion] = []
         separated_imgs, labeled, num = it.divide_by_connected(rest_of_picture_f3)
-        for i in np.arange(0, num):
-            sub_regions.append(Subregion(i, separated_imgs[i]))
-            sub_regions[-1].scan_monotonic(path_radius, base_frame, ideal_sum)
+        # for i in np.arange(0, num):
+        for i, subregion in enumerate(separated_imgs):
+            sub_regions.append(Subregion(i, subregion))
+            if w_style == 1:
+                sub_regions[-1].scan_monotonic_v2(
+                    path_radius,
+                    base_frame,
+                    sem_galhos,
+                    sem_galhos_dist,
+                    trunks,
+                    zigzags_bridges,
+                    rest_of_picture_f3,
+                )
+            else:
+                sub_regions[-1].scan_monotonic(path_radius, base_frame, ideal_sum)
         regs_counter = 0
         for sub_region in sub_regions:
             for region in sub_region.regions:
@@ -525,44 +761,61 @@ class ZigZagRegions:
             region.center = pt.points_center(
                 pt.contour_to_list(mt.detect_contours(region.img))
             )
-            zig_options = []
-            lines, n_lines, internal_border_img, contours, new_path_radius = (
-                cut_in_lines(region.img, path_radius, mask_distancer, var_path_width=0)
-            )
-            filled = it.fill_internal_area(
-                internal_border_img.astype(np.uint8),
-                np.ones_like(internal_border_img),
-                True,
-            )
-            opened = mt.opening(filled, kernel_size=path_radius)
-            with Timer("   Creating the three possible options:"):
-                if np.sum(opened) > 0:
-                    [new_zigzag_a, new_zigzag_b] = zig_zag_two_options(
-                        internal_border_img,
-                        lines,
-                        n_lines,
-                        new_path_radius,
-                        contours,
-                        base_frame,
-                        False,
+            if len(region.origin) == 0:
+                zig_options = []
+                lines, n_lines, internal_border_img, contours, new_path_radius = (
+                    cut_in_lines(
+                        region.img, path_radius, mask_distancer, var_path_width=0
                     )
-                    [new_zigzag_d, new_zigzag_e] = zig_zag_two_options(
-                        internal_border_img,
-                        lines,
-                        n_lines,
-                        new_path_radius,
-                        contours,
-                        base_frame,
-                        True,
-                    )
-                    zig_options.append(new_zigzag_a)
-                    zig_options.append(new_zigzag_b)
-                    zig_options.append(new_zigzag_d)
-                    zig_options.append(new_zigzag_e)
-                [new_zigzag_c] = zig_zag_third_option(
-                    region.img, lines, n_lines, new_path_radius, contours, base_frame
                 )
-                zig_options.append(new_zigzag_c)
+                filled = it.fill_internal_area(
+                    internal_border_img.astype(np.uint8),
+                    np.ones_like(internal_border_img),
+                    True,
+                )
+                opened = mt.opening(filled, kernel_size=path_radius)
+                with Timer("   Creating the three possible options:"):
+                    if np.sum(opened) > 0:
+                        [new_zigzag_a, new_zigzag_b] = zig_zag_two_options(
+                            internal_border_img,
+                            lines,
+                            n_lines,
+                            new_path_radius,
+                            contours,
+                            base_frame,
+                            False,
+                        )
+                        [new_zigzag_d, new_zigzag_e] = zig_zag_two_options(
+                            internal_border_img,
+                            lines,
+                            n_lines,
+                            new_path_radius,
+                            contours,
+                            base_frame,
+                            True,
+                        )
+                        zig_options.append(new_zigzag_a)
+                        zig_options.append(new_zigzag_b)
+                        zig_options.append(new_zigzag_d)
+                        zig_options.append(new_zigzag_e)
+                    [new_zigzag_c] = zig_zag_third_option(
+                        region.img,
+                        lines,
+                        n_lines,
+                        new_path_radius,
+                        contours,
+                        base_frame,
+                    )
+                    zig_options.append(new_zigzag_c)
+            else:
+                new_zigzag_a, new_zigzag_b = make_weaving_wide_route(
+                    region,
+                    path_radius,
+                    mask_distancer,
+                    mask_distancer,
+                    region.img,
+                )
+                zig_options = [new_zigzag_a, new_zigzag_b]
             with Timer("   Calculating best route:"):
                 zig_fills = [
                     mt.dilation(x.astype(np.uint8), kernel_size=path_radius)
@@ -575,6 +828,8 @@ class ZigZagRegions:
                 )
             region.route = new_zigzag
             region.trail = new_trail
+        aaaa = it.sum_imgs_colored([x.route for x in self.regions])
+        aaaaa = it.sum_imgs_colored([x.trail for x in self.regions])
         return
 
 
@@ -833,6 +1088,152 @@ def internal_weaving_cut(interface_line, path_radius_larg, fail):
         # ends = mt.hitmiss_ends_v2(zigzag_candidate)
         # aaaaaa = it.sum_imgs([ends, interface_line])
     return new_zigzags
+
+
+def make_weaving_wide_route(
+    region: ZigZag, path_radius, mask_distancer, internal_mask_dist, rest_of_picture
+):
+    # Garantindo so uma linha de origem
+    origin = region.origin
+    _, _, n = it.divide_by_connected(origin)
+    if n > 1:
+        origin = it.take_the_bigger_area(origin)
+    # Evitando apagar as divisoes dentro da area
+    internal_divisory = mt.blackhat(rest_of_picture, kernel_size=path_radius)
+    internal_divisory = mt.opening(internal_divisory, kernel_size=1)
+    # dilata para garantir sobreposicao depois erode para fazer as rotas do limite do offset
+    total_sobreposition = mt.dilation(region.img, kernel_img=mask_distancer)
+    eroded = mt.erosion(total_sobreposition, kernel_img=internal_mask_dist)
+    eroded = it.image_subtract(eroded, internal_divisory)
+    # faz o contorno em sequencia
+    eroded_seq = path_tools.img_to_chain(eroded)
+    # limpa se houver contornos extras
+    if len(eroded_seq) > 1:
+        lens = [len(x) for x in eroded_seq]
+        eroded_seq = [eroded_seq[lens.index(max(lens))]]
+    # Procura as principais pontas da forma
+    pontas = path_tools.find_curvature_pts(eroded_seq[0])
+    pontas_img = mt.dilation(
+        it.points_to_img(pontas, np.zeros_like(eroded)), kernel_size=1
+    )
+    detected_area_spikes = it.sum_imgs([mt.dilation(origin, kernel_size=1), pontas_img])
+    dist_map = distance_transform_edt(region.img)
+    norm_dist_map = dist_map / path_radius
+    norm_MAT = norm_dist_map * origin
+    minimal_areas = np.logical_and(0 < norm_MAT, norm_MAT <= 1)
+    labeled_minimals, _, _ = it.divide_by_connected(minimal_areas)
+    spikes_exclusion = np.zeros_like(region.img)
+    for mini in labeled_minimals:
+        if np.sum(np.logical_and(detected_area_spikes == 2, mini)) > 0:
+            spikes_exclusion = np.logical_or(
+                spikes_exclusion, mt.dilation(mini, kernel_size=path_radius)
+            )
+    _, eroded_border = mt.detect_contours(eroded, return_img=True, only_external=True)
+    eroded_border_a = it.image_subtract(eroded_border, spikes_exclusion)
+    AAA, BBB, _ = it.divide_by_connected(eroded_border_a)
+    all_segments = []
+    for segment in AAA:
+        segment = mt.thinning(segment)
+        possible_segments, labeled_segmented = decompose_pol_cont_by_corners(segment)
+        all_segments.extend(possible_segments)
+    possible_c1_c2 = np.zeros_like(region.img)
+    possible_opening = np.zeros_like(region.img)
+    for segment in all_segments:
+        if np.logical_and(segment, mt.dilation(origin, kernel_size=2)).any():
+            possible_opening = np.logical_or(possible_opening, segment)
+        else:
+            possible_c1_c2 = np.logical_or(possible_c1_c2, segment)
+    possible_c1_c2 = it.image_subtract(possible_c1_c2, possible_opening)
+    [line_ci1, line_ci2], _, _ = it.divide_by_connected(possible_c1_c2)
+    limitadores_de_ponta = np.zeros_like(region.img)
+    ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
+    ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
+    closing_tip_1 = it.draw_polyline(
+        limitadores_de_ponta,
+        [ends_line_ci1[0], ends_line_ci2[0]],
+        False,
+    )
+    if np.logical_and(closing_tip_1, possible_opening).any():
+        closing_tip_1 = np.zeros_like(region.img)
+    closing_tip_2 = it.draw_polyline(
+        limitadores_de_ponta,
+        [ends_line_ci1[1], ends_line_ci2[1]],
+        False,
+    )
+    if np.logical_and(closing_tip_2, possible_opening).any():
+        closing_tip_2 = np.zeros_like(region.img)
+    limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
+    internal_pol = it.fill_internal_area(
+        it.sum_imgs([line_ci1, line_ci2, limitadores_de_ponta]) > 0,
+        np.ones_like(region.img),
+    )
+    nova_origin = np.logical_and(origin, internal_pol)
+
+    pts_trns_origin = equidistant_in_seq(nova_origin, path_radius, internal_mask_dist)
+    pts_trns_ci1 = equidistant_by_proximity(
+        line_ci1, pts_trns_origin, path_radius, total_sobreposition
+    )
+    pts_trns_ci2 = equidistant_by_proximity(
+        line_ci2, pts_trns_origin, path_radius, total_sobreposition
+    )
+    lines_transversais = np.zeros_like(region.img)
+    lines_limitrofes = np.zeros_like(region.img)
+    for i, point in enumerate(pts_trns_origin):
+        if i == 0 or i == len(pts_trns_origin) - 1:
+            thisline = it.draw_polyline(
+                lines_transversais,
+                [pts_trns_ci1[i], pts_trns_origin[i], pts_trns_ci2[i]],
+                False,
+            )
+            if not (np.logical_and(thisline, limitadores_de_ponta).any()):
+                lines_limitrofes = np.logical_or(lines_limitrofes, thisline)
+        else:
+            thisline = it.draw_polyline(
+                lines_transversais,
+                [pts_trns_ci1[i], pts_trns_origin[i], pts_trns_ci2[i]],
+                False,
+            )
+            lines_transversais = np.logical_or(lines_transversais, thisline)
+    new_contour, new_contour_img = mt.detect_contours(
+        it.sum_imgs([lines_limitrofes, limitadores_de_ponta, line_ci1, line_ci2]),
+        return_img=True,
+        only_external=True,
+    )
+    new_contour = pt.contour_to_list(new_contour)
+    organized_points = path_tools.organize_points_cw(ends_line_ci1 + ends_line_ci2)
+    ia, _ = pt.closest_point(organized_points[0], ends_line_ci1)
+    ib = [x for x in ends_line_ci1 if x != ia][0]
+    ic, _ = pt.closest_point(organized_points[2], ends_line_ci2)
+    id = [x for x in ends_line_ci2 if x != ic][0]
+    extr_int_pts = [ia, ib, ic, id]
+    new_contour = path_tools.set_first_pt_in_seq(new_contour, extr_int_pts[0])
+
+    new_zigzag = weaving_zigzag(
+        new_contour,
+        new_contour_img,
+        lines_transversais,
+        lines_limitrofes,
+        extr_int_pts,
+        0,
+    )
+    new_zigzag = np.logical_or(new_zigzag, lines_transversais)
+    new_zigzag, _, _ = sk.create_prune_skel(new_zigzag, 2)
+    new_zigzag_b = weaving_zigzag(
+        new_contour,
+        new_contour_img,
+        lines_transversais,
+        lines_limitrofes,
+        extr_int_pts,
+        1,
+    )
+    new_zigzag_b = np.logical_or(new_zigzag_b, lines_transversais)
+    new_zigzag_b, _, _ = sk.create_prune_skel(new_zigzag_b, 2)
+    region.route = new_zigzag
+    region.route_b = new_zigzag_b
+    region.trail = mt.dilation(region.route, kernel_size=path_radius)
+    region.trail_b = mt.dilation(region.route_b, kernel_size=path_radius)
+    # aaaa = it.sum_imgs([region.route, line_ci1,line_ci2,eroded, it.points_to_img(pts_trns_ci1, np.zeros_like(eroded)), region.img, lines_limitrofes, origin_axis, region.origin])
+    return new_zigzag, new_zigzag_b
 
 
 def zig_zag_two_options(
@@ -1194,3 +1595,245 @@ def connect_fails_to_zigzags(old_zigzag, separated_fail_imgs, path_radius_larg):
     # aaa = it.sum_imgs(separated + old_zigzag)
     # aaaa = it.sum_imgs(cleanned_separated + old_zigzag)
     return cleanned_separated, new_conections
+
+
+def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
+    line_img = copy.deepcopy(line)
+    n_origens = 0
+    adjust = 0
+    endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+    endpoints = pt.img_to_points(endpoints_img)
+    if len(endpoints) > 2:
+        # i = 2
+        # while len(endpoints) > 2:
+        #     line_img, aa, aaa = sk.prune(line_img, size=path_radius * i)
+        #     i += 1
+        #     endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+        #     endpoints = pt.img_to_points(endpoints_img)
+        a, aa = sk.segment_skeleton(line_img)
+        lens = [len(x) for x in aa]
+        idx1 = lens.index(max(lens))
+        lst_copy = lens.copy()
+        lst_copy[idx1] = float("-inf")  # Remove the biggest
+        idx2 = lst_copy.index(max(lst_copy))
+        idxs = set([idx1, idx2])
+        toremove = tuple(x for i, x in enumerate(aa) if i not in idxs)
+        line_toremove = np.zeros_like(line_img)
+        for lin in toremove:
+            b = pt.invert_x_y([list(x[0]) for x in lin])
+            c = it.points_to_img(b, np.zeros_like(line_img))
+            line_toremove = it.sum_imgs([line_toremove, c])
+        line_img_cut = it.image_subtract(line_img, line_toremove)
+        line_img, _, _ = sk.prune(line_img_cut, it_prune=2)
+        endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+        endpoints = pt.img_to_points(endpoints_img)
+        print("tentando cortar os galhos menores")
+    if len(origin_pt) > 0:
+        first, _ = pt.closest_point(origin_pt, endpoints)
+        last = list(filter(lambda x: x != first, endpoints))[0]
+    else:
+        np.sort(endpoints, 1)[0]
+        [first, last] = endpoints
+    pontos_org = path_tools.line_img_to_freeman_chain(line_img, first)
+    while n_origens % 2 != 1:
+        origens_pontos = [pontos_org[0]]
+        division_distance = (path_radius * 2) - adjust
+        copied_origin = copy.deepcopy(line_img)
+        while np.sum(copied_origin.astype(np.uint8)) > 0:
+            canvas = np.zeros_like(line_img, np.uint8)
+            centro = origens_pontos[-1]
+            area_distance = it.draw_circle(canvas, centro, division_distance)
+            candidates = np.logical_and(area_distance, copied_origin)
+            candidates = pt.img_to_points(candidates)
+            if candidates:
+                new_point_candidates = pt.most_distant_from(
+                    origens_pontos[-1], candidates, give_second=True
+                )
+                indexes = [pontos_org.index(x) for x in new_point_candidates]
+                new_point = pontos_org[np.min(indexes)]
+                dist = pt.distance_pts(new_point, origens_pontos[-1])
+                if dist > (3 * division_distance) / 4:
+                    origens_pontos.append(new_point)
+            else:
+                pass
+            copied_origin = np.logical_and(copied_origin, np.logical_not(area_distance))
+        n_origens = len(origens_pontos)
+        adjust += 1
+    origens_pontos[-1] = last
+    origens_pontos = path_tools.rotate_if_last_is_closest(origens_pontos)
+    aaa = it.sum_imgs_colored(
+        [it.points_to_img([x], np.zeros_like(line_img)) for x in origens_pontos]
+    )
+    return origens_pontos
+
+
+def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
+    # n_origens = 0
+    endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+    endpoints = pt.img_to_points(endpoints_img)
+    first, _ = pt.closest_point(origin_lst[0], endpoints)
+    last = list(filter(lambda x: x != first, endpoints))[0]
+    if len(endpoints) > 2:
+        newlineimg, _, _ = sk.prune(line_img, it_prune=1)
+        endpoints_img = mt.hitmiss_ends_v2(newlineimg.astype(bool))
+        endpoints = pt.img_to_points(endpoints_img)
+        first, _ = pt.closest_point(origin_lst[0], endpoints)
+        last = list(filter(lambda x: x != first, endpoints))[0]
+    elif len(endpoints) < 2:
+        first, _ = pt.closest_point(origin_lst[0], endpoints)
+        last = first
+    origens_pontos = []
+    for origin_pt in origin_lst:
+        copied_origin = copy.deepcopy(line_img)
+        canvas = np.zeros_like(line_img, np.uint8)
+        centro = origin_pt
+        area_distance = it.draw_circle(canvas, centro, path_radius)
+        candidate, _ = pt.closest_point(centro, pt.img_to_points(copied_origin))
+        origens_pontos.append(candidate)
+        copied_origin = np.logical_and(copied_origin, np.logical_not(area_distance))
+        # n_origens = len(origens_pontos)
+    origens_pontos[0] = first
+    origens_pontos[-1] = last
+    origens_pontos = path_tools.rotate_if_last_is_closest(origens_pontos)
+    aaa = it.points_to_img(origens_pontos, np.zeros_like(line_img))
+    return origens_pontos
+
+
+def decompose_pol_cont_by_corners(lines_do_limite, angle=60):
+    pontos = path_tools.img_to_chain(lines_do_limite)[0]
+    # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
+    # pontos_curvatura = path_tools.find_curvature_pts(pontos, angle)
+    # if len(pontos_curvatura) < 4:
+    harris_pts = corner_peaks(
+        corner_harris(lines_do_limite), min_distance=5, threshold_rel=0.02
+    )
+    harris_pts = [list(x) for x in harris_pts]
+    pontos_corrigidos = []
+    for point in harris_pts:
+        if not (point in pontos):
+            pnt, _ = pt.closest_point(point, pontos)
+            pontos_corrigidos.append(pnt)
+        else:
+            pontos_corrigidos.append(point)
+    pontos_curvatura = pontos_corrigidos
+    # pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(lines_do_limite))
+    pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
+    labeled_segments_img = path_tools.colorbyevent(
+        pontos, pontos_curvatura, np.zeros_like(lines_do_limite)
+    )
+    segments_n = max(np.unique(labeled_segments_img))
+    segments = []
+    for labl in np.add(list(range(segments_n)), 1):
+        segment = np.zeros_like(lines_do_limite)
+        segment[labeled_segments_img == labl] = 1
+        segments.append(segment)
+    # trunque = trunk > 0
+    # trunk_seq = path_tools.img_to_chain(trunque)[0]
+    # trunk_seq = path_tools.set_first_pt_in_seq(
+    #     trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0]
+    # )
+    # trunk_seq = path_tools.cut_repetition(trunk_seq)
+    # # TODO: ver se aqui tem como arrumar esses tamanhos
+    # tng_end = path_tools.draw_tangent_from_seq(
+    #     list(reversed(trunk_seq)), path_radius_bridg * 4, np.zeros_like(lines_do_limite)
+    # )
+    # tng_start = path_tools.draw_tangent_from_seq(
+    #     trunk_seq, path_radius_bridg * 4, np.zeros_like(lines_do_limite)
+    # )
+    # possible_c1_c2 = np.zeros_like(lines_do_limite)
+    # counter_accepted = 0
+    # for labl in np.add(list(range(segments_n)), 1):
+    #     contact = it.sum_imgs([tng_end, tng_start, np.int32(segments == labl)])
+    #     if not ((contact == 2).any()):
+    #         counter_accepted += 1
+    #         possible_c1_c2 = it.sum_imgs(
+    #             [possible_c1_c2, np.multiply(segments == labl, counter_accepted)]
+    #         )
+    return segments, labeled_segments_img
+
+
+def internal_cut(new_contour, lines, extreme_internal_points, sentido):
+    eip = copy.deepcopy(extreme_internal_points)
+    if sentido:
+        eip = [
+            extreme_internal_points[1],
+            extreme_internal_points[0],
+            extreme_internal_points[3],
+            extreme_internal_points[2],
+        ]
+    fila = new_contour.copy()
+    fila = path_tools.set_first_pt_in_seq(fila, eip[0])
+    ordem_na_fila_pontos = []
+    for p in fila:
+        if p in eip:
+            ordem_na_fila_pontos.append(p)
+    ordem_na_fila_pontos_idx = [ordem_na_fila_pontos.index(x) for x in eip]
+    if ordem_na_fila_pontos_idx[1] == 3:
+        fila.reverse()
+        fila = path_tools.set_first_pt_in_seq(fila, eip[0])
+    borda_cortada = np.zeros_like(lines)
+    borda_normal = np.zeros_like(lines)
+    lines_transversais = lines.copy()
+    counter = 0
+    counter_pixels = 0
+    last_change = 0
+    B = it.points_to_img(new_contour, np.zeros_like(lines_transversais))
+    D = np.logical_and(lines_transversais, B)
+    cruzamentos = pt.x_y_para_pontos(np.nonzero(D))
+    for i in np.arange(0, len(fila)):
+        borda_normal[fila[i][0]][fila[i][1]] = 1
+        counter_pixels += 1
+        y = fila[i][0]
+        x = fila[i][1]
+        ca = [y, x] == eip[0]
+        cb = [y, x] == eip[1]
+        cc = [y, x] == eip[2]
+        cd = [y, x] == eip[3]
+        ce = [y, x] in cruzamentos
+        cn = False
+        if i > 0:
+            cn = last_change == fila[i - 1]
+        if ce or cc or ca:  # cq
+            if not cn:
+                counter += 1
+            last_change = fila[i]
+        if counter % 2 == 0:
+            borda_cortada[fila[i][0]][fila[i][1]] = 1
+    return borda_cortada
+
+
+def weaving_zigzag(
+    new_contour,
+    new_contour_img,
+    lines_transversais,
+    lines_limitrofes,
+    extr_int_pts,
+    sentido,
+):
+    cutted_border = internal_cut(new_contour, lines_transversais, extr_int_pts, sentido)
+    new_zigzag = np.logical_or(lines_transversais, cutted_border)
+    new_zigzag = np.logical_or(new_zigzag, lines_limitrofes)
+    _, _, n = it.divide_by_connected(new_zigzag)
+    reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
+    if n > 1:
+        extr_int_pts = [
+            extr_int_pts[0],
+            extr_int_pts[2],
+            extr_int_pts[1],
+            extr_int_pts[3],
+        ]
+        print("   Corrected sequence: b and c inverted")
+        new_zigzag = internal_cut(
+            new_contour, lines_transversais, extr_int_pts, sentido
+        )
+        new_zigzag = np.logical_or(new_zigzag, lines_limitrofes)
+    _, _, n = it.divide_by_connected(mt.hitmiss_ends_v2(new_zigzag))
+    if n <= 1:
+        cccc = mt.closing(new_zigzag, kernel_size=1)
+        ddd, _, _ = sk.create_prune_skel(cccc, 1)
+        _, eee, n = it.divide_by_connected(mt.hitmiss_ends_v2(ddd))
+        if n > 1:
+            new_zigzag = ddd
+    if len(reference_points_b) < 2:
+        print("   ERROR: no solution yet")
+    return new_zigzag

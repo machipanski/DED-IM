@@ -1,22 +1,27 @@
-import random
-import numpy as np
 import itertools
 import copy
-import networkx as nx
 import concurrent.futures
-from typing import List
-from components.offset import Region
-from networkx import get_edge_attributes
-from cv2 import getStructuringElement, MORPH_RECT
+import numpy as np
+import networkx as nx
+import random
 from scipy.ndimage import distance_transform_edt
-from skimage.feature import corner_harris, corner_peaks
-from components.skeleton import prune
-from components import morphology_tools as mt
-from components import images_tools as it
-from components import points_tools as pt
-from components import skeleton as sk
+from networkx import get_edge_attributes
 from components import path_tools
+from components import points_tools as pt
+from components import images_tools as it
+from components import morphology_tools as mt
+from components import skeleton as sk
 from components.timer import Timer
+from typing import TYPE_CHECKING, List
+from cv2 import getStructuringElement, MORPH_RECT
+from components.skeleton import prune
+from skimage.feature import corner_harris, corner_peaks
+from components.offset import Region
+
+# from os import name
+# from networkx import intersection
+# from typing import List
+# if TYPE_CHECKING:
 
 
 class Bottleneck:
@@ -254,7 +259,8 @@ class BridgeRegions:
                 regs_touching.append(set([region.name, other_region.name]))
         regs_touching = set(tuple(sorted(p)) for p in regs_touching)
         external_areas = list(filter(lambda x: (x.hierarchy == 0), offreg))
-        internal_areas = list(filter(lambda x: (x.hierarchy >= 1), offreg))
+        # internal_areas = list(filter(lambda x: (x.hierarchy >= 1), offreg))
+        internal_areas = list(filter(lambda x: (x.hierarchy == 1), offreg))
         for region in external_areas:
             area_internal_contour, area_internal_contour_img = (
                 region.out_area_inner_contour(base_frame)
@@ -273,6 +279,7 @@ class BridgeRegions:
             base_frame,
             path_radius,
             offreg,
+            regs_touching,
         )
 
         if len(bridge_imgs) > 0:
@@ -287,6 +294,7 @@ class BridgeRegions:
         base_frame,
         path_radius,
         offsets_regs,
+        regs_touching,
     ):
         counter = 0
         lista_origem = get_edge_attributes(offsets_parallel_mst, "origin_coords")
@@ -298,7 +306,61 @@ class BridgeRegions:
             mask_line = np.zeros((4 * path_radius, 4 * path_radius))
             mask_line[:, int(path_radius * 2)] = 1
             mask_square = np.ones((2 * path_radius, 2 * path_radius))
-            if lista_tipo[line] != "e":
+            if lista_tipo[line] == "e":
+                reg_a = [x for x in offsets_regs if x.name == line[0]][0]
+                reg_b = [x for x in offsets_regs if x.name == line[1]][0]
+                sum = 0
+                divisor = 4
+                while sum == 0 and divisor > 0:
+                    union = mt.closing(
+                        it.sum_imgs(
+                            [reg_a.img.astype(np.uint8), reg_b.img.astype(np.uint8)]
+                        ),
+                        kernel_size=path_radius / divisor,
+                    )
+                    img = mt.erosion(union, kernel_size=path_radius / 2)
+                    img = mt.opening(img, kernel_size=path_radius)
+                    reg_a_routes = it.sum_imgs([x.route for x in reg_a.loops])
+                    reg_b_routes = it.sum_imgs([x.route for x in reg_b.loops])
+                    bbb = np.add(img, it.sum_imgs([reg_a_routes, reg_b_routes]))
+                    eee = bbb == 2
+                    lines_separadas, _, _ = it.divide_by_connected(eee)
+                    sum = np.sum(eee)
+                    divisor = divisor - 1
+                pontos_centrais = [
+                    pt.points_center(pt.img_to_points(x)) for x in lines_separadas
+                ]
+                origin = it.draw_line(
+                    np.zeros(base_frame), pontos_centrais[0], pontos_centrais[1]
+                )
+                new_img = mt.dilation(origin, kernel_img=mask_square)
+                self.offset_bridges.append(
+                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
+                )
+                self.offset_bridges[-1].origin_coords = pontos_centrais[0]
+                self.offset_bridges[-1].destiny_coords = pontos_centrais[1]
+                self.offset_bridges[-1].linked_offset_regions = [line[0], line[1]]
+                self.offset_bridges[-1].img = np.logical_and(new_img, rest_of_picture)
+                self.offset_bridges[-1].type = "contact_offset_bridge"
+                separated_imgs.append(img)
+                counter += 1
+            elif line[:2] in regs_touching:
+                reg_a = [x for x in offsets_regs if x.name == line[0]][0]
+                reg_b = [x for x in offsets_regs if x.name == line[1]][0]
+                new_img = np.logical_and(reg_a.img, reg_b.img)
+                origin = mt.thin(new_img)
+                self.offset_bridges.append(
+                    Bridge(f"OB_{counter:03d}", new_img, origin, [], 2, [])
+                )
+                pontos_centrais = pt.img_to_points(mt.hitmiss_ends_v2(origin))
+                self.offset_bridges[-1].origin_coords = pontos_centrais[0]
+                self.offset_bridges[-1].destiny_coords = pontos_centrais[1]
+                self.offset_bridges[-1].linked_offset_regions = [line[0], line[1]]
+                self.offset_bridges[-1].img = np.logical_and(new_img, rest_of_picture)
+                self.offset_bridges[-1].type = "superposition_offset_bridge"
+                separated_imgs.append(img)
+                counter += 1
+            else:
                 pontos_origem = sorted(
                     [lista_origem[line], lista_destino[line]],
                     key=lambda x: [x[1], x[0]],
@@ -380,44 +442,6 @@ class BridgeRegions:
                 self.offset_bridges[-1].type = "common_offset_bridge"
                 counter += 1
                 separated_imgs.append(img)
-            else:  # contact_offset_bridge
-                reg_a = [x for x in offsets_regs if x.name == line[0]][0]
-                reg_b = [x for x in offsets_regs if x.name == line[1]][0]
-                sum = 0
-                divisor = 4
-                while sum == 0 and divisor > 0:
-                    union = mt.closing(
-                        it.sum_imgs(
-                            [reg_a.img.astype(np.uint8), reg_b.img.astype(np.uint8)]
-                        ),
-                        kernel_size=path_radius / divisor,
-                    )
-                    img = mt.erosion(union, kernel_size=path_radius / 2)
-                    img = mt.opening(img, kernel_size=path_radius)
-                    reg_a_routes = it.sum_imgs([x.route for x in reg_a.loops])
-                    reg_b_routes = it.sum_imgs([x.route for x in reg_b.loops])
-                    bbb = np.add(img, it.sum_imgs([reg_a_routes, reg_b_routes]))
-                    eee = bbb == 2
-                    lines_separadas, _, _ = it.divide_by_connected(eee)
-                    sum = np.sum(eee)
-                    divisor = divisor - 1
-                pontos_centrais = [
-                    pt.points_center(pt.img_to_points(x)) for x in lines_separadas
-                ]
-                origin = it.draw_line(
-                    np.zeros(base_frame), pontos_centrais[0], pontos_centrais[1]
-                )
-                new_img = mt.dilation(origin, kernel_img=mask_square)
-                self.offset_bridges.append(
-                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
-                )
-                self.offset_bridges[-1].origin_coords = pontos_centrais[0]
-                self.offset_bridges[-1].destiny_coords = pontos_centrais[1]
-                self.offset_bridges[-1].linked_offset_regions = [line[0], line[1]]
-                self.offset_bridges[-1].img = np.logical_and(new_img, rest_of_picture)
-                self.offset_bridges[-1].type = "contact_offset_bridge"
-                separated_imgs.append(img)
-                counter += 1
         return separated_imgs
 
     def make_zigzag_bridges(
@@ -469,6 +493,7 @@ class BridgeRegions:
         def close_bridges(norm_reduced_origins, initial_points, skel):
             self.all_bridges = np.zeros(base_frame)
             self.all_origins = np.zeros(base_frame)
+            counter = 0
             for i, candidate in enumerate(norm_reduced_origins):
                 inicial_pnt = initial_points[i]
                 try:
@@ -487,7 +512,6 @@ class BridgeRegions:
                     print("   Bridge failed")
                     bridge_img = []
                     pass
-                counter = 0
                 if np.sum(bridge_img) > 0:
                     if len(self.all_bridges) > 0:
                         self.all_bridges = np.logical_or(self.all_bridges, bridge_img)
@@ -519,6 +543,7 @@ class BridgeRegions:
 
         def filter_trunks_if_tip_minimum(norm_reduced_origins):
             filtered_trunks = []
+            eliminated_trunks = []
             for trunk in norm_reduced_origins:
                 tips = pt.img_to_points(sk.find_tips(trunk.astype(bool)))
                 if not tips:
@@ -528,6 +553,84 @@ class BridgeRegions:
                 if not non_zero_min in tip_values:
                     filtered_trunks.append(trunk)
             return filtered_trunks
+
+        def test_doubles_for_repetition(doubles):
+            """
+            Receives a list of pairs (doubles) of names.
+            Returns:
+            - repeated_names: names that appear in more than one pair
+            - names_with_previous: names that made a double with a name that appeared before
+            """
+            from collections import Counter
+
+            # Flatten the list and count occurrences
+            flat = [name for pair in doubles for name in pair]
+            counts = Counter(flat)
+            repeated_names = [name for name, count in counts.items() if count > 1]
+
+            # Track names seen so far
+            seen = set()
+            names_with_previous = []
+            for pair in doubles:
+                for name in pair:
+                    if name in seen and name not in names_with_previous:
+                        names_with_previous.append(name)
+                seen.update(pair)
+
+            return repeated_names, names_with_previous
+
+        def connect_bridges_simple():
+            filtered_zigzag_bridges = copy.deepcopy(self.zigzag_bridges)
+            united_zigzag_bridges = []
+            for i, j in itertools.combinations(self.zigzag_bridges, 2):
+                if i != j:
+                    if np.sum(np.logical_and(i.img, j.img)) > 0:
+                        united_zigzag_bridges.append([i.name, j.name])
+            repeated_names, names_with_previous = test_doubles_for_repetition(
+                united_zigzag_bridges
+            )
+            if repeated_names:
+                print("   ARRUMAR TRIADES", repeated_names)
+            for double in united_zigzag_bridges:
+                if (
+                    double[0] in names_with_previous
+                    and double[1] in names_with_previous
+                ):
+                    continue
+                bridge_a = [x for x in filtered_zigzag_bridges if x.name == double[0]][
+                    0
+                ]
+                bridge_b = [x for x in filtered_zigzag_bridges if x.name == double[1]][
+                    0
+                ]
+                new_img = np.logical_or(bridge_a.img, bridge_b.img)
+                new_origin = np.logical_or(bridge_a.origin, bridge_b.origin)
+                new_trunk = np.logical_or(bridge_a.trunk, bridge_b.trunk)
+                new_origin_mark = bridge_a.origin_mark
+                bridge_a.name = f"remove"
+                bridge_b.name = f"remove"
+                filtered_zigzag_bridges.append(
+                    Bridge(
+                        "",
+                        new_img,
+                        new_origin,
+                        new_trunk,
+                        [],
+                        new_origin_mark,
+                        contour=bridge_a.contour + bridge_b.contour,
+                        extreme_points=bridge_a.extreme_points
+                        + bridge_b.extreme_points,
+                    )
+                )
+                filtered_zigzag_bridges[-1].get_linked_offsets(offset_regions)
+            counter = 0
+            final_regions = []
+            for i in filtered_zigzag_bridges:
+                if i.name != f"remove":
+                    i.name = f"ZB_{counter:03d}"
+                    final_regions.append(i)
+                    counter += 1
+            return final_regions
 
         norm_trunks, norm_dist_map = separate_trunks()
         minus_bigger_than_2wd = break_too_big_parts(norm_trunks, norm_dist_map)
@@ -543,6 +646,7 @@ class BridgeRegions:
         close_bridges(
             norm_reduced_filtered_origins, initial_points, self.medial_transform
         )
+        self.zigzag_bridges = connect_bridges_simple()
         return
 
     def make_cross_over_bridges(self, prohibited_areas, offsets_mst):
@@ -554,8 +658,14 @@ class BridgeRegions:
             if np.equal(zigzag_bridge.contour[0], zigzag_bridge.contour[1]).all():
                 # print("Aqui eu não deixei a parede unica virar crossover")
                 print("   ERROR: special case")
-            elif set(zigzag_bridge.linked_offset_regions) == set(
-                offset_bridge.linked_offset_regions
+            elif (
+                len(
+                    set(zigzag_bridge.linked_offset_regions).intersection(
+                        set(offset_bridge.linked_offset_regions)
+                    )
+                )
+                > 1
+                and offset_bridge.type != "superposition_offset_bridge"
             ):
                 # se as pontes conectam os mesmos contours, organiza a prioridade deles e paga a mais alta pra cada grupo
                 priority = 0
@@ -649,6 +759,7 @@ class BridgeRegions:
                 ]
                 for l in concurrent.futures.as_completed(results):
                     processed_regions_ob.append(l.result())
+            processed_regions_ob = list(filter(lambda x: x != [], processed_regions_ob))
             processed_regions_ob.sort(key=lambda x: x.name)
             self.offset_bridges = processed_regions_ob
         with Timer("   Making Zigzag bridges routes"):
@@ -1386,7 +1497,6 @@ def find_contours_around_origin(rest_of_picture, base_frame, dist, path_radius, 
 
 
 def close_area_from_lines(line1, line2, base_frame, new_base):
-    # ORGANIZAR lineS E PONTOS EXTREMOS
     starts_and_ends1 = pt.x_y_para_pontos(
         np.where(mt.hitmiss_ends_v2(line1.astype(np.uint8)))
     )
@@ -1430,11 +1540,37 @@ def organize_extreme_zb_points(line, bridge_img, path_radius):
 
 
 # TODO: continuar daqui a arrumar as distancias de maneira mais padrão, hoje não tem ajuste
-def equidistant_in_seq(line_img, path_radius, internal_mask_dist, origin_pt=[]):
+def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
+    line_img = copy.deepcopy(line)
     n_origens = 0
     adjust = 0
     endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
     endpoints = pt.img_to_points(endpoints_img)
+    if len(endpoints) > 2:
+        # i = 2
+        # while len(endpoints) > 2:
+        #     line_img, aa, aaa = sk.prune(line_img, size=path_radius * i)
+        #     i += 1
+        #     endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+        #     endpoints = pt.img_to_points(endpoints_img)
+        a, aa = sk.segment_skeleton(line_img)
+        lens = [len(x) for x in aa]
+        idx1 = lens.index(max(lens))
+        lst_copy = lens.copy()
+        lst_copy[idx1] = float("-inf")  # Remove the biggest
+        idx2 = lst_copy.index(max(lst_copy))
+        idxs = set([idx1, idx2])
+        toremove = tuple(x for i, x in enumerate(aa) if i not in idxs)
+        line_toremove = np.zeros_like(line_img)
+        for lin in toremove:
+            b = pt.invert_x_y([list(x[0]) for x in lin])
+            c = it.points_to_img(b, np.zeros_like(line_img))
+            line_toremove = it.sum_imgs([line_toremove, c])
+        line_img_cut = it.image_subtract(line_img, line_toremove)
+        line_img, _, _ = sk.prune(line_img_cut, it_prune=2)
+        endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
+        endpoints = pt.img_to_points(endpoints_img)
+        print("tentando cortar os galhos menores")
     if len(origin_pt) > 0:
         first, _ = pt.closest_point(origin_pt, endpoints)
         last = list(filter(lambda x: x != first, endpoints))[0]
@@ -1601,6 +1737,8 @@ def make_offset_bridge_route(
         objective_lines_new = np.logical_and(
             objective_lines, np.logical_not(offsets_routes)
         )
+    else:
+        return []
     bridge_region.route = objective_lines_new
     bridge_region.trail = mt.dilation(bridge_region.route, kernel_size=path_radius_cont)
     bridge_region.find_center()

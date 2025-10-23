@@ -1,25 +1,30 @@
 from __future__ import annotations
-import copy
-import itertools
-from pathlib import Path
-from components import morphology_tools as mt, path_tools
+from components import morphology_tools as mt
 from components import images_tools as it
 from components import points_tools as pt
+from components import path_tools
 import numpy as np
 from cv2 import drawContours
 from skimage.morphology import disk
 from scipy.ndimage import distance_transform_edt
-from skimage.feature import peak_local_max
-from skimage.segmentation import watershed
 import concurrent.futures
 from components import skeleton as sk
+from skimage.segmentation import watershed
+import itertools
 from typing import TYPE_CHECKING
-import copy
 
 if TYPE_CHECKING:
     from components.files import System_Paths
     from typing import List
-    from components.layer import Layer
+    from components.thin_walls import ThinWallRegions
+# import copy
+# from hmac import new
+# from os import path
+# from pathlib import Path
+# from skimage.feature import peak_local_max
+
+
+# from components.layer import Layer
 
 
 class Area:
@@ -95,12 +100,17 @@ class Level:
         name_filho,
         path,
         first=False,
+        hibrid_offset_tw: np.ndarray = [],
     ) -> Level:
         """Erode + Openning = New Offset Level"""
         # img = folders.load_img(self.img)
         if first:
             new_lvl_img = mt.erosion(self.img, kernel_img=mask_trail)
             new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_trail)
+            new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_trail)
+        elif np.sum(hibrid_offset_tw) > 0:
+            new_lvl_img = np.logical_and(self.img, np.logical_not(hibrid_offset_tw))
+            # new_lvl_img = mt.opening(new_lvl_img, kernel_img=mask_distancer)
             new_lvl_area = mt.erosion(new_lvl_img, kernel_img=mask_trail)
         else:
             new_lvl_img = mt.erosion(self.img, kernel_img=mask_distancer)
@@ -113,12 +123,26 @@ class Level:
         mask,
         base_frame,
         rest_f1,
+        path_radius,
+        hybrid_offset_tw=[],
         # layer_name,
         # island_name,
         # level_name,
     ):
         """Uses cv2.findContours() to separate each loop within the Offset Level image"""
-        contours, hierarchy = mt.detect_contours(self.img, return_hierarchy=True)
+        if np.sum(hybrid_offset_tw) > 0:
+            # hybrid_routes, dist, segment_objects = sk.create_prune_skel(
+            #     hybrid_offset_tw,
+            #     path_radius * 2,
+            # )
+            hybrid_routes = it.fill_internal_area(
+                hybrid_offset_tw, np.ones_like(hybrid_offset_tw)
+            )
+            contours, hierarchy = mt.detect_contours(
+                hybrid_routes, return_hierarchy=True
+            )
+        else:
+            contours, hierarchy = mt.detect_contours(self.img, return_hierarchy=True)
         in_counter = 0
         out_counter = 0
         for i in np.arange(0, len(contours)):
@@ -137,6 +161,8 @@ class Level:
                     self.hole_loops[-1].trail, rest_f1, True
                 )
                 in_counter += 1
+        # aaaa = it.sum_imgs_colored([i.img for i in self.hole_loops])
+        # aaaaa = it.sum_imgs_colored([i.img for i in self.outer_loops])
         return self
 
     def calculate_lost_area(self, result):
@@ -232,6 +258,7 @@ class OffsetRegions:
         self.levels: List[Level] = []
         self.n_levels = []
         self.influence_regions = []
+        self.hybrid_offset_tw = []
 
     def calculate_voids(
         self,
@@ -280,33 +307,58 @@ class OffsetRegions:
         return offset_simulated
 
     def create_levels(
-        self,
-        rest_of_picture_f1,
-        trail_mask,  # TODO: HERE YOU CAN ADD THE EXPECTED MATERIAL REMAINDER FOR WEAR!!!!
-        distancer_mask,
-        layer_name,
-        island_name,
+        self: OffsetRegions,
+        rest_of_picture_f1: np.ndarray,
+        trail_mask: np.ndarray,
+        distancer_mask: np.ndarray,
+        layer_name: str,
+        island_name: str,
+        original_img: np.ndarray,
+        thin_walls: ThinWallRegions,
     ):
         """Goes from the outside in performing erosions and organizes into levels
         until there are no more pixels to process"""
+
         levels = []
         n_levels = 0
-        atual = Level(
-            rest_of_picture_f1,
-            f"Lvl_{n_levels:03d}",
-            "",
-            rest_of_picture_f1,
-            f"/{layer_name}/{island_name}/offsets/levels",
-        )
-        atual = atual.create_level(
-            trail_mask,
-            distancer_mask,
-            f"Lvl_{n_levels:03d}",
-            f"/{layer_name}/{island_name}/offsets/levels",
-            first=True,
-        )
+        if len(thin_walls.regions) > 0:
+            atual = Level(
+                original_img,
+                f"Lvl_{n_levels:03d}",
+                "",
+                original_img,
+                f"/{layer_name}/{island_name}/offsets/levels",
+            )
+            atual, hybrid_offset_tw = hybrid_offset_thinwalls(
+                atual, original_img, trail_mask, thin_walls
+            )
+            self.hybrid_offset_tw = hybrid_offset_tw
+        else:
+            atual = Level(
+                rest_of_picture_f1,
+                f"Lvl_{n_levels:03d}",
+                "",
+                rest_of_picture_f1,
+                f"/{layer_name}/{island_name}/offsets/levels",
+            )
+            atual = atual.create_level(
+                trail_mask,
+                distancer_mask,
+                f"Lvl_{n_levels:03d}",
+                f"/{layer_name}/{island_name}/offsets/levels",
+                first=True,
+            )
         levels.append(atual)
         n_levels += 1
+        # if np.sum(hybrid_offset_tw) > 0:
+        #     atual = atual.create_level(
+        #         trail_mask,
+        #         distancer_mask,
+        #         f"Lvl_{n_levels:03d}",
+        #         f"/{layer_name}/{island_name}/offsets/levels",
+        #         hibrid_offset_tw=hybrid_offset_tw,
+        #     )
+        # else:
         atual = atual.create_level(
             trail_mask,
             distancer_mask,
@@ -325,6 +377,8 @@ class OffsetRegions:
         print(f"   Island: {island_name} Levels number: {n_levels}")
         self.levels = levels
         self.n_levels = n_levels
+        aaaaalevls = it.sum_imgs([i.img for i in self.levels])
+        aaaaaareas = it.sum_imgs([i.area for i in self.levels])
         return
 
     def create_influence_regions(self, base_frame):
@@ -584,11 +638,10 @@ class OffsetRegions:
         inside_first_offset = np.zeros(base_frame)
         if len(self.regions) > 0:
             inside_first_offset = it.fill_internal_area(
-                self.regions[0].loops[0].img,
+                self.regions[0].loops[-1].img,
                 rest_f2,
                 True,
             )
-
         rest_f2 = inside_first_offset
         return rest_f2
 
@@ -696,10 +749,12 @@ class Region:
         return
 
     def make_internal_area_and_center(self, original_img):
+        # self.internal_area = it.fill_internal_area(self.area_contour_img, original_img,true)
         self.internal_area = it.fill_internal_area(
-            self.area_contour_img, original_img, True
+            self.area_contour_img, np.ones_like(original_img), True
         )
         self.center_coords = pt.points_center(pt.contour_to_list(self.area_contour))
+        return
 
     def make_limmit_coords(self, path_radius):
         limmit_coords = pt.extreme_points(self.area_contour_img, force_top=True)
@@ -872,3 +927,108 @@ def link_spirals_spiral(route, mask, guide_line):
             new_route = it.draw_line(new_route, line[0], line[1])
     next_prohibited_areas = work_area
     return new_route, next_prohibited_areas
+
+
+def hybrid_offset_thinwalls(
+    atual: Level,
+    original_img: np.ndarray,
+    trail_mask: np.ndarray,
+    thin_walls: ThinWallRegions,
+) -> Level:
+    def outer_hybrid():
+        ext_no_int = list(
+            filter(lambda x: hierarchy[0][x][3] == -1, range(len(contours)))
+        )
+        ext_no_int_img = it.fill_internal_area(
+            it.points_to_img(
+                np.concatenate([pt.contour_to_list([contours[i]]) for i in ext_no_int]),
+                np.zeros_like(original_img),
+            ),
+            np.ones_like(original_img),
+        )
+        eroded_ext_no_int = mt.erosion(ext_no_int_img, kernel_img=trail_mask)
+        eroded_ext_no_int_w_tw = np.logical_or(eroded_ext_no_int, skell_original)
+        eroded_ext_no_int_w_tw_filled = it.fill_internal_area(
+            eroded_ext_no_int_w_tw, np.ones_like(original_img), True
+        )
+        ext_no_int_conts, ext_no_int_cont_img = mt.detect_contours(
+            eroded_ext_no_int_w_tw_filled, return_img=True
+        )
+        dilated_ext_no_int_cont_img = sk.reconstruct_img_from_skeleton(
+            np.multiply(ext_no_int_cont_img, map)
+        )
+        return dilated_ext_no_int_cont_img, ext_no_int_cont_img
+
+    def inner_hybrid():
+        int_no_ext = list(
+            filter(lambda x: hierarchy[0][x][3] != -1, range(len(contours)))
+        )
+        int_no_ext_contour_img = it.points_to_img(
+            np.concatenate([pt.contour_to_list([contours[i]]) for i in int_no_ext]),
+            np.zeros_like(original_img),
+        )
+        int_no_ext_img = it.fill_internal_area(
+            int_no_ext_contour_img,
+            np.ones_like(original_img),
+            True,
+        )
+        holes_before, _, _ = it.divide_by_connected(int_no_ext_img)
+        holes_after_pts = [pt.img_to_points(x) for x in holes_before]
+        center_points = [pt.points_center(x) for x in holes_after_pts]
+        dilated_int_no_ext = mt.dilation(int_no_ext_img, kernel_img=trail_mask)
+        dilated_int_no_ext_w_tw = np.logical_and(
+            dilated_int_no_ext, np.logical_not(skell_original)
+        )
+        most_int_dilated_int_no_ext_w_tw = it.filter_connected_by_points(
+            dilated_int_no_ext_w_tw, center_points
+        )
+        int_no_ext_conts, int_no_ext_cont_img = mt.detect_contours(
+            most_int_dilated_int_no_ext_w_tw, return_img=True
+        )
+        dilated_int_no_ext_cont_img = sk.reconstruct_img_from_skeleton(
+            np.multiply(int_no_ext_cont_img, map)
+        )
+        return dilated_int_no_ext_cont_img, int_no_ext_cont_img
+
+    skell_original, map, trunks = sk.create_prune_divide_skel(original_img, 0)
+    contours, hierarchy = mt.detect_contours(original_img, return_hierarchy=True)
+    dilated_ext_no_int_cont_img, ext_no_int_cont_img = outer_hybrid()
+    dilated_int_no_ext_cont_img, int_no_ext_cont_img = inner_hybrid()
+    aaaa = it.sum_imgs([dilated_ext_no_int_cont_img, ext_no_int_cont_img, original_img])
+    aaaaa = it.sum_imgs(
+        [dilated_int_no_ext_cont_img, int_no_ext_cont_img, original_img]
+    )
+    dilated_skell_original = mt.dilation(skell_original, kernel_img=trail_mask)
+    all_thin_walls_orig = it.sum_imgs([x.origin for x in thin_walls.regions])
+    # contact_ext = it.sum_imgs(
+    #     [
+    #         dilated_ext_no_int_cont_img,
+    #         all_thin_walls_orig,
+    #     ]
+    # )
+    # contact_int = it.sum_imgs(
+    #     [
+    #         dilated_int_no_ext_cont_img,
+    #         all_thin_walls_orig,
+    #     ]
+    # )
+    # if np.sum(contact_ext > 1) > np.sum(trail_mask):
+    new_lvl_img_ext = it.fill_internal_area(
+        ext_no_int_cont_img,
+        original_img,
+        True,
+    )
+    new_lvl_img_int = it.fill_internal_area(
+        int_no_ext_cont_img,
+        original_img,
+        True,
+    )
+    new_lvl_img = np.logical_and(
+        new_lvl_img_ext,
+        np.logical_not(new_lvl_img_int),
+    )
+    # new_lvl_area = mt.erosion(new_lvl_img, kernel_img=trail_mask)
+    # atual.area = new_lvl_area
+    atual.img = new_lvl_img
+    hybrid_offset_tw = np.logical_or(ext_no_int_cont_img, int_no_ext_cont_img)
+    return atual, hybrid_offset_tw

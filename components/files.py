@@ -563,6 +563,12 @@ class System_Paths:
                             )
                         else:
                             self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
+                        if len(reg.origin) > 0:
+                            self.save_img_hdf5(
+                                f"{base_path}/{reg.name}", "origin", reg.origin
+                            )
+                        else:
+                            self.delete_item_hdf5(f"{base_path}/{reg.name}/origin")
         return
 
     def save_routes_bridges_hdf5(self, layer_name, islands: List[Island]):

@@ -105,10 +105,12 @@ def ask_parameters_bridges(configurations):
     )
     msg = "Bridges parameters"
     title = "Bridges parameters"
-    fieldNames = ["Minimum internal passages"]
-    fieldDefs = [2]
-    n_max = ask_parameters_constructor(msg, title, fieldNames, fieldDefs)[0]
-    return n_max, d_bridg, frst_d_bridg, sob_bridg_per, name_prog
+    fieldNames = ["Minimum internal passages", "Connect Offset with Bridges"]
+    fieldDefs = [2, 1]
+    n_max, connect_offsets = ask_parameters_constructor(
+        msg, title, fieldNames, fieldDefs
+    )
+    return n_max, d_bridg, frst_d_bridg, sob_bridg_per, name_prog, connect_offsets
 
 
 def ask_parameters_zigzags(configurations):
@@ -116,7 +118,12 @@ def ask_parameters_zigzags(configurations):
     d_larg, frst_d_larg, sob_tw_larg, name_prog = select_or_input(
         configurations, wide=True
     )
-    return d_larg, frst_d_larg, sob_tw_larg, name_prog
+    msg = "Wide parameters"
+    title = "Wide parameters"
+    fieldNames = ["Style (0=Fermat zigzag, 1=Weaving)"]
+    fieldDefs = [1]
+    style = ask_parameters_constructor(msg, title, fieldNames, fieldDefs)[0]
+    return d_larg, frst_d_larg, sob_tw_larg, name_prog, style
 
 
 def ask_parameters_offset_routes(configurations):

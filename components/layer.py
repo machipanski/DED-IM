@@ -2,6 +2,8 @@ from __future__ import annotations
 import copy
 import datetime
 from operator import concat
+
+from click import style
 import numpy as np
 import concurrent.futures
 from cv2 import imread
@@ -10,6 +12,7 @@ from typing import TYPE_CHECKING, Concatenate
 from components import images_tools as it, path_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
+
 from components.offset import OffsetRegions
 from components.zigzag import ZigZagRegions
 from components.bottleneck import BridgeRegions
@@ -663,6 +666,7 @@ class Layer:
             )
             rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
             if np.sum(rest_in_this_island) > 0:
+                folders.load_thin_walls_hdf5(self.name, island)
                 island.offsets.create_levels(
                     rest_in_this_island,
                     mt.make_mask(self, "full_cont"),
@@ -671,6 +675,8 @@ class Layer:
                     ),
                     self.name,
                     island.name,
+                    self.original_img,
+                    island.thin_walls,
                 )
             return island
 
@@ -682,14 +688,21 @@ class Layer:
             rest_in_this_island = np.logical_and(rest_of_picture_f1, island.img)
             if np.sum(rest_in_this_island) > 0:
                 for level in island.offsets.levels:
-                    level.create_loops(
-                        mt.make_mask(self, "full_cont"),
-                        self.base_frame,
-                        rest_in_this_island,
-                        # self.name,
-                        # island.name,
-                        # level.name,
-                    )
+                    if level.name == "Lvl_000":
+                        level.create_loops(
+                            mt.make_mask(self, "full_cont"),
+                            self.base_frame,
+                            rest_in_this_island,
+                            self.path_radius_cont,
+                            island.offsets.hybrid_offset_tw,
+                        )
+                    else:
+                        level.create_loops(
+                            mt.make_mask(self, "full_cont"),
+                            self.base_frame,
+                            self.path_radius_cont,
+                            rest_in_this_island,
+                        )
             return island
 
         @parallelizando
@@ -820,6 +833,7 @@ class Layer:
         n_layers: int,
         sum_prohibited_areas,
         name_prog: str,
+        connect_offsets: int,
     ):
 
         def parallelizando(func):
@@ -907,8 +921,9 @@ class Layer:
 
         # removing areas outside the contours
         folders.load_offsets_hdf5(self.name, isl)
-        with Timer("  Creating Offset bridges"):
-            make_islands_offset_bridges()
+        if connect_offsets == 1:
+            with Timer("  Creating Offset bridges"):
+                make_islands_offset_bridges()
 
         with Timer("  Creating Zigzag bridges"):
             make_islands_zigzag_bridges()
@@ -969,7 +984,12 @@ class Layer:
                 folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
     def make_zigzags(
-        self, folders: System_Paths, d_larg: float, sob_larg_per: float, name_prog: str
+        self,
+        folders: System_Paths,
+        d_larg: float,
+        sob_larg_per: float,
+        name_prog: str,
+        w_style: int,
     ):
 
         def parallelizando(func):
@@ -998,12 +1018,26 @@ class Layer:
             island.rest_of_picture_f3 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f3"
             )
+            rest_of_picture_f2 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f2"
+            )
+            import components.skeleton as sk
+
+            sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
+                rest_of_picture_f2.astype(np.uint8), 0
+            )
+            # medial_transform = island.bridges.medial_transform
             ideal_sum = np.sum(mt.make_mask(self, "full_larg"))
             if np.sum(island.rest_of_picture_f3) > 0:
                 island.zigzags.find_monotonic(
                     island.rest_of_picture_f3,
                     self.base_frame,
                     self.path_radius_larg,
+                    sem_galhos,
+                    sem_galhos_dist,
+                    trunks,
+                    island.bridges.zigzag_bridges,
+                    w_style,
                     ideal_sum,
                 )
             return island

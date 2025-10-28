@@ -218,3 +218,34 @@ def intersects(s0, s1):
     p2 = dy0 * (s0[1][1] - s1[0][1]) - dx0 * (s0[1][0] - s1[0][0])
     p3 = dy0 * (s0[1][1] - s1[1][1]) - dx0 * (s0[1][0] - s1[1][0])
     return (p0 * p1 <= 0) & (p2 * p3 <= 0)
+
+
+def closest_points(points):
+    from itertools import combinations
+
+    """
+    Finds the two closest 2D points in a list of points.
+
+    Args:
+        points: A list of tuples, where each tuple represents a 2D point (x, y).
+
+    Returns:
+        A tuple containing the two closest points as tuples, e.g., ((x1, y1), (x2, y2)).
+        Returns None if the list contains fewer than two points.
+    """
+    if len(points) < 2:
+        return None
+
+    min_distance_squared = float("inf")
+    closest_pair = None
+
+    # Iterate through all possible pairs of points
+    for p1, p2 in combinations(points, 2):
+        # Calculate the squared Euclidean distance to avoid square root for comparison
+        distance_squared = (p1[0] - p2[0]) ** 2 + (p1[1] - p2[1]) ** 2
+
+        if distance_squared < min_distance_squared:
+            min_distance_squared = distance_squared
+            closest_pair = (p1, p2)
+
+    return closest_pair

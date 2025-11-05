@@ -1090,82 +1090,89 @@ def internal_weaving_cut(interface_line, path_radius_larg, fail):
     return new_zigzags
 
 
-def make_weaving_wide_route(
-    region: ZigZag, path_radius, mask_distancer, internal_mask_dist, rest_of_picture
-):
-    # Garantindo so uma linha de origem
-    origin = region.origin
-    _, _, n = it.divide_by_connected(origin)
-    if n > 1:
-        origin = it.take_the_bigger_area(origin)
-    # Evitando apagar as divisoes dentro da area
-    internal_divisory = mt.blackhat(rest_of_picture, kernel_size=path_radius)
-    internal_divisory = mt.opening(internal_divisory, kernel_size=1)
-    # dilata para garantir sobreposicao depois erode para fazer as rotas do limite do offset
-    total_sobreposition = mt.dilation(region.img, kernel_img=mask_distancer)
-    eroded = mt.erosion(total_sobreposition, kernel_img=internal_mask_dist)
-    eroded = it.image_subtract(eroded, internal_divisory)
-    # faz o contorno em sequencia
-    eroded_seq = path_tools.img_to_chain(eroded)
+def chamfer_smaller_corners(original_border, origin, region_img, path_radius):
+    orig_bord_seq = path_tools.img_to_chain(original_border)
     # limpa se houver contornos extras
-    if len(eroded_seq) > 1:
-        lens = [len(x) for x in eroded_seq]
-        eroded_seq = [eroded_seq[lens.index(max(lens))]]
-
-    _, eroded_border = mt.detect_contours(eroded, return_img=True, only_external=True)
-    # Procura as principais pontas da forma
-    pontas = path_tools.find_curvature_pts(eroded_seq[0])
+    if len(orig_bord_seq) < 4 and len(orig_bord_seq) > 0:
+        lens = [len(x) for x in orig_bord_seq]
+        orig_bord_seq = orig_bord_seq[lens.index(max(lens))]
+    pontas = path_tools.find_curvature_pts(orig_bord_seq)
     # se achar, remove areas proximas as pontas
     if len(pontas) > 0:
         pontas_img = mt.dilation(
-            it.points_to_img(pontas, np.zeros_like(eroded)), kernel_size=1
+            it.points_to_img(pontas, np.zeros_like(region_img)), kernel_size=1
         )
         detected_area_spikes = it.sum_imgs(
             [mt.dilation(origin, kernel_size=1), pontas_img]
         )
-        dist_map = distance_transform_edt(region.img)
+        dist_map = distance_transform_edt(region_img)
         norm_dist_map = dist_map / path_radius
         norm_MAT = norm_dist_map * origin
         minimal_areas = np.logical_and(0 < norm_MAT, norm_MAT <= 1)
         labeled_minimals, _, _ = it.divide_by_connected(minimal_areas)
-        spikes_exclusion = np.zeros_like(region.img)
-        eroded_border_a = eroded_border.copy()
-        cutted_corners = np.zeros_like(region.img)
+        spikes_exclusion = np.zeros_like(region_img)
+        chamfered_border = original_border.copy()
+        cutted_corners = np.zeros_like(region_img)
         for mini in labeled_minimals:
             if np.sum(np.logical_and(detected_area_spikes == 2, mini)) > 0:
                 spikes_exclusion = mt.dilation(mini, kernel_size=path_radius)
                 # ja corta essa ponta
-                eroded_border = it.image_subtract(eroded_border, spikes_exclusion)
-                eroded_border = it.take_the_bigger_area(eroded_border)
+                chamfered_border = it.image_subtract(chamfered_border, spikes_exclusion)
+                chamfered_border = it.take_the_bigger_area(chamfered_border)
                 cutted_corners = np.logical_or(cutted_corners, mini)
                 # e ja costura de volta
-                ends_depois_de_aparar = mt.hitmiss_ends_v2(eroded_border)
+                ends_depois_de_aparar = mt.hitmiss_ends_v2(chamfered_border)
                 ends_depois_de_aparar_pts = pt.img_to_points(ends_depois_de_aparar)
                 if len(ends_depois_de_aparar_pts) > 2:
                     ends_depois_de_aparar_pts = pt.closest_points(
                         ends_depois_de_aparar_pts
                     )
-                eroded_border = np.logical_or(
-                    eroded_border,
+                chamfered_border = np.logical_or(
+                    chamfered_border,
                     it.draw_polyline(
-                        np.zeros_like(region.img),
+                        np.zeros_like(region_img),
                         ends_depois_de_aparar_pts,
                         False,
                     ),
                 )
-                eroded_border = it.take_the_bigger_area(eroded_border)
-        # AAA, BBB, _ = it.divide_by_connected(eroded_border_a)
-    # all_segments = []
-    # for segment in AAA:
-    # segment = mt.thinning(segment)
-    # possible_segments, labeled_segmented = decompose_pol_cont_by_corners(segment)
-    # all_segments.extend(possible_segments)
+                chamfered_border = it.take_the_bigger_area(chamfered_border)
+    return chamfered_border, cutted_corners
 
-    # agora divide todo o poligono e tenta encontrar os segmentos que tocam a origem
-    all_segments, labeled_segmented = decompose_pol_cont_by_corners(eroded_border)
-    possible_c1_c2 = np.zeros_like(region.img)
-    possible_opening = np.zeros_like(region.img)
+
+def decompose_pol_cont_by_corners(lines_do_limite, min_distance=5, threshold_rel=0.02):
+    pontos = path_tools.img_to_chain(lines_do_limite, minimal_seq=8)[0]
+    harris_pts = corner_peaks(
+        corner_harris(lines_do_limite),
+        min_distance=min_distance,
+        threshold_rel=threshold_rel,
+    )
+    harris_pts = [list(x) for x in harris_pts]
+    pontos_corrigidos = []
+    for point in harris_pts:
+        if not (point in pontos):
+            pnt, _ = pt.closest_point(point, pontos)
+            pontos_corrigidos.append(pnt)
+        else:
+            pontos_corrigidos.append(point)
+    pontos_curvatura = pontos_corrigidos
+    pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
+    labeled_segments_img = path_tools.colorbyevent(
+        pontos, pontos_curvatura, np.zeros_like(lines_do_limite)
+    )
+    segments_n = max(np.unique(labeled_segments_img))
+    segments = []
+    for labl in np.add(list(range(segments_n)), 1):
+        segment = np.zeros_like(lines_do_limite)
+        segment[labeled_segments_img == labl] = 1
+        segments.append(segment)
+    return segments, labeled_segments_img
+
+
+def quadrilateralize_segmented_contour(all_segments, origin):
+    possible_c1_c2 = np.zeros_like(origin)
+    possible_opening = np.zeros_like(origin)
     for segment in all_segments:
+        bbbbbb = it.sum_imgs([segment, mt.dilation(origin, kernel_size=2)])
         if np.logical_and(segment, mt.dilation(origin, kernel_size=2)).any():
             possible_opening = np.logical_or(possible_opening, segment)
         else:
@@ -1173,32 +1180,71 @@ def make_weaving_wide_route(
     # o que não é abertura é beirada: c1 e c2
     possible_c1_c2 = it.image_subtract(possible_c1_c2, possible_opening)
     [line_ci1, line_ci2], _, _ = it.divide_by_connected(possible_c1_c2)
-    # limitadores_de_ponta = np.zeros_like(region.img)
-    ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
-    ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
+    # limitadores_de_ponta = np.zeros_like(region.img
     # o resto são as aberturas
     [closing_tip_1, closing_tip_2], _, _ = it.divide_by_connected(possible_opening)
-    # closing_tip_1 = it.draw_polyline(
-    #     limitadores_de_ponta,
-    #     [ends_line_ci1[0], ends_line_ci2[0]],
-    #     False,
-    # )
-    # if np.logical_and(closing_tip_1, possible_opening).any():
-    #     closing_tip_1 = np.zeros_like(region.img)
-    # closing_tip_2 = it.draw_polyline(
-    #     limitadores_de_ponta,
-    #     [ends_line_ci1[1], ends_line_ci2[1]],
-    #     False,
-    # )
-    # if np.logical_and(closing_tip_2, possible_opening).any():
-    #     closing_tip_2 = np.zeros_like(region.img)
-    limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
     internal_pol = it.fill_internal_area(
         it.sum_imgs([line_ci1, line_ci2, closing_tip_1, closing_tip_2]) > 0,
-        np.ones_like(region.img),
+        np.ones_like(origin),
     )
-    nova_origin = np.logical_and(origin, internal_pol)
+    return line_ci1, line_ci2, closing_tip_1, closing_tip_2, internal_pol
 
+
+def make_weaving_wide_route(
+    region: ZigZag, path_radius, mask_distancer, internal_mask_dist, rest_of_picture
+):
+    origin = region.origin
+    _, _, n = it.divide_by_connected(origin)
+    if n > 1:
+        origin = it.take_the_bigger_area(origin)
+    _, original_border = mt.detect_contours(
+        region.img, return_img=True, only_external=True
+    )
+    # corta as pontas menores que o path_radius
+    chamfered_border, cutted_corners = chamfer_smaller_corners(
+        original_border, origin, region.img, path_radius
+    )
+    # agora divide o poligono em segmentos baseados nos angulos
+    all_segments_orig, labeled_segmented_orig = decompose_pol_cont_by_corners(
+        chamfered_border
+    )
+    # hora de encontrar a quadrilateralização do nosso contorno:
+    line_ci1, line_ci2, closing_tip_1, closing_tip_2, internal_pol = (
+        quadrilateralize_segmented_contour(all_segments_orig, origin)
+    )
+    labeled_quadrilateralization = it.sum_imgs_colored(
+        [line_ci1, line_ci2, closing_tip_1, closing_tip_2]
+    )
+
+    # dilata para garantir sobreposicao depois erode para fazer as rotas do limite do offset
+    total_sobreposition = mt.dilation(internal_pol, kernel_img=mask_distancer)
+
+    A = np.zeros_like(origin)
+    distance_map = distance_transform_edt(total_sobreposition)
+    markers = labeled_quadrilateralization
+    labels = watershed(-distance_map, markers, mask=total_sobreposition)
+    internal_divisory = mt.blackhat(rest_of_picture, kernel_size=path_radius)
+    internal_divisory = mt.opening(internal_divisory, kernel_size=1)
+    eroded = mt.erosion(total_sobreposition, kernel_size=path_radius)
+    eroded = it.image_subtract(eroded, internal_divisory)
+    _, eroded_border = mt.detect_contours(eroded, return_img=True, only_external=True)
+    labeled_eroded = np.multiply(labels, eroded_border)
+    line_ci1 = labeled_eroded == 1
+    line_ci2 = labeled_eroded == 2
+    closing_tip_1 = labeled_eroded == 3
+    closing_tip_2 = labeled_eroded == 4
+    internal_pol = it.fill_internal_area(
+        it.sum_imgs([line_ci1, line_ci2, closing_tip_1, closing_tip_2]) > 0,
+        np.ones_like(origin),
+    )
+    # eroded_seq = path_tools.img_to_chain(eroded)
+
+    # Evitando apagar as divisoes dentro da area
+
+    nova_origin = np.logical_and(origin, internal_pol)
+    limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
+    ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
+    ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
     pts_trns_origin = equidistant_in_seq(nova_origin, path_radius, internal_mask_dist)
     pts_trns_ci1 = equidistant_by_proximity(
         line_ci1, pts_trns_origin, path_radius, total_sobreposition
@@ -1260,6 +1306,9 @@ def make_weaving_wide_route(
     new_zigzag_b = np.logical_or(new_zigzag_b, lines_transversais)
     new_zigzag_b = np.logical_or(new_zigzag_b, cutted_corners)
     new_zigzag_b, _, _ = sk.create_prune_skel(new_zigzag_b, 2)
+    aaaaaaaa = it.sum_imgs(
+        [total_sobreposition, eroded, mt.dilation(new_zigzag, kernel_size=path_radius)]
+    )
     region.route = new_zigzag
     region.route_b = new_zigzag_b
     region.trail = mt.dilation(region.route, kernel_size=path_radius)
@@ -1730,59 +1779,6 @@ def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
     origens_pontos = path_tools.rotate_if_last_is_closest(origens_pontos)
     aaa = it.points_to_img(origens_pontos, np.zeros_like(line_img))
     return origens_pontos
-
-
-def decompose_pol_cont_by_corners(lines_do_limite, angle=60):
-    pontos = path_tools.img_to_chain(lines_do_limite)[0]
-    # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
-    # pontos_curvatura = path_tools.find_curvature_pts(pontos, angle)
-    # if len(pontos_curvatura) < 4:
-    harris_pts = corner_peaks(
-        corner_harris(lines_do_limite), min_distance=5, threshold_rel=0.02
-    )
-    harris_pts = [list(x) for x in harris_pts]
-    pontos_corrigidos = []
-    for point in harris_pts:
-        if not (point in pontos):
-            pnt, _ = pt.closest_point(point, pontos)
-            pontos_corrigidos.append(pnt)
-        else:
-            pontos_corrigidos.append(point)
-    pontos_curvatura = pontos_corrigidos
-    # pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(lines_do_limite))
-    pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
-    labeled_segments_img = path_tools.colorbyevent(
-        pontos, pontos_curvatura, np.zeros_like(lines_do_limite)
-    )
-    segments_n = max(np.unique(labeled_segments_img))
-    segments = []
-    for labl in np.add(list(range(segments_n)), 1):
-        segment = np.zeros_like(lines_do_limite)
-        segment[labeled_segments_img == labl] = 1
-        segments.append(segment)
-    # trunque = trunk > 0
-    # trunk_seq = path_tools.img_to_chain(trunque)[0]
-    # trunk_seq = path_tools.set_first_pt_in_seq(
-    #     trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0]
-    # )
-    # trunk_seq = path_tools.cut_repetition(trunk_seq)
-    # # TODO: ver se aqui tem como arrumar esses tamanhos
-    # tng_end = path_tools.draw_tangent_from_seq(
-    #     list(reversed(trunk_seq)), path_radius_bridg * 4, np.zeros_like(lines_do_limite)
-    # )
-    # tng_start = path_tools.draw_tangent_from_seq(
-    #     trunk_seq, path_radius_bridg * 4, np.zeros_like(lines_do_limite)
-    # )
-    # possible_c1_c2 = np.zeros_like(lines_do_limite)
-    # counter_accepted = 0
-    # for labl in np.add(list(range(segments_n)), 1):
-    #     contact = it.sum_imgs([tng_end, tng_start, np.int32(segments == labl)])
-    #     if not ((contact == 2).any()):
-    #         counter_accepted += 1
-    #         possible_c1_c2 = it.sum_imgs(
-    #             [possible_c1_c2, np.multiply(segments == labl, counter_accepted)]
-    #         )
-    return segments, labeled_segments_img
 
 
 def internal_cut(new_contour, lines, extreme_internal_points, sentido):

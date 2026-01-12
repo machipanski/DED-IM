@@ -225,3 +225,73 @@ def thinning(img):
 def colored_dilation(image, kernel):
     output = cv2.filter2D(src=image, ddepth=2, kernel=kernel)
     return output
+
+
+def make_paraboloid_kernel(
+    size: int | tuple[int, int],
+    height: float = 3.0,
+    min_value: float = 0.0,
+    axis_ratio: float = 1.0,
+    mode: str = "paraboloid",
+    normalize: bool = False,
+) -> np.ndarray:
+    """
+    Create a 2D kernel whose values represent the height of an ellipsoidal (or paraboloid) dome.
+
+    Parameters
+    - size: int or (h, w). If int, creates a square kernel of that side (must be odd recommended).
+    - height: maximum value at the center of the dome.
+    - min_value: clip minimum value (typically 0.0).
+    - axis_ratio: ratio b/a (height shape's y/x ratio). 1.0 => circular.
+    - mode: "ellipsoid" (sqrt(1 - r2)) or "paraboloid" (1 - r2). Values outside dome region clipped to min_value.
+    - normalize: if True scale kernel so its maximum is 1.0 (preserve shape).
+
+    Returns
+    - 2D float64 numpy array suitable to pass to colored_dilation (cv2.filter2D).
+    """
+    h = w = size * 2
+    # radii in x and y (use half-extent)
+    a = (w - 1) / 2.0
+    b = (h - 1) / 2.0 * axis_ratio if axis_ratio != 1.0 else (h - 1) / 2.0
+
+    # avoid division by zero for tiny kernels
+    a = max(a, 1e-6)
+    b = max(b, 1e-6)
+
+    # coordinate grid centered at 0
+    y = np.linspace(-b, b, h)
+    x = np.linspace(-a, a, w)
+    yy, xx = np.meshgrid(y, x, indexing="ij")
+
+    r2 = (xx / a) ** 2 + (yy / b) ** 2
+    r2_clipped = np.clip(1.0 - r2, 0.0, None)
+
+    if mode == "ellipsoid":
+        kernel = height * np.sqrt(r2_clipped)
+    elif mode == "paraboloid":
+        kernel = height * r2_clipped
+    else:
+        raise ValueError("mode must be 'ellipsoid' or 'paraboloid'")
+
+    # enforce minimum and non-negativity
+    kernel = np.maximum(kernel, min_value).astype(np.float64)
+
+    if normalize:
+        maxv = kernel.max()
+        if maxv > 0:
+            kernel = kernel / maxv
+
+    return kernel
+
+
+def simulate_hight(route_img, path_radius, top_height, axis_ratio=1.0):
+    kernel = make_paraboloid_kernel(
+        size=path_radius,
+        height=top_height,
+        min_value=0.0,
+        axis_ratio=axis_ratio,
+        mode="paraboloid",
+        normalize=True,
+    )
+    dilated_colored = colored_dilation(route_img, kernel)
+    return dilated_colored

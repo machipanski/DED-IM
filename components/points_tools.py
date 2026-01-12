@@ -249,3 +249,68 @@ def closest_points(points):
             closest_pair = (p1, p2)
 
     return closest_pair
+
+
+def closest_points_in_a_list(src_pts, cand_pts, return_distance=False):
+    """
+    For each point in src_pts, find the nearest point in cand_pts.
+    Inputs:
+      src_pts, cand_pts: list/array of points as (y,x) or (x,y) pairs or shape (N,2) numpy arrays.
+    Returns:
+      list of nearest points from cand_pts (as tuples). If return_distance True, also returns distances and indices.
+    """
+    src = np.asarray(src_pts, dtype=float).reshape(-1, 2)
+    cand = np.asarray(cand_pts, dtype=float).reshape(-1, 2)
+    if cand.size == 0:
+        if return_distance:
+            return [None] * len(src), [np.inf] * len(src), [-1] * len(src)
+        return [None] * len(src)
+
+    try:
+        from scipy.spatial import cKDTree as KDTree
+
+        tree = KDTree(cand)
+        dists, idxs = tree.query(src, k=1)
+    except Exception:
+        # fallback: brute-force
+        dists = np.linalg.norm(src[:, None, :] - cand[None, :, :], axis=2).min(axis=1)
+        idxs = np.linalg.norm(src[:, None, :] - cand[None, :, :], axis=2).argmin(axis=1)
+
+    nearest = [list(map(int, cand[i])) for i in idxs]
+    if return_distance:
+        return nearest, dists.tolist(), idxs.tolist()
+    return nearest
+
+
+def remove_duplicate_points(points):
+    """
+    Return a new list with any point that appears more than once removed (all occurrences removed).
+    Accepts points as lists or tuples, preserves original order for the remaining points.
+    """
+    from collections import Counter
+
+    # make hashable tuples for counting
+    tuples = [tuple(p) for p in points]
+    counts = Counter(tuples)
+    # keep only points that appear exactly once
+    return [p for p in points if counts[tuple(p)] == 1]
+
+
+def repeated_in_list(points):
+    """
+    Return a list of coordinates that appear more than once in `points`.
+    points: iterable of [y,x] or (y,x).
+    If preserve_order True, returns items in the order they first appear (no duplicates).
+    """
+    from collections import Counter
+
+    tuples = [tuple(p) for p in points]
+    counts = Counter(tuples)
+    seen = set()
+    out = []
+    for p in points:
+        t = tuple(p)
+        if counts[t] > 1 and t not in seen:
+            seen.add(t)
+            out.append([t[0], t[1]])
+    return out

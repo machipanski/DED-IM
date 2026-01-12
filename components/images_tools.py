@@ -291,6 +291,72 @@ def final_mapping(layer: Layer, folders: System_Paths):
     return isl_final_map
 
 
+def areas_interfaces(layer: Layer, folders: System_Paths):
+    isl_final_map = np.zeros(layer.base_frame)
+    tw = np.zeros(layer.base_frame)
+    off = np.zeros(layer.base_frame)
+    zz = np.zeros(layer.base_frame)
+    ob = np.zeros(layer.base_frame)
+    zb = np.zeros(layer.base_frame)
+    cob = np.zeros(layer.base_frame)
+
+    regions_imgs = []
+    for isl in layer.islands:
+        folders.load_thin_walls_hdf5(layer.name, isl)
+        if hasattr(isl, "thin_walls"):
+            if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+                regions_imgs.append(
+                    sum_imgs([reg.img for reg in isl.thin_walls.regions]).astype(
+                        np.uint16
+                    )
+                    * 1
+                )
+        folders.load_zigzags_hdf5(layer.name, isl)
+        if hasattr(isl, "zigzags"):
+            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
+                regions_imgs.append(
+                    sum_imgs_colored(
+                        [reg.img for reg in isl.zigzags.regions], limited=True
+                    ).astype(np.uint16)
+                    * 2
+                )
+        folders.load_offsets_hdf5(layer.name, isl)
+        if hasattr(isl, "offsets"):
+            if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+                regions_imgs.append(
+                    sum_imgs([reg.img for reg in isl.offsets.regions]).astype(np.uint16)
+                    * 4
+                )
+        folders.load_bridges_hdf5(layer.name, isl)
+        if hasattr(isl, "bridges"):
+            if hasattr(isl.bridges, "zigzag_bridges"):
+                if len(isl.bridges.zigzag_bridges) > 0:
+                    regions_imgs.append(
+                        sum_imgs(
+                            [reg.img for reg in isl.bridges.zigzag_bridges]
+                        ).astype(np.uint16)
+                        * 8
+                    )
+            if hasattr(isl.bridges, "offset_bridges"):
+                if len(isl.bridges.offset_bridges) > 0:
+                    regions_imgs.append(
+                        sum_imgs(
+                            [reg.img for reg in isl.bridges.offset_bridges]
+                        ).astype(np.uint16)
+                        * 16
+                    )
+            if hasattr(isl.bridges, "cross_over_bridges"):
+                if len(isl.bridges.cross_over_bridges) > 0:
+                    regions_imgs.append(
+                        sum_imgs(
+                            [reg.img for reg in isl.bridges.cross_over_bridges]
+                        ).astype(np.uint16)
+                        * 32
+                    )
+        isl_final_map = sum_imgs(regions_imgs)
+    return isl_final_map
+
+
 def individual_routes(layer: Layer, folders: System_Paths):
     isl_ind_routes = np.zeros(layer.base_frame)
     regions_imgs = []

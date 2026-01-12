@@ -1,18 +1,14 @@
 from __future__ import annotations
 import copy
 import datetime
-from operator import concat
-
-from click import style
 import numpy as np
 import concurrent.futures
 from cv2 import imread
 from functools import wraps
-from typing import TYPE_CHECKING, Concatenate
+from typing import TYPE_CHECKING
 from components import images_tools as it, path_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
-
 from components.offset import OffsetRegions
 from components.zigzag import ZigZagRegions
 from components.bottleneck import BridgeRegions
@@ -22,7 +18,8 @@ from components import points_tools as pt
 
 if TYPE_CHECKING:
     from components.files import System_Paths
-    from components.zigzag import ZigZag
+
+    # from components.zigzag import ZigZag
     from typing import List
 
 
@@ -294,6 +291,24 @@ class Layer:
         layer_height: float,
         first_layer_height: float,
     ):
+        """
+        :param folders: System_Paths: object with the paths to save and load files
+        :path_input: str: path for the file to be sliced
+        :file_name: str: name of the file
+        :param dpi: int: Density of pixels per inch for the image generation
+        :layer_height: float: height of each layer
+        :param first_layer_height: float: height of the first layer
+
+        :return: List[Layer]: list of Layer objects created from the input file
+
+        Creates Layer objects from the input file, slicing 3D models if necessary
+            3D models are sliced into layers using the call_slicer function from the folders object. The slicer was developed in another reseach by Minetto et al. (2023).
+            2D images are directly converted into Layer objects.
+        Each layer image recieves a border using the img_add_border function from the images_tools module and is rotated if it is an odd layer.
+        Afterwards, each layer is divided into islands using the divide_islands function.
+        The object is then saved using the save_layers and save_folders_structure functions from the folders object.
+        The format of the saved file is HDF5, which allows for efficient storage and retrieval of large datasets.
+        """
 
         def divide_islands(layer: Layer):
             img = layer.original_img
@@ -308,24 +323,25 @@ class Layer:
         list_layers = []
         with Timer("  Creating layers"):
             if file_name.endswith(".stl") or file_name.endswith(".STL"):
+                # 3D model
                 hdf5_file_name = file_name.rsplit("/", 1)[-1]
                 hdf5_file_name = hdf5_file_name.replace(".stl", "")
                 hdf5_file_name = hdf5_file_name.replace(".STL", "")
-                # hdf5_file_name = hdf5_file_name.replace("stl_models", "")
-                # hdf5_file_name = hdf5_file_name.replace("/", "")
                 list_layers = folders.call_slicer(
                     file_name, path_input, dpi, layer_height, first_layer_height
                 )
             else:
+                # 2D image
                 hdf5_file_name = file_name.rsplit("/", 1)[-1]
                 hdf5_file_name = hdf5_file_name.replace(".pgm", "")
-                # hdf5_file_name = hdf5_file_name.replace("/", "")
                 layer = Layer()
                 img = imread(path_input, 0)
                 layer.make_input_img("L_000", img, dpi, 0, first_layer_height, 1)
                 list_layers = [layer]
+            # Dividing islands
             for layer in list_layers:
                 divide_islands(layer)
+
         with Timer("  Saving layers"):
             ts = datetime.datetime.now()
             folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
@@ -1059,17 +1075,20 @@ class Layer:
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def make_zigzag_routes(self, folders: System_Paths):
+    def make_zigzag_routes(self, folders: System_Paths, style, sob_int, sob_out):
         folders.load_islands_hdf5(self)
-        mask_distancer = mt.make_distancer(
-            self, "int_ext", percentage=self.sob_int_ext_per
-        )
+        # mask_distancer_internal = mt.make_distancer(self, "int_ext", percentage=sob_int)
+        sob_inwards = sob_int
         for isl in self.islands:
             with Timer(f"  Generating zigzag routes, Layer:{self.name}"):
                 folders.load_zigzags_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
-                        self.base_frame, self.path_radius_larg, mask_distancer
+                        self.base_frame,
+                        self.path_radius_larg,
+                        sob_inwards,
+                        sob_out,
+                        style,
                     )
 
         with Timer("  Saving images of zigzag routes"):

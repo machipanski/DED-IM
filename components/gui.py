@@ -120,10 +120,26 @@ def ask_parameters_zigzags(configurations):
     )
     msg = "Wide parameters"
     title = "Wide parameters"
-    fieldNames = ["Style (0=Fermat zigzag, 1=Weaving)"]
+    fieldNames = ["Style (0=Zigzag, 1=Weaving)"]
     fieldDefs = [1]
     style = ask_parameters_constructor(msg, title, fieldNames, fieldDefs)[0]
     return d_larg, frst_d_larg, sob_tw_larg, name_prog, style
+
+
+def ask_parameters_zigzags_routes(configurations):
+    """Asks for zigzag mapping parameters, allowing changes to what is already standardized"""
+    msg = "Wide parameters"
+    title = "Wide parameters"
+    fieldNames = [
+        "Style (0=Fermat zigzag, 1=Simple zigzag, 2=Weaving)",
+        "sobreposição(%) interna",
+        "sobreposição(%) externa",
+    ]
+    fieldDefs = [1, 20, 30]
+    style, sob_int, sob_out = ask_parameters_constructor(
+        msg, title, fieldNames, fieldDefs
+    )
+    return style, sob_int, sob_out
 
 
 def ask_parameters_offset_routes(configurations):

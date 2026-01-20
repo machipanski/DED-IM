@@ -12,7 +12,8 @@ from components import morphology_tools as mt
 from components import skeleton as sk
 from components import bottleneck
 from components import points_tools as pt
-from components import path_tools as ptht
+
+# from components import path_tools as ptht
 import concurrent.futures
 
 
@@ -72,94 +73,52 @@ class ThinWallRegions:
         return
 
     def make_thin_walls(
-        self,
-        layer_name,
-        island_name,
+        self: ThinWallRegions,
         island_img: np.ndarray,
-        base_frame,
-        path_radius,
-        mask,
-        mm_per_pxl,
+        base_frame: np.ndarray,
+        path_radius: int,
     ):
-
-        def close_contour(reduced_continuous_origin, i):
-            max_width = 2
-            try:
-                bridge_img, contour_elements, contour, extreme_points = (
-                    bottleneck.close_bridge_contour(
-                        reduced_continuous_origin[0],
-                        base_frame,
-                        max_width,
-                        island_img,
-                        path_radius,
-                        pt.img_to_points(
-                            mt.hitmiss_ends_v2(reduced_continuous_origin[0])
-                        )[0],
-                    )
-                )
-                if np.sum(bridge_img) > 0:
-                    y_mark = np.where(reduced_continuous_origin[0])[1][
-                        np.round(len(np.where(reduced_continuous_origin[0])))
-                    ]
-                    x_mark = np.where(reduced_continuous_origin[0])[0][
-                        np.round(len(np.where(reduced_continuous_origin[0])))
-                    ]
-                    origin_mark = [y_mark, x_mark, str(n_trilhas_max)]
-                    region = ThinWall(
-                        f"TW_{i:03d}",
-                        bridge_img,
-                        reduced_continuous_origin[0],
-                        reduced_continuous_origin[0],
-                        n_trilhas_max,
-                        origin_mark,
-                        contour_elements,
-                        extreme_points,
-                    )
-                    print("OK: closed contour")
-                else:
-                    region = []
-            except Exception:
-                print("\033[3#m" + "Error: didn´t closed one contour" + "\033[0m")
-                # region = ThinWall([], [], [], [], 0, [], [], [])
-                region = []
-            return region
-
-        new_medial_transforms = []
-        sem_galhos, sem_galhos_dist, list_trunks = sk.create_prune_divide_skel(
-            island_img.astype(np.uint8), 2 * path_radius
+        max_width = 2  # MAX WIDTH TO BE CONSIDERED A THIN WALL
+        max_width_split = 4  # MAX WIDTH TO SPLIT A TRUNK INTO PARTS
+        norm_trunks, norm_dist_map, self.medial_transform = (
+            sk.create_prune_divide_normalize_skel(
+                island_img.astype(np.uint8), 2 * path_radius
+            )
         )
-        new_medial_transforms.append(
-            [
-                f"{layer_name}/{island_name}",
-                "medial_transform",
-                sem_galhos * sem_galhos_dist,
-            ]
+        cutted_norm_trunks = sk.break_too_big_parts(
+            norm_trunks,
+            norm_dist_map,
+            max_width_split,
         )
-        max_width = 2
-        # trunks = [pt.contour_to_list([x]) for x in trunks]
-        trunks_imgs = [
-            it.points_to_img(x, np.zeros_like(sem_galhos)) for x in list_trunks
-        ]
-        norm_dist_map = sem_galhos_dist / path_radius
-        norm_trunks = [trunk * norm_dist_map for trunk in trunks_imgs]
-        n_trilhas_max = [(np.unique(trunk))[1] for trunk in norm_trunks]
-        origin_candidates = [
-            norm_trunks[i] for i, x in enumerate(n_trilhas_max) if x <= max_width
-        ]
+        origin_candidates = sk.filter_trunks_with_smaller_than(
+            cutted_norm_trunks,
+            max_width,
+        )
         reduced_origins = [
-            bottleneck.reduce_origin(x, max_width, norm_dist_map)
-            for x in origin_candidates
+            sk.reduce_origin(oc, max_width, norm_dist_map) for oc in origin_candidates
         ]
+        norm_reduced_origins = [y[0] for y in reduced_origins]
+        initial_points = [x[1] for x in reduced_origins]
+        # close contours. Process all trunks in parallel
         processed_trunks = []
-
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
-                executor.submit(close_contour, origin_candidate, i)
-                for i, origin_candidate in enumerate(reduced_origins)
+                executor.submit(
+                    sk.close_contour_TW,
+                    origin_candidate,
+                    initial_points[trunk_number],
+                    trunk_number,
+                    island_img,
+                    path_radius,
+                    base_frame,
+                    2,
+                )
+                for trunk_number, origin_candidate in enumerate(norm_reduced_origins)
             ]
             for l in concurrent.futures.as_completed(results):
                 processed_trunks.append(l.result())
         processed_trunks = list(filter(lambda x: x != [], processed_trunks))
+        processed_trunks = [ThinWall(*x) for x in processed_trunks]
         processed_trunks.sort(key=lambda x: x.name)
 
         self.regions = [x for x in processed_trunks]
@@ -169,6 +128,7 @@ class ThinWallRegions:
             self.all_thin_walls = np.logical_or(self.all_thin_walls, tw.img)
             self.all_origins = np.logical_or(self.all_origins, tw.origin)
         aaaa = self.all_thin_walls
+
         return
 
     def apply_thin_walls(self, folders: System_Paths, original, base_frame):
@@ -187,25 +147,13 @@ class ThinWallRegions:
             i.make_route(path_radius, sobrep)
         return
 
-    def check_thin_walls(
-        self,
-        layer_name,
-        island_name,
-        island_img: np.ndarray,
-        base_frame,
-        path_radius,
-        mask,
-        mm_per_pxl,
-    ):
+    def check_thin_walls(self, island_img: np.ndarray, path_radius):
+        """Verifica se as regiões Thin Walls ainda são válidas após a aplicação"""
         filtered_tw = []
         for tw in self.regions:
-            # img = np.logical_and(tw.img, island_img)
-            # origin = np.logical_and(tw.origin, island_img)
             eroded_island_img = mt.erosion(island_img, kernel_size=2 * path_radius)
             _, eroded_island_border = mt.detect_contours(
-                eroded_island_img,
-                return_img=True,
-                # only_external=True,
+                eroded_island_img, return_img=True
             )
             result_first_offset = it.fill_internal_area(
                 mt.dilation(eroded_island_border, kernel_size=path_radius),
@@ -214,7 +162,6 @@ class ThinWallRegions:
             not_using_tw = np.logical_and(tw.img, result_first_offset)
             if 2 * np.sum(tw.img) / 3 > np.sum(not_using_tw):
                 filtered_tw.append(tw)
-
         self.regions = filtered_tw
         self.all_thin_walls = np.zeros_like(island_img)
         self.all_origins = np.zeros_like(island_img)

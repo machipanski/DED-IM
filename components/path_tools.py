@@ -3,7 +3,8 @@ import itertools
 import math
 import random
 import datetime
-from components.zigzag import ZigZagRegions
+
+# from components.zigzag import ZigZagRegions
 import numpy as np
 import math
 import copy
@@ -19,6 +20,7 @@ from components import morphology_tools as mt
 from components import images_tools as it
 from components import skeleton as sk
 import os
+from skimage.feature import corner_harris, corner_peaks
 
 if TYPE_CHECKING:
     from components.zigzag import ZigZag
@@ -1678,6 +1680,52 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
                     path_list[-1].sequence = cut_repetition(path_list[-1].sequence)
                     path_list[-1].get_regions(isl)
     return path_list
+
+
+def decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg):
+    pontos = img_to_chain(lines_do_limite)[0]
+    # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
+    pontos_curvatura = find_curvature_pts(pontos)
+    if len(pontos_curvatura) < 4:
+        harris_pts = corner_peaks(
+            corner_harris(lines_do_limite), min_distance=5, threshold_rel=0.02
+        )
+        harris_pts = [list(x) for x in harris_pts]
+        pontos_corrigidos = []
+        for point in harris_pts:
+            if not (point in pontos):
+                pnt, _ = pt.closest_point(point, pontos)
+                pontos_corrigidos.append(pnt)
+            else:
+                pontos_corrigidos.append(point)
+        pontos_curvatura = pontos_corrigidos
+    # pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(lines_do_limite))
+    pontos = set_first_pt_in_seq(pontos, pontos_curvatura[0])
+    segments = colorbyevent(pontos, pontos_curvatura, np.zeros_like(lines_do_limite))
+    segments_n = max(np.unique(segments))
+    trunque = trunk > 0
+    trunk_seq = img_to_chain(trunque)[0]
+    trunk_seq = set_first_pt_in_seq(
+        trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0]
+    )
+    trunk_seq = cut_repetition(trunk_seq)
+    # TODO: ver se aqui tem como arrumar esses tamanhos
+    tng_end = draw_tangent_from_seq(
+        list(reversed(trunk_seq)), path_radius_bridg * 4, np.zeros_like(lines_do_limite)
+    )
+    tng_start = draw_tangent_from_seq(
+        trunk_seq, path_radius_bridg * 4, np.zeros_like(lines_do_limite)
+    )
+    possible_c1_c2 = np.zeros_like(lines_do_limite)
+    counter_accepted = 0
+    for labl in np.add(list(range(segments_n)), 1):
+        contact = it.sum_imgs([tng_end, tng_start, np.int32(segments == labl)])
+        if not ((contact == 2).any()):
+            counter_accepted += 1
+            possible_c1_c2 = it.sum_imgs(
+                [possible_c1_c2, np.multiply(segments == labl, counter_accepted)]
+            )
+    return possible_c1_c2, counter_accepted, pontos_curvatura
 
 
 # def layers_to_Gcode_4t(

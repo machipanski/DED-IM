@@ -482,7 +482,7 @@ class OffsetRegions:
     ):
         prohibited_areas = np.zeros(base_frame)
 
-        def make_offset_route(region: Region, outer_spiral: bool):
+        def make_offset_route(region: Offset, outer_spiral: bool):
             route = np.zeros(base_frame)
             next_prohibited_area = np.zeros(base_frame)
             for loop in region.loops:
@@ -621,7 +621,7 @@ class OffsetRegions:
                             + "Bw -> blocked by maximum offsets"
                         )
             if fil_region_img.any():  # and counter < 4:
-                self.regions.append(Region(counter, fil_region_img, fil_region_loops))
+                self.regions.append(Offset(counter, fil_region_img, fil_region_loops))
                 all_loops_img = np.logical_or(all_loops_img, fil_region_img)
                 counter += 1
         self.n_regions = counter
@@ -670,7 +670,7 @@ class OffsetRegions:
                     if loop.region == i:
                         essa_reg = np.logical_or(essa_reg, loop.internal_area)
                         loops_inside.append([level.name, outer_inner, loop.name])
-            influence_regions.append(Region(i, essa_reg, loops_inside))
+            influence_regions.append(Offset(i, essa_reg, loops_inside))
         return influence_regions
 
     def tag_loops_by_voids(
@@ -720,7 +720,7 @@ class OffsetRegions:
         return offset_simulated
 
 
-class Region:
+class Offset:
     """Individual closed path by parallel Offset"""
 
     def __init__(self, name, img, loops):

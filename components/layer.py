@@ -545,17 +545,17 @@ class Layer:
         name_prog: str,
     ) -> None:
 
-        def make_islands_thinWalls(island: Island, mm_per_pxl) -> List[Island, dict]:
+        def make_islands_thinWalls(island: Island) -> List[Island, dict]:
+            """
+            :param island: each separated body on the layer: Island
+            :return: islands with the ThinWals regions mapped: List[Island]
+            """
             island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
             island.thin_walls = ThinWallRegions()
             island.thin_walls.make_thin_walls(
-                self.name,
-                island.name,
                 island_img,
                 self.base_frame,
                 self.path_radius_tw,
-                mt.make_mask(self, "full_tw"),
-                mm_per_pxl,
             )
             return island
 
@@ -563,13 +563,8 @@ class Layer:
             island_img = folders.load_img_hdf5(f"/{self.name}/{island.name}", "img")
             if len(island.thin_walls.regions) > 0:
                 island.thin_walls.check_thin_walls(
-                    self.name,
-                    island.name,
                     island_img,
-                    self.base_frame,
                     self.path_radius_tw,
-                    mt.make_mask(self, "full_tw"),
-                    mm_per_pxl,
                 )
             return island
 
@@ -578,7 +573,6 @@ class Layer:
         self.mm_per_pxl = 1 / self.pxl_per_mm
         d_tw_pxl = d_tw * self.pxl_per_mm
         self.sob_tw_per = sob_tw_per
-        # self.path_radius_tw = int(d_tw_pxl * 0.5 * (1 - sob_tw_per/100))
         self.path_radius_tw = round(d_tw_pxl * 0.5)
         self.diam_tw_real = d_tw
         for isl in self.islands:
@@ -588,7 +582,7 @@ class Layer:
             processed_regions: List[Island] = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
                 results = [
-                    executor.submit(make_islands_thinWalls, island, self.mm_per_pxl)
+                    executor.submit(make_islands_thinWalls, island)
                     for island in self.islands  # self.islands
                 ]
                 for l in concurrent.futures.as_completed(results):
@@ -1068,6 +1062,8 @@ class Layer:
         for island in self.islands:
             folders.load_bridges_hdf5(self.name, island)
             island.zigzags = ZigZagRegions()
+        with Timer("  Finding monotonic regions"):
+            find_islands_monotonic()
         with Timer("  Finding monotonic regions"):
             find_islands_monotonic()
         with Timer("  Saving monotonic regions images"):

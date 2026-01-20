@@ -3,7 +3,6 @@ import copy
 import concurrent.futures
 import numpy as np
 import networkx as nx
-import random
 from scipy.ndimage import distance_transform_edt
 from networkx import get_edge_attributes
 from components import path_tools
@@ -14,14 +13,9 @@ from components import skeleton as sk
 from components.timer import Timer
 from typing import TYPE_CHECKING, List
 from cv2 import getStructuringElement, MORPH_RECT
-from components.skeleton import prune
-from skimage.feature import corner_harris, corner_peaks
-from components.offset import Region
 
-# from os import name
-# from networkx import intersection
-# from typing import List
-# if TYPE_CHECKING:
+# from components.skeleton import prune
+from components.offset import OffsetRegions, Offset
 
 
 class Bottleneck:
@@ -94,6 +88,8 @@ class Bridge:
             self.trunk = args[3]
             self.n_paths = args[4]
             self.origin_mark = args[5]
+            self.contour = args[6]
+            self.extreme_points = args[7]
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -108,7 +104,6 @@ class Bridge:
             distance_map = np.multiply(
                 internal_borders, distance_transform_edt(np.logical_not(original_line))
             )
-            # internal_borders_pts = pt.img_to_points(internal_borders)
             start_ci, _ = pt.closest_point(start_orig, internal_extreme)
             internal_extreme.remove(start_ci)
             end_ci, _ = pt.closest_point(end_orig, internal_extreme)
@@ -128,11 +123,10 @@ class Bridge:
             internal_extreme = pt.img_to_points(mt.hitmiss_ends_v2(internal_borders))
             if len(internal_extreme) == 0:
                 possible_c1_c2, counter_accepted, internal_extreme = (
-                    decompose_pol_cont_by_corners(
+                    path_tools.decompose_pol_cont_by_corners(
                         internal_borders, origin_axis, path_radius_bridg
                     )
                 )
-                # bbb = it.sum_imgs([tng_end,tng_start,all_borders_img])
                 labeled = possible_c1_c2
                 labeled_n = counter_accepted
             line_ci1 = make_closest_path_to(
@@ -186,6 +180,7 @@ class Bridge:
             print("Error: no line 2")
         return line_ci1, line_ci2
 
+    # TODO: mover para tools
     def find_center(self):
         contour = mt.detect_contours(self.img)
         contour = pt.contour_to_list(contour)
@@ -232,7 +227,7 @@ class BridgeRegions:
     def make_offset_bridges(
         self,
         rest_of_picture,
-        offsets_regions: List[Region],
+        offsets_regions: List[Offset],
         base_frame,
         path_radius,
         original_img,
@@ -240,7 +235,7 @@ class BridgeRegions:
     ):
         """determines connection points between the different contours,
         drawing a bridge in the direction of the Layer's offset"""
-        offreg: List[Region] = offsets_regions.regions
+        offreg: List[Offset] = offsets_regions.regions
         regs_touching = []
         for region in offreg:
             region.make_contour(base_frame)
@@ -335,7 +330,7 @@ class BridgeRegions:
                 )
                 new_img = mt.dilation(origin, kernel_img=mask_square)
                 self.offset_bridges.append(
-                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
+                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [], [], [])
                 )
                 self.offset_bridges[-1].origin_coords = pontos_centrais[0]
                 self.offset_bridges[-1].destiny_coords = pontos_centrais[1]
@@ -350,7 +345,7 @@ class BridgeRegions:
                 new_img = np.logical_and(reg_a.img, reg_b.img)
                 origin = mt.thin(new_img)
                 self.offset_bridges.append(
-                    Bridge(f"OB_{counter:03d}", new_img, origin, [], 2, [])
+                    Bridge(f"OB_{counter:03d}", new_img, origin, [], 2, [], [], [])
                 )
                 pontos_centrais = pt.img_to_points(mt.hitmiss_ends_v2(origin))
                 self.offset_bridges[-1].origin_coords = pontos_centrais[0]
@@ -433,7 +428,7 @@ class BridgeRegions:
                     np.ones_like(contour_connection),
                 )
                 self.offset_bridges.append(
-                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [])
+                    Bridge(f"OB_{counter:03d}", img, origin, [], 2, [], [], [])
                 )
                 self.offset_bridges[-1].origin_coords = lista_origem[line]
                 self.offset_bridges[-1].destiny_coords = lista_destino[line]
@@ -452,95 +447,6 @@ class BridgeRegions:
         necks_max_paths,
         offset_regions,
     ):
-
-        def separate_trunks():
-            """Breaks the image into its MAT components - already normalized to the number of routes that fit in the parallel direction"""
-            sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-                rest_of_picture.astype(np.uint8), path_radius_bridg
-            )
-            self.medial_transform = sem_galhos * sem_galhos_dist
-            # trunks = [pt.contour_to_list([x]) for x in trunks]
-            trunks = [it.points_to_img(x, np.zeros(base_frame)) for x in trunks]
-            trunks = it.eliminate_duplicates(trunks)
-            normalized_dist_map = sem_galhos_dist / path_radius_bridg
-            normalized_trunks = [trunk * normalized_dist_map for trunk in trunks]
-            return normalized_trunks, normalized_dist_map
-
-        def break_too_big_parts(normalized_trunks, normalized_dist_map):
-            """Further divides the trunks to avoid overly large regions"""
-            minus_bigger_than_2wd = []
-            for trunk in normalized_trunks:
-                less_than_2wd = np.logical_and(trunk > 0, trunk <= 2 * necks_max_paths)
-                sep_trunks, _, num = it.divide_by_connected(less_than_2wd)
-                for new_trunk in sep_trunks:
-                    if len(pt.img_to_points(new_trunk)) > path_radius_bridg * 2:
-                        minus_bigger_than_2wd.append(
-                            new_trunk.astype(float) * normalized_dist_map
-                        )
-            return minus_bigger_than_2wd
-
-        def separate_truks_with_botlenecks(minus_bigger_than_2wd):
-            """Returns only the trunks that have bottleneck sections"""
-            n_trilhas_minima_by_trunk = [
-                (np.unique(trunk))[1] for trunk in minus_bigger_than_2wd
-            ]
-            return [
-                minus_bigger_than_2wd[i]
-                for i, x in enumerate(n_trilhas_minima_by_trunk)
-                if x < necks_max_paths
-            ]
-
-        def close_bridges(norm_reduced_origins, initial_points, skel):
-            self.all_bridges = np.zeros(base_frame)
-            self.all_origins = np.zeros(base_frame)
-            counter = 0
-            for i, candidate in enumerate(norm_reduced_origins):
-                inicial_pnt = initial_points[i]
-                try:
-                    bridge_img, contour_elements, contour, extreme_points = (
-                        close_bridge_contour(
-                            candidate,
-                            base_frame,
-                            1.5 * necks_max_paths,  # TODO check this value
-                            rest_of_picture,
-                            path_radius_bridg,
-                            inicial_pnt,
-                        )
-                    )
-                    print("   Closed a bridge")
-                except Exception:
-                    print("   Bridge failed")
-                    bridge_img = []
-                    pass
-                if np.sum(bridge_img) > 0:
-                    if len(self.all_bridges) > 0:
-                        self.all_bridges = np.logical_or(self.all_bridges, bridge_img)
-                    else:
-                        self.all_bridges = np.zeros(base_frame)
-                    if len(self.all_origins) > 0:
-                        self.all_origins = np.logical_or(self.all_origins, candidate)
-                    else:
-                        self.all_origins = np.zeros(base_frame)
-                    y_mark = np.where(candidate)[1][np.round(len(np.where(candidate)))]
-                    x_mark = np.where(candidate)[0][np.round(len(np.where(candidate)))]
-                    origin_mark = [y_mark, x_mark, str("not used")]
-                    self.zigzag_bridges.append(
-                        Bridge(
-                            f"ZB_{counter:03d}",
-                            bridge_img,
-                            # np.logical_and(bridge_img, candidate).astype(np.uint8),
-                            np.logical_and(bridge_img, skel).astype(np.uint8),
-                            candidate,
-                            [],
-                            origin_mark,
-                            contour=contour_elements,
-                            extreme_points=extreme_points,
-                        )
-                    )
-                    self.zigzag_bridges[-1].get_linked_offsets(offset_regions)
-                    counter += 1
-            return
-
         def filter_trunks_if_tip_minimum(norm_reduced_origins):
             filtered_trunks = []
             eliminated_trunks = []
@@ -617,9 +523,8 @@ class BridgeRegions:
                         new_trunk,
                         [],
                         new_origin_mark,
-                        contour=bridge_a.contour + bridge_b.contour,
-                        extreme_points=bridge_a.extreme_points
-                        + bridge_b.extreme_points,
+                        bridge_a.contour + bridge_b.contour,
+                        bridge_a.extreme_points + bridge_b.extreme_points,
                     )
                 )
                 filtered_zigzag_bridges[-1].get_linked_offsets(offset_regions)
@@ -632,20 +537,62 @@ class BridgeRegions:
                     counter += 1
             return final_regions
 
-        norm_trunks, norm_dist_map = separate_trunks()
-        minus_bigger_than_2wd = break_too_big_parts(norm_trunks, norm_dist_map)
-        origin_candidates = separate_truks_with_botlenecks(minus_bigger_than_2wd)
+        norm_trunks, norm_dist_map, self.medial_transform = (
+            sk.create_prune_divide_normalize_skel(
+                rest_of_picture.astype(np.uint8), path_radius_bridg
+            )
+        )
+        minus_bigger_than_2wd = sk.break_too_big_parts(
+            norm_trunks,
+            norm_dist_map,
+            necks_max_paths + 2,
+        )
+        origin_candidates = sk.filter_trunks_with_smaller_than(
+            minus_bigger_than_2wd,
+            necks_max_paths,
+        )
         reduced = [
-            reduce_origin(x, necks_max_paths, norm_dist_map) for x in origin_candidates
+            sk.reduce_origin(x, necks_max_paths, norm_dist_map)
+            for x in origin_candidates
         ]
         norm_reduced_origins = [y[0] for y in reduced]
+        initial_points = [x[1] for x in reduced]
         norm_reduced_filtered_origins = filter_trunks_if_tip_minimum(
             norm_reduced_origins
         )
-        initial_points = [x[1] for x in reduced]
-        close_bridges(
-            norm_reduced_filtered_origins, initial_points, self.medial_transform
-        )
+        bbb = norm_reduced_origins[0]
+        processed_trunks = []
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            results = [
+                executor.submit(
+                    sk.close_contour_ZZB,
+                    origin_candidate,
+                    initial_points[trunk_number],
+                    trunk_number,
+                    rest_of_picture,
+                    path_radius_bridg,
+                    base_frame,
+                    necks_max_paths,
+                )
+                for trunk_number, origin_candidate in enumerate(
+                    norm_reduced_filtered_origins
+                )
+            ]
+            for l in concurrent.futures.as_completed(results):
+                processed_trunks.append(l.result())
+        processed_trunks = list(filter(lambda x: x != [], processed_trunks))
+        processed_trunks = [Bridge(*x) for x in processed_trunks]
+        processed_trunks.sort(key=lambda x: x.name)
+
+        self.zigzag_bridges = [x for x in processed_trunks]
+        self.all_bridges = np.zeros_like(rest_of_picture)
+        self.all_origins = np.zeros_like(rest_of_picture)
+        for bridge in self.zigzag_bridges:
+            self.all_bridges = np.logical_or(self.all_bridges, bridge.img)
+            self.all_origins = np.logical_or(self.all_origins, bridge.origin)
+            bridge.get_linked_offsets(offset_regions)
+        aaaa = self.all_bridges
+
         self.zigzag_bridges = connect_bridges_simple()
         return
 
@@ -712,8 +659,8 @@ class BridgeRegions:
                     zigzag_bridge.trunk,
                     zigzag_bridge.n_paths,
                     origin_marks,
-                    contour=zigzag_bridge.contour,
-                    extreme_points=zigzag_bridge.extreme_points,
+                    zigzag_bridge.contour,
+                    zigzag_bridge.extreme_points,
                     linked_offset_regions=zigzag_bridge.linked_offset_regions,
                 )
             )
@@ -847,262 +794,6 @@ def connect_origin_parts(origin, eroded):
     new_eroded = np.logical_or(origin_axis_reconected, eroded)
     new_eroded = mt.closing(new_eroded, kernel_size=2)
     return origin_axis_reconected, new_eroded
-
-
-def reduce_lines_overshoot(candidate, origin_points):
-    """Determines the start and end for each trunk, then reduces the margins until all its bottlenecks are encompassed"""
-    t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
-    origin_chain = pt.invert_x_y(
-        path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
-    )
-    new_ends = [pt.closest_point(x, origin_chain)[0] for x in origin_points]
-    new_origin = origin_chain.copy()
-    count_up = 0
-    count_down = -1
-    start_flag = 0
-    end_flag = 0
-    while not (start_flag and end_flag):
-        current_pt_1 = origin_chain[count_up]
-        current_pt_2 = origin_chain[count_down]
-        if current_pt_1 in new_ends:
-            start_flag = 1
-        else:
-            new_origin.remove(current_pt_1)
-            count_up += 1
-        if current_pt_2 in new_ends:
-            end_flag = 1
-        else:
-            new_origin.remove(current_pt_2)
-            count_down -= 1
-    reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
-    return reduced_origin
-
-
-def close_bridge_contour(
-    trunk,
-    base_frame,
-    max_accepted,
-    rest_of_picture,
-    path_radius_bridg,
-    inicial_pnt,
-):
-    def find_contours_around_origin(
-        rest_of_picture, base_frame, max_accepted, path_radius_bridg, trunk
-    ):
-        all_borders, all_borders_img = mt.detect_contours(
-            rest_of_picture, return_img=True
-        )
-        area_pescocal = mt.dilation(
-            trunk.astype(bool), kernel_size=(max_accepted * path_radius_bridg + 8)
-        )
-        overlap = np.add(area_pescocal, all_borders_img)
-        lines_do_limite = overlap == 2
-        _, labeled, labeled_n = it.divide_by_connected(lines_do_limite)
-        if labeled_n == 1:
-            print("   Special case: Only one line around origin")
-            possible_c1_c2, counter_accepted, curvature_points = (
-                decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg)
-            )
-            # bbb = it.sum_imgs([tng_end,tng_start,all_borders_img])
-            labeled = possible_c1_c2
-            labeled_n = counter_accepted
-            # print("pausadsddass")
-        if labeled_n > 2:
-            dists = []
-            trunk_pts = pt.x_y_para_pontos(np.nonzero(trunk))
-            trunk_center = pt.points_center(trunk_pts)
-            trunk_center_pt, _ = pt.closest_point(trunk_center, trunk_pts)
-            for l in np.arange(1, labeled_n + 1):
-                line_pts = pt.x_y_para_pontos(np.nonzero(labeled == l))
-                _, dist = pt.closest_point(trunk_center_pt, line_pts)
-                dists.append(dist)
-            lista_dist = dists.copy()
-            idx1 = np.argmin(lista_dist)
-            lista_dist[idx1] = 999999
-            idx2 = np.argmin(lista_dist)
-            line1 = labeled == idx1 + 1
-            # ATENçÂO PARA NOVOS CASOS AQUI!!!!!!!
-            line2 = labeled == idx2 + 1
-        elif labeled_n == 2:
-            line1 = labeled == 1
-            line2 = labeled == 2
-            # line1 = labeled == 1
-            return line1, line2
-        else:
-            print("   ERROR: No lines around origin")
-            return np.zeros_like(trunk), np.zeros_like(trunk)
-        points_trunk = pt.img_to_points(mt.hitmiss_ends_v2(trunk.astype(bool)))
-        points_line1 = pt.img_to_points(mt.hitmiss_ends_v2(line1.astype(bool)))
-        if len(points_line1) > 0:
-            line1 = reduce_lines_overshoot(line1, points_trunk)
-        points_line2 = pt.img_to_points(mt.hitmiss_ends_v2(line2.astype(bool)))
-        if len(points_line2) > 0:
-            line2 = reduce_lines_overshoot(line2, points_trunk)
-        return line1, line2
-
-    def close_area_from_lines(
-        line1: np.ndarray,
-        line2: np.ndarray,
-        base_frame,
-        inicial_pnt,
-    ):
-        starts_and_ends1 = pt.x_y_para_pontos(
-            np.where(sk.find_tips(line1.astype(np.uint8)))
-        )
-        starts_and_ends2 = pt.x_y_para_pontos(
-            np.where(sk.find_tips(line2.astype(np.uint8)))
-        )
-        # Se alguma delas é um circulo fechado, interrompe perto da origem indicada poe Inicial_pt
-        if len(starts_and_ends1) == 0:
-            line_pts = pt.img_to_points(line1.astype(np.uint8))
-            break_point, _ = pt.closest_point(inicial_pnt, line_pts)
-            # line1[break_point[0]][break_point[1]] = 0
-            origin_chain = pt.invert_x_y(path_tools.make_a_chain(line1, break_point))
-            line1 = it.points_to_img(origin_chain, np.zeros_like(line1))
-            starts_and_ends1 = pt.x_y_para_pontos(
-                np.where(sk.find_tips(line1.astype(np.uint8)))
-            )
-        if len(starts_and_ends2) == 0:
-            line_pts = pt.img_to_points(line2.astype(np.uint8))
-            break_point, _ = pt.closest_point(inicial_pnt, line_pts)
-            # line2[break_point[0]][break_point[1]] = 0
-            origin_chain = pt.invert_x_y(path_tools.make_a_chain(line2, break_point))
-            line2 = it.points_to_img(origin_chain, np.zeros_like(line2))
-            starts_and_ends2 = pt.x_y_para_pontos(
-                np.where(sk.find_tips(line2.astype(np.uint8)))
-            )
-        # Se houverem pontos demais por causa dos contours, faz uma poda
-        if len(starts_and_ends1) > 2:
-            line1, _, _ = prune(skel_img=line1, size=2)
-            starts_and_ends1 = pt.x_y_para_pontos(
-                np.where(sk.find_tips(line1.astype(np.uint8)))
-            )
-        if len(starts_and_ends2) > 2:
-            line2, _, _ = prune(skel_img=line2, size=2)
-            starts_and_ends2 = pt.x_y_para_pontos(
-                np.where(sk.find_tips(line2.astype(np.uint8)))
-            )
-        # Se as duas lines coincidem o final e o começo
-        if starts_and_ends1 == starts_and_ends2:
-            line1 = line2
-            pontos_fins = mt.hitmiss_ends_v2(line1)
-            pontos_fins = pt.img_to_points(pontos_fins)
-            if len(pontos_fins) == 2:
-                linebaixo = linetopo = it.draw_line(
-                    np.zeros(base_frame), starts_and_ends1[0], starts_and_ends1[1]
-                )
-                bridge_border = it.sum_imgs([line1, linetopo, line2, linebaixo]) >= 1
-                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-                bridge_img = np.logical_and(bridge_img, rest_of_picture)
-            elif len(pontos_fins) > 2:
-                bridge_border = it.draw_polyline(
-                    np.zeros(base_frame), pontos_fins, closed=True
-                )
-                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-                bridge_img = np.logical_and(bridge_img, rest_of_picture)
-                linetopo = linebaixo = np.zeros_like(line1)
-            else:
-                print("   Special case: no solution yet")
-                # TODO: still need to find a workaround here
-        else:
-            unique_points = []
-            for p in starts_and_ends1 + starts_and_ends2:
-                if p not in unique_points:
-                    unique_points.append(p)
-            if len(unique_points) == 4:
-                extreme_points = [
-                    starts_and_ends1[0],
-                    starts_and_ends1[1],
-                    starts_and_ends2[1],
-                    starts_and_ends2[0],
-                ]
-                if pt.intersects(
-                    [extreme_points[0], extreme_points[2]],
-                    [extreme_points[1], extreme_points[3]],
-                ):
-                    extreme_points = [
-                        starts_and_ends1[0],
-                        starts_and_ends1[1],
-                        starts_and_ends2[0],
-                        starts_and_ends2[1],
-                    ]
-                linetopo = it.draw_line(
-                    np.zeros(base_frame), extreme_points[0], extreme_points[2]
-                )
-                linebaixo = it.draw_line(
-                    np.zeros(base_frame), extreme_points[1], extreme_points[3]
-                )
-                bridge_border = it.sum_imgs([line1, linetopo, line2, linebaixo])
-                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-                bridge_img = np.logical_and(bridge_img, rest_of_picture)
-            elif len(unique_points) == 2:
-                fechamento1_pts = unique_points
-                linetopo = it.draw_line(
-                    np.zeros(base_frame), fechamento1_pts[0], fechamento1_pts[1]
-                )
-                linebaixo = np.zeros_like(linetopo)
-                bridge_border = it.sum_imgs([line1, linetopo])
-                bridge_img = it.fill_internal_area(bridge_border, np.ones(base_frame))
-                bridge_img = np.logical_and(bridge_img, rest_of_picture)
-            elif len(unique_points) == 0:
-                if np.sum(line1) > 0:
-                    fechamento1_pts = unique_points
-                    linetopo = np.zeros_like(line1)
-                    linebaixo = np.zeros_like(line1)
-                    bridge_border = line1.copy()
-                    bridge_img = it.fill_internal_area(
-                        bridge_border, np.ones(base_frame)
-                    )
-                    bridge_img = np.logical_and(bridge_img, rest_of_picture)
-        return bridge_img, linetopo, linebaixo, bridge_border, line1, line2
-
-    line1, line2 = find_contours_around_origin(
-        rest_of_picture, base_frame, max_accepted, path_radius_bridg, trunk
-    )
-    try:
-        bridge_img, linetopo, linebaixo, bridge_border, line1, line2 = (
-            close_area_from_lines(line1, line2, base_frame, inicial_pnt)
-        )
-        bridge_border_seq = path_tools.img_to_chain(bridge_border)
-    except:
-        return [[], [], [], []]
-    while np.sum(bridge_border == 2) > 4 and len(bridge_border_seq) > 1:
-        opened = mt.opening(bridge_img, kernel_size=1)
-        line1b = np.logical_and(line1, opened)
-        line2b = np.logical_and(line2, opened)
-        if line1b.any() and line2b.any():
-            line1c = it.restore_continuous(line1b)
-            line2c = it.restore_continuous(line2b)
-            bridge_img, linetopo, linebaixo, bridge_border, line1, line2 = (
-                close_area_from_lines(line1c, line2c, base_frame, inicial_pnt)
-            )
-            bridge_border_seq = path_tools.img_to_chain(bridge_border)
-        else:
-            extreme_external_points = [[], [], [], []]
-            break
-    lens = [len(x) for x in bridge_border_seq]
-    bridge_border_seq = bridge_border_seq[np.argmax(lens)]
-    ends_topo = pt.img_to_points(sk.find_tips(linetopo))
-    ends_baixo = pt.img_to_points(sk.find_tips(linebaixo))
-    bridge_border_seq = path_tools.set_first_pt_in_seq(bridge_border_seq, ends_topo[0])
-    counter = 0
-    flag = 0
-    extreme_external_points = [ends_topo[0], [], [], []]
-    for p in bridge_border_seq:
-        if p in ends_topo + ends_baixo:
-            if (counter == 1) and (p in ends_topo):
-                flag = 1
-            if flag and counter > 0:
-                extreme_external_points[4 - counter] = p
-            else:
-                extreme_external_points[counter] = p
-            counter += 1
-    return (
-        bridge_img,
-        [line1, line2, linetopo, linebaixo],
-        bridge_border,
-        extreme_external_points,
-    )
 
 
 def remove_zigzag_bridges_conflict(bridge_a, bridge_b, rest_of_picture):
@@ -1651,55 +1342,11 @@ def oscilatory_start_and_end(new_zigzag, extreme_points):
     return fins_da_rota
 
 
-def reduce_origin(candidate, necks_max_paths, norm_dist_map):
-    """Determines the start and end for each trunk, then reduces the margins until all its bottlenecks are encompassed"""
-    t_ends = pt.img_to_points(sk.find_tips(candidate.astype(bool)))
-    if len(t_ends) == 0:  # se for um ciclo fechado
-        start_pnt = random.choice(pt.x_y_para_pontos(np.nonzero(candidate)))
-        origin_chain = pt.invert_x_y(
-            path_tools.make_a_chain(candidate.astype(bool), start_pnt)
-        )
-        origin_chain_img = it.points_to_img(origin_chain, np.zeros_like(candidate))
-        new_ends = pt.img_to_points(sk.find_tips(origin_chain_img.astype(bool)))
-        origin_chain = path_tools.set_first_pt_in_seq(origin_chain, new_ends[0])
-        candidate = np.multiply(candidate, origin_chain_img)
-    else:  # se for um trunk aberto
-        start_pnt = []
-        origin_chain = pt.invert_x_y(
-            path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
-        )
-    reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
-    if np.sum(reduced_origin) == 0:
-        return np.zeros_like(candidate), []
-    ends = pt.img_to_points(sk.find_tips(reduced_origin.astype(bool)))
-    new_origin = origin_chain.copy()
-    count_up = 0
-    count_down = -1
-    start_flag = 0
-    end_flag = 0
-    while not (start_flag and end_flag):
-        current_pt_1 = origin_chain[count_up]
-        current_pt_2 = origin_chain[count_down]
-        if current_pt_1 in ends:
-            start_flag = 1
-        else:
-            new_origin.remove(current_pt_1)
-            count_up += 1
-        if current_pt_2 in ends:
-            end_flag = 1
-        else:
-            new_origin.remove(current_pt_2)
-            count_down -= 1
-    reduced_origin = it.points_to_img(new_origin, np.zeros_like(candidate))
-    separated, _, n = it.divide_by_connected(reduced_origin)
-    if n > 1:
-        reduced_origin = it.take_the_bigger_area(reduced_origin)
-        print("   ERROR")
-    return reduced_origin * norm_dist_map, origin_chain[0]
-
-
 def make_offset_bridge_route(
-    bridge_region: Bridge, offsets_regions, path_radius_cont, base_frame
+    bridge_region: Bridge,
+    offsets_regions: List[Offset],
+    path_radius_cont: int,
+    base_frame,
 ) -> Bridge:
     all_offsets = it.sum_imgs([x.img for x in offsets_regions])
     square_mask = getStructuringElement(
@@ -1927,51 +1574,3 @@ def weaving_zigzag(
     if len(reference_points_b) < 2:
         print("   ERROR: no solution yet")
     return new_zigzag
-
-
-def decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg):
-    pontos = path_tools.img_to_chain(lines_do_limite)[0]
-    # pontos_curvatura = path_tools.encontrar_pontos_curvatura(pontos+[pontos[0]]+[pontos[1]])
-    pontos_curvatura = path_tools.find_curvature_pts(pontos)
-    if len(pontos_curvatura) < 4:
-        harris_pts = corner_peaks(
-            corner_harris(lines_do_limite), min_distance=5, threshold_rel=0.02
-        )
-        harris_pts = [list(x) for x in harris_pts]
-        pontos_corrigidos = []
-        for point in harris_pts:
-            if not (point in pontos):
-                pnt, _ = pt.closest_point(point, pontos)
-                pontos_corrigidos.append(pnt)
-            else:
-                pontos_corrigidos.append(point)
-        pontos_curvatura = pontos_corrigidos
-    # pontos_curvatura_img = it.points_to_img(pontos_curvatura, np.zeros_like(lines_do_limite))
-    pontos = path_tools.set_first_pt_in_seq(pontos, pontos_curvatura[0])
-    segments = path_tools.colorbyevent(
-        pontos, pontos_curvatura, np.zeros_like(lines_do_limite)
-    )
-    segments_n = max(np.unique(segments))
-    trunque = trunk > 0
-    trunk_seq = path_tools.img_to_chain(trunque)[0]
-    trunk_seq = path_tools.set_first_pt_in_seq(
-        trunk_seq, pt.img_to_points(mt.hitmiss_ends_v2(trunque))[0]
-    )
-    trunk_seq = path_tools.cut_repetition(trunk_seq)
-    # TODO: ver se aqui tem como arrumar esses tamanhos
-    tng_end = path_tools.draw_tangent_from_seq(
-        list(reversed(trunk_seq)), path_radius_bridg * 4, np.zeros_like(lines_do_limite)
-    )
-    tng_start = path_tools.draw_tangent_from_seq(
-        trunk_seq, path_radius_bridg * 4, np.zeros_like(lines_do_limite)
-    )
-    possible_c1_c2 = np.zeros_like(lines_do_limite)
-    counter_accepted = 0
-    for labl in np.add(list(range(segments_n)), 1):
-        contact = it.sum_imgs([tng_end, tng_start, np.int32(segments == labl)])
-        if not ((contact == 2).any()):
-            counter_accepted += 1
-            possible_c1_c2 = it.sum_imgs(
-                [possible_c1_c2, np.multiply(segments == labl, counter_accepted)]
-            )
-    return possible_c1_c2, counter_accepted, pontos_curvatura

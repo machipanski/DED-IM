@@ -4,14 +4,15 @@ from typing import TYPE_CHECKING
 
 from more_itertools import last
 from components.bottleneck import Bridge, BridgeRegions
-from components.offset import Loop, OffsetRegions, Region
+from components.offset import Loop, OffsetRegions, Offset
 from components.thin_walls import ThinWallRegions, ThinWall
 from components.zigzag import ZigZag, ZigZagRegions
 from components.layer import Layer, Island
 from components.path_tools import Path
 from cv2 import imread
 from dataclasses import dataclass
-from typing import List
+
+# from typing import List
 import os
 import subprocess
 import matplotlib.pyplot as plt
@@ -107,7 +108,9 @@ class System_Paths:
                         b_region_group = b_group.get(j_key)
                         b_region_group_props = dict(b_region_group.attrs)
                         cob.append(
-                            Bridge(j_key, [], [], [], 0, [], **b_region_group_props)
+                            Bridge(
+                                j_key, [], [], [], 0, [], [], [], **b_region_group_props
+                            )
                         )
                         for k_key, k_item in b_region_group.items():
                             setattr(cob[-1], k_key, np.array(k_item))
@@ -253,7 +256,7 @@ class System_Paths:
             for region_name in list(group.keys()):
                 if region_name.startswith("Reg"):
                     island.offsets.regions.append(
-                        Region(region_name, np.array(group[region_name + "/img"]), [])
+                        Offset(region_name, np.array(group[region_name + "/img"]), [])
                     )
                     region_group = group.get(region_name)
                     for i_key, i_item in region_group.items():

@@ -120,10 +120,12 @@ def ask_parameters_zigzags(configurations):
     )
     msg = "Wide parameters"
     title = "Wide parameters"
-    fieldNames = ["Style (0=Zigzag, 1=Weaving)"]
-    fieldDefs = [1]
-    style = ask_parameters_constructor(msg, title, fieldNames, fieldDefs)[0]
-    return d_larg, frst_d_larg, sob_tw_larg, name_prog, style
+    fieldNames = ["Max number of tracks to consider for weaving"]
+    fieldDefs = [4]
+    large_weaving_limmit = ask_parameters_constructor(
+        msg, title, fieldNames, fieldDefs
+    )[0]
+    return d_larg, frst_d_larg, sob_tw_larg, name_prog, large_weaving_limmit
 
 
 def ask_parameters_zigzags_routes(configurations):

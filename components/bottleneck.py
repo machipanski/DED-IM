@@ -13,8 +13,6 @@ from components import skeleton as sk
 from components.timer import Timer
 from typing import TYPE_CHECKING, List
 from cv2 import getStructuringElement, MORPH_RECT
-
-# from components.skeleton import prune
 from components.offset import OffsetRegions, Offset
 
 
@@ -171,9 +169,9 @@ class Bridge:
             new_fig = np.logical_and(new_fig, filled_external_borders)
             _, internal_borders_closed = mt.detect_contours(new_fig, return_img=True)
         line_ci1 = np.logical_and(eroded, line_ci1)
-        line_ci1, _, _ = sk.create_prune_skel(line_ci1, 1)
+        line_ci1 = sk.medial_axis(line_ci1, 1)
         line_ci2 = np.logical_and(eroded, line_ci2)
-        line_ci2, _, _ = sk.create_prune_skel(line_ci2, 1)
+        line_ci2 = sk.medial_axis(line_ci2, 1)
         if np.sum(line_ci1) == 0:
             print("Error: no line 1")
         if np.sum(line_ci2) == 0:
@@ -537,9 +535,9 @@ class BridgeRegions:
                     counter += 1
             return final_regions
 
-        norm_trunks, norm_dist_map, self.medial_transform = (
-            sk.create_prune_divide_normalize_skel(
-                rest_of_picture.astype(np.uint8), path_radius_bridg
+        self.medial_transform, norm_dist_map, trunks_obj, norm_trunks = (
+            sk.medial_axis_transform(
+                rest_of_picture.astype(np.uint8), normalize_by=path_radius_bridg
             )
         )
         minus_bigger_than_2wd = sk.break_too_big_parts(
@@ -1258,7 +1256,7 @@ def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
             c = it.points_to_img(b, np.zeros_like(line_img))
             line_toremove = it.sum_imgs([line_toremove, c])
         line_img_cut = it.image_subtract(line_img, line_toremove)
-        line_img, _, _ = sk.prune(line_img_cut, it_prune=2)
+        line_img, _, _ = sk.prune(line_img_cut, iterative_prune=2)
         endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
         endpoints = pt.img_to_points(endpoints_img)
         print("tentando cortar os galhos menores")
@@ -1322,7 +1320,7 @@ def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
 def internal_adapted_polygon(line_ci1, line_ci2, lines_transversais, extreme_points):
     new_contour = np.logical_or(line_ci1, line_ci2)
     new_contour = np.logical_or(new_contour, lines_transversais).astype(np.uint8)
-    new_contour, _, _ = sk.create_prune_skel(new_contour, 20)
+    new_contour = sk.medial_axis(new_contour, 20)
     new_contour_cnt = mt.detect_contours(new_contour, only_external=True)
     new_contour_pts = pt.contour_to_list(new_contour_cnt)
     # new_contour_img = it.points_to_img(new_contour_pts, np.zeros_like(line_ci1))
@@ -1482,7 +1480,7 @@ def make_zz_or_co_bridge_route(
                 0,
             )
             new_zigzag = np.logical_or(new_zigzag, lines_transversais)
-            new_zigzag, _, _ = sk.create_prune_skel(new_zigzag, 2)
+            new_zigzag = sk.medial_axis(new_zigzag, 2)
 
             new_zigzag_b = weaving_zigzag(
                 new_contour,
@@ -1493,7 +1491,7 @@ def make_zz_or_co_bridge_route(
                 1,
             )
             new_zigzag_b = np.logical_or(new_zigzag_b, lines_transversais)
-            new_zigzag_b, _, _ = sk.create_prune_skel(new_zigzag_b, 2)
+            new_zigzag_b = sk.medial_axis(new_zigzag_b, 2)
 
         region.reference_points = pt.x_y_para_pontos(
             np.nonzero(mt.hitmiss_ends_v2(new_zigzag))
@@ -1567,7 +1565,7 @@ def weaving_zigzag(
     _, _, n = it.divide_by_connected(mt.hitmiss_ends_v2(new_zigzag))
     if n <= 1:
         cccc = mt.closing(new_zigzag, kernel_size=1)
-        ddd, _, _ = sk.create_prune_skel(cccc, 1)
+        ddd = sk.medial_axis(cccc, 1)
         _, eee, n = it.divide_by_connected(mt.hitmiss_ends_v2(ddd))
         if n > 1:
             new_zigzag = ddd

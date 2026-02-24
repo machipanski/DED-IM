@@ -80,9 +80,9 @@ class ThinWallRegions:
     ):
         max_width = 2  # MAX WIDTH TO BE CONSIDERED A THIN WALL
         max_width_split = 4  # MAX WIDTH TO SPLIT A TRUNK INTO PARTS
-        norm_trunks, norm_dist_map, self.medial_transform = (
-            sk.create_prune_divide_normalize_skel(
-                island_img.astype(np.uint8), 2 * path_radius
+        self.medial_transform, norm_dist_map, trunks_obj, norm_trunks = (
+            sk.medial_axis_transform(
+                island_img.astype(np.uint8), normalize_by=2 * path_radius
             )
         )
         cutted_norm_trunks = sk.break_too_big_parts(

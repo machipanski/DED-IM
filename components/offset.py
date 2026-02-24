@@ -131,7 +131,7 @@ class Level:
     ):
         """Uses cv2.findContours() to separate each loop within the Offset Level image"""
         if np.sum(hybrid_offset_tw) > 0:
-            # hybrid_routes, dist, segment_objects = sk.create_prune_skel(
+            # hybrid_routes, dist, segment_objects = sk.create_prune_divide_skel(
             #     hybrid_offset_tw,
             #     path_radius * 2,
             # )
@@ -507,7 +507,7 @@ class OffsetRegions:
             reparos = mt.find_failures(route, np.zeros_like(route))
             route = np.logical_or(reparos, route)
             route = mt.closing(route, kernel_size=1)
-            region.route, _, _ = sk.create_prune_skel(route, path_radius)
+            region.route = sk.medial_axis(route, path_radius)
             region.trail = mt.dilation(route, kernel_img=mask_full)
             region.next_prohibited_area = next_prohibited_area
             return region
@@ -642,7 +642,7 @@ class OffsetRegions:
                 rest_f2,
                 True,
             )
-        rest_f2 = inside_first_offset
+        rest_f2 = it.filter_img_elements_by_openess(rest_f2, radius=path_radius_cont)
         return rest_f2
 
     def make_valid_loops(self, base_frame):
@@ -990,7 +990,11 @@ def hybrid_offset_thinwalls(
         )
         return dilated_int_no_ext_cont_img, int_no_ext_cont_img
 
-    skell_original, map, trunks = sk.create_prune_divide_skel(original_img, 0)
+    skell_original, map = sk.medial_axis(
+        original_img,
+        0,
+        return_dist_map=True,
+    )
     contours, hierarchy = mt.detect_contours(original_img, return_hierarchy=True)
     dilated_ext_no_int_cont_img, ext_no_int_cont_img = outer_hybrid()
     dilated_int_no_ext_cont_img, int_no_ext_cont_img = inner_hybrid()

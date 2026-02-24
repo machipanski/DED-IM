@@ -1,6 +1,7 @@
 from __future__ import annotations
 import copy
 import datetime
+from os import path
 import numpy as np
 import concurrent.futures
 from cv2 import imread
@@ -10,11 +11,12 @@ from components import images_tools as it, path_tools
 from components import morphology_tools as mt
 from components.thin_walls import ThinWallRegions
 from components.offset import OffsetRegions
-from components.zigzag import ZigZagRegions
+from components.large_areas import ZigZagRegions
 from components.bottleneck import BridgeRegions
 from components.timer import Timer
 from components.path_tools import Path
 from components import points_tools as pt
+import components.skeleton as sk
 
 if TYPE_CHECKING:
     from components.files import System_Paths
@@ -413,7 +415,7 @@ class Layer:
                         zigzags_path, f"all_zigzags", isl.zigzags.all_zigzags
                     )
                     folders.save_img_hdf5(
-                        zigzags_path, f"macro_areas", isl.zigzags.macro_areas
+                        zigzags_path, f"macro_areas", isl.zigzags.internal_islands
                     )
                 if hasattr(isl, "bridges"):
                     if hasattr(isl.bridges, "zigzag_bridges"):
@@ -437,7 +439,7 @@ class Layer:
                     original_all_zigzags = copy.deepcopy(isl.zigzags.all_zigzags)
                     isl.zigzags.macro_areas_weaved, isl.zigzags.all_zigzags = (
                         isl.zigzags.create_oscilatory_inner(
-                            isl.zigzags.macro_areas,
+                            isl.zigzags.internal_islands,
                             self.original_img,
                             self.base_frame,
                             self.path_radius_larg,
@@ -470,7 +472,7 @@ class Layer:
                     folders.save_img_hdf5(
                         f"/{self.name}/{isl.name}/zigzags",
                         f"macro_areas",
-                        isl.zigzags.macro_areas,
+                        isl.zigzags.internal_islands,
                     )
                     folders.delete_item_hdf5(
                         f"/{self.name}/{isl.name}/zigzags/macro_areas_weaved"
@@ -999,7 +1001,7 @@ class Layer:
         d_larg: float,
         sob_larg_per: float,
         name_prog: str,
-        w_style: int,
+        large_weaving_limmit: int,
     ):
 
         def parallelizando(func):
@@ -1024,32 +1026,56 @@ class Layer:
             return wrapper
 
         @parallelizando
-        def find_islands_monotonic(island: Island) -> Island:
+        def find_weaveble(island: Island, large_weaving_limmit, path_radius) -> Island:
             island.rest_of_picture_f3 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f3"
             )
             rest_of_picture_f2 = folders.load_img_hdf5(
                 f"/{self.name}/{island.name}", "rest_of_picture_f2"
             )
-            import components.skeleton as sk
-
-            sem_galhos, sem_galhos_dist, trunks = sk.create_prune_divide_skel(
-                rest_of_picture_f2.astype(np.uint8), 0
-            )
-            # medial_transform = island.bridges.medial_transform
-            ideal_sum = np.sum(mt.make_mask(self, "full_larg"))
             if np.sum(island.rest_of_picture_f3) > 0:
-                island.zigzags.find_monotonic(
-                    island.rest_of_picture_f3,
-                    self.base_frame,
-                    self.path_radius_larg,
-                    sem_galhos,
-                    sem_galhos_dist,
-                    trunks,
-                    island.bridges.zigzag_bridges,
-                    w_style,
-                    ideal_sum,
-                )
+                for int_isl in island.zigzags.internal_islands:
+                    int_isl.weaveble_large_areas(
+                        path_radius,
+                        island.bridges.zigzag_bridges,
+                        large_weaving_limmit,
+                    )
+            return island
+
+        @parallelizando
+        def make_weaveble_channels(
+            island: Island, large_weaving_limmit, path_radius
+        ) -> Island:
+            # island.rest_of_picture_f3 = folders.load_img_hdf5(
+            #     f"/{self.name}/{island.name}", "rest_of_picture_f3"
+            # )
+            # rest_of_picture_f2 = folders.load_img_hdf5(
+            #     f"/{self.name}/{island.name}", "rest_of_picture_f2"
+            # )
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for int_isl in island.zigzags.internal_islands:
+                    int_isl.weaveble_channels(
+                        path_radius,
+                        island.bridges.zigzag_bridges,
+                        island.rest_of_picture_f3,
+                    )
+            return island
+
+        @parallelizando
+        def find_monotonic(island: Island, large_weaving_limmit, path_radius) -> Island:
+            island.rest_of_picture_f3 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f3"
+            )
+            rest_of_picture_f2 = folders.load_img_hdf5(
+                f"/{self.name}/{island.name}", "rest_of_picture_f2"
+            )
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for int_isl in island.zigzags.internal_islands:
+                    int_isl.scan_monotonic(
+                        path_radius,
+                        island.bridges.zigzag_bridges,
+                        large_weaving_limmit,
+                    )
             return island
 
         self.program_larg = name_prog
@@ -1062,10 +1088,13 @@ class Layer:
         for island in self.islands:
             folders.load_bridges_hdf5(self.name, island)
             island.zigzags = ZigZagRegions()
-        with Timer("  Finding monotonic regions"):
-            find_islands_monotonic()
-        with Timer("  Finding monotonic regions"):
-            find_islands_monotonic()
+            island.zigzags.divide_internal_islands(island.rest_of_picture_f3)
+        with Timer("  Separating weaveble large areas from bigger ones"):
+            find_weaveble(large_weaving_limmit, self.path_radius_larg)
+        with Timer("  Further dividing weaveble areas into channels"):
+            make_weaveble_channels(large_weaving_limmit, self.path_radius_larg)
+        with Timer("  Dividing largest areas into monotonic regions"):
+            find_monotonic(large_weaving_limmit, self.path_radius_larg )
         with Timer("  Saving monotonic regions images"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)

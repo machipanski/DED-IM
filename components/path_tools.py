@@ -3,8 +3,6 @@ import itertools
 import math
 import random
 import datetime
-
-# from components.zigzag import ZigZagRegions
 import numpy as np
 import math
 import copy
@@ -23,7 +21,7 @@ import os
 from skimage.feature import corner_harris, corner_peaks
 
 if TYPE_CHECKING:
-    from components.zigzag import ZigZag
+    from components.large_areas import ZigZag
     from typing import List
     from components.layer import Layer, Island
     from components.files import System_Paths
@@ -266,8 +264,8 @@ def connect_thin_walls(island: Island, path_radius_tw):
             thinwall_list, _, _ = it.divide_by_connected(island.thin_walls.all_origins)
             thinwall_path_list = []
             for i, tw in enumerate(thinwall_list):
-                # tw, _, _ = sk.create_prune_skel(tw, path_radius_tw)
-                tw, _, _ = sk.create_prune_skel(tw, 0)
+                # tw, _, _ = sk.create_prune_divide_skel(tw, path_radius_tw)
+                tw = sk.medial_axis(tw, 0)
                 tw_path = img_to_chain(tw.astype(np.uint8))[0]
                 one_of_the_tips = pt.x_y_para_pontos(
                     np.nonzero(mt.hitmiss_ends_v2(tw))
@@ -531,75 +529,13 @@ def connect_offset_bridges(
 ) -> Path:
 
     def integrate_bridge(
-        todas_espirais, path_radius, extreme_points, base_frame, sob_cont_per, origin
+        todas_espirais: np.ndarray,
+        path_radius: int,
+        extreme_points: List[list],
+        base_frame: np.ndarray,
+        sob_cont_per: float,
+        origin: np.ndarray,
     ):
-
-        # def filtrar_pontos(y_val, x_val):
-        #     validos_no_y = [p for p in todas_espirais_points if p[0] == y_val]
-        #     validos_no_yx = [
-        #         p for p in validos_no_y if p[1] <= max(x_val) and p[1] >= min(x_val)
-        #     ]
-        #     return validos_no_yx
-
-        # def find_contacts(pontos, condicao):
-        #     contacts = [p for p in pontos if condicao(p[1])]
-        #     if len(contacts) == 0:
-        #         contacts = pontos
-        #     return contacts
-
-        # def closest_to_center(pontos):
-        #     return pontos[np.argmin([pt.distance_pts(midle_point, p) for p in pontos])]
-
-        # bridge_middle_y = extreme_points[0][0]
-        # bridge_higher_y = (
-        #     bridge_middle_y - path_radius + np.round(path_radius * sob_cont_per / 200)
-        # )
-        # bridge_lower_y = (
-        #     bridge_middle_y + path_radius - np.round(path_radius * sob_cont_per / 200)
-        # )
-        # x_extreme_points = [x[1] for x in extreme_points]
-        # midle_point = [
-        #     bridge_middle_y,
-        #     int((x_extreme_points[0] + x_extreme_points[1]) / 2),
-        # ]
-        # limites_x = [
-        #     min(x_extreme_points) - 2 * path_radius,
-        #     max(x_extreme_points) + 2 * path_radius,
-        # ]
-        # todas_espirais_points = pt.x_y_para_pontos(np.nonzero(todas_espirais))
-        # same_y_up_inside = filtrar_pontos(bridge_higher_y, limites_x)
-        # if len(same_y_up_inside) < 2:
-        #     same_y_up_inside = filtrar_pontos(bridge_higher_y + 1, limites_x)
-        #     if len(same_y_up_inside) < 2:
-        #         same_y_up_inside = filtrar_pontos(bridge_higher_y + 2, limites_x)
-        # same_y_down_inside = filtrar_pontos(bridge_lower_y, limites_x)
-        # if len(same_y_down_inside) < 2:
-        #     same_y_down_inside = filtrar_pontos(bridge_lower_y - 1, limites_x)
-        #     if len(same_y_down_inside) < 2:
-        #         same_y_down_inside = filtrar_pontos(bridge_lower_y - 2, limites_x)
-        # contact_ec = find_contacts(same_y_up_inside, lambda x: x < midle_point[1])
-        # contact_dc = find_contacts(same_y_up_inside, lambda x: x > midle_point[1])
-        # contact_eb = find_contacts(same_y_down_inside, lambda x: x < midle_point[1])
-        # contact_db = find_contacts(same_y_down_inside, lambda x: x > midle_point[1])
-        # ponto_esq_cima = closest_to_center(contact_ec)
-        # ponto_dir_cima = closest_to_center(contact_dc)
-        # ponto_esq_baixo = closest_to_center(contact_eb)
-        # ponto_dir_baixo = closest_to_center(contact_db)
-        # line_cima = it.draw_line(np.zeros(base_frame), ponto_esq_cima, ponto_dir_cima)
-        # line_baixo = it.draw_line(
-        #     np.zeros(base_frame), ponto_esq_baixo, ponto_dir_baixo
-        # )
-        # retangulo = it.draw_polyline(
-        #     np.zeros(base_frame),
-        #     [ponto_esq_cima, ponto_dir_cima, ponto_dir_baixo, ponto_esq_baixo],
-        #     1,
-        # )
-        # retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
-        # new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
-        # new_todas_espirais = it.sum_imgs([new_todas_espirais, line_baixo, line_cima])
-        # cleaned_new_todas_espirais, _, _ = sk.create_prune_skel(
-        #     new_todas_espirais, path_radius
-        # )
         distance_between_centers = int(
             np.round(2 * path_radius * (100 - sob_cont_per) / 100)
         )
@@ -656,9 +592,7 @@ def connect_offset_bridges(
         retangulo = it.fill_internal_area(retangulo, np.ones_like(retangulo))
         new_todas_espirais = np.logical_and(todas_espirais, np.logical_not(retangulo))
         new_todas_espirais = it.sum_imgs([new_todas_espirais, line_baixo, line_cima])
-        cleaned_new_todas_espirais, _, _ = sk.create_prune_skel(
-            new_todas_espirais, path_radius
-        )
+        cleaned_new_todas_espirais = sk.medial_axis(new_todas_espirais, path_radius)
 
         return cleaned_new_todas_espirais
 
@@ -667,7 +601,7 @@ def connect_offset_bridges(
         eraser = mt.dilation(bridge.origin, kernel_size=path_radius - 2)
         aaa = it.sum_imgs([route, todas_espirais])
         new_todas_espirais = it.image_subtract(aaa, eraser)
-        A, _, _ = sk.create_prune_skel(new_todas_espirais, path_radius)
+        A = sk.medial_axis(new_todas_espirais, path_radius)
         return A
 
     lista_de_rotas = []
@@ -848,7 +782,7 @@ def draw_the_links(
         n_contatos = 0
         img_points = mt.hitmiss_ends_v2(line_img)
         if np.sum(img_points) < 2:
-            line_img, _, _ = sk.create_prune_skel(line_img, path_radius)
+            line_img = sk.medial_axis(line_img, path_radius)
             img_points = mt.hitmiss_ends_v2(line_img)
         [p1, p2] = pt.x_y_para_pontos(np.nonzero(img_points))
         p3 = [0, 0]
@@ -943,6 +877,10 @@ def draw_the_links(
     return all_zigzags
 
 
+def filter_segments_by_length(segment_objects, minimal_trunk_length):
+    return list(filter(lambda x: len(x) > minimal_trunk_length, segment_objects))
+
+
 def find_points_of_contact(
     edges, path_radius_larg, mask_full_int, zigzags: List[ZigZag]
 ):
@@ -957,7 +895,7 @@ def find_points_of_contact(
         interface = np.add(a1_vertical_trail, a2_vertical_trail) == 2
         tips = pt.img_to_points(mt.hitmiss_ends_v2(interface))
         if len(tips) != 2:
-            interface, _, _ = sk.create_prune_skel(interface, 1)
+            interface = sk.medial_axis(interface, 1)
         aaa = np.add(a1_vertical_trail, a2_vertical_trail)
         return interface
 
@@ -1114,7 +1052,8 @@ def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
 
 
 def img_to_graph(im):
-    hy, hx = np.where(im[1:] & im[:-1])  # horizontal edge start positions
+    # hy, hx = np.where(im[1:] & im[:-1])  # horizontal edge start positions
+    hy, hx = np.where(np.logical_and(im[1:], im[:-1]))
     h_units = np.array([hx, hy]).T
     h_starts = [tuple(n) for n in h_units]
     h_ends = [
@@ -1122,7 +1061,9 @@ def img_to_graph(im):
     ]  # end positions = start positions shifted by vector (1,0)
     horizontal_edges = zip(h_starts, h_ends)
     # CONSTRUCTION OF VERTICAL EDGES
-    vy, vx = np.where(im[:, 1:] & im[:, :-1])  # vertical edge start positions
+    vy, vx = np.where(
+        np.logical_and(im[:, 1:], im[:, :-1])
+    )  # vertical edge start positions
     v_units = np.array([vx, vy]).T
     v_starts = [tuple(n) for n in v_units]
     v_ends = [
@@ -1131,7 +1072,7 @@ def img_to_graph(im):
     vertical_edges = zip(v_starts, v_ends)
     # CONSTRUCTION OF POSITIVE DIAGONAL EDGES
     pdy, pdx = np.where(
-        im[1:][:, 1:] & im[:-1][:, :-1]
+        np.logical_and(im[1:][:, 1:], im[:-1][:, :-1])
     )  # vertical edge start positions
     pd_units = np.array([pdx, pdy]).T
     pd_starts = [tuple(n) for n in pd_units]
@@ -1141,7 +1082,7 @@ def img_to_graph(im):
     positive_diagonal_edges = zip(pd_starts, pd_ends)
     # CONSTRUCTION OF NEGATIVE DIAGONAL EDGES
     ndy, ndx = np.where(
-        im[:-1][:, 1:] & im[1:][:, :-1]
+        np.logical_and(im[:-1][:, 1:], im[1:][:, :-1])
     )  # vertical edge start positions
     ndx = ndx + 1
     nd_units = np.array([ndx, ndy]).T
@@ -1440,32 +1381,6 @@ def set_first_pt_in_seq(seq, first_point, evitar_saltos=[]):
             return fila
         else:
             print("Error: special case")
-        # primeiro_ponto_lista2 = None
-
-        # for ponto in evitar_saltos:
-        #     if ponto in fila:
-        #         primeiro_ponto_lista2 = ponto
-        #         break
-        # if primeiro_ponto_lista2 is not None:
-        #     indice_ponto_lista1 = fila.index(primeiro_ponto_lista2)
-        #     elementos_antes_lista1 = fila[:indice_ponto_lista1]
-        # else:
-        #     elementos_antes_lista1 = fila  # Se não houver pontos em comum, consideramos toda a lista1
-        # primeiro_ponto_lista1 = None
-        # for ponto in fila:
-        #     if ponto in evitar_saltos:
-        #         primeiro_ponto_lista1 = ponto
-        #         break
-        # if primeiro_ponto_lista1 is not None:
-        #     indice_ponto_lista2 = evitar_saltos.index(primeiro_ponto_lista1)
-        #     elementos_antes_lista2 = evitar_saltos[:indice_ponto_lista2]
-        # else:
-        #     elementos_antes_lista2 = evitar_saltos  # Se não houver pontos em comum, consideramos toda a lista2
-        # if len(elementos_antes_lista1) > len(elementos_antes_lista2):
-        #     return fila
-        # else:
-        #     print("invertido foi")
-        #     return fila[::-1]  # Retorna a lista1 invertida
 
     fila = seq.copy()
     if not (first_point in seq):
@@ -1648,7 +1563,7 @@ def start_internal_route(isl: Island, mask_full_int, path_radius_larg):
         if hasattr(isl.zigzags, "macro_areas_weaved"):
             list_of_reagions = isl.zigzags.macro_areas_weaved
         else:
-            list_of_reagions = isl.zigzags.macro_areas
+            list_of_reagions = isl.zigzags.internal_islands
         for i, ma in enumerate(list_of_reagions):
             zigzag_path = img_to_chain(ma.astype(np.uint8), isl.zigzags.regions[0].img)
             if len(zigzag_path) > 0:
@@ -1726,311 +1641,6 @@ def decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg):
                 [possible_c1_c2, np.multiply(segments == labl, counter_accepted)]
             )
     return possible_c1_c2, counter_accepted, pontos_curvatura
-
-
-# def layers_to_Gcode_4t(
-#     layers: List[Layer],
-#     folders: System_Paths,
-#     configuracoes,
-#     vel_vazio,
-#     p_entre_int_ext,
-#     p_entre_layers,
-#     layer_heights,
-#     coords_substrato,
-#     coords_corte,
-# ):
-#     """modo 4T na maquina Okerlion na FCT-NOVA"""
-#     import os
-
-#     def religamento(output, flag_ligado, on_pause):
-#         if flag_ligado == 0:
-#             output += ";-------RELIGAMENTO------\n"
-#             output += "M42 P4 S0\n"
-#             output += f"G4 P{p_trigger_longa}\n"
-#             # output += f"G4 P{on_pause}\n"
-#             output += "M42 P4 S255\n"
-#             output += f"G4 P{on_pause-p_trigger_longa}\n"
-#             output += ";------------------------\n"
-#         return output, 1
-
-#     def desligamento(output, flag_ligado, off_pause):
-#         if flag_ligado == 1:
-#             output += ";-------DESLIGAMENTO------\n"
-#             output += "M42 P4 S0\n"
-#             output += f"G4 P{p_trigger_longa}\n"
-#             # output += f"G4 P{off_pause}\n"
-#             output += "M42 P4 S255\n"
-#             output += f"G4 P{off_pause-p_trigger_longa}\n"
-#             output += ";-------------------------\n"
-#         return output, 0
-
-#     def posicao_de_corte(output, coords):
-#         output += ";-------POS de CORTE------\n"
-#         output += f";POS de Corte\n"
-#         output += f"G90\n"
-#         output += f"G0 Y{coords[0]} F{vel_vazio}\n"
-#         output += f"M400\n"
-#         output += f"G0 x{coords[1]} F{vel_vazio}\n"
-#         output += f"M400\n"
-#         output += f"G4 P{p_entre_layers}\n"
-#         output += f"G91\n"
-#         output += ";------------------------\n"
-#         return output
-
-#     def posicao_inicial(output, coords, i):
-#         output += f";_______LAYER{n_layer + 1}_____\n"
-#         output += f"G90\n"
-#         output += f";LAYER:{i}\n"
-#         output += f"G1 Z{layer_heights[n_layer]} ; Layer + 10mm\n"
-#         output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}; POS INICIAL\n"
-#         output += f"G91\n"
-#         return output
-
-#     mm_per_pixel = layers[0].mm_per_pxl
-#     ts = datetime.datetime.now()
-#     outFile = f"{folders.selected} {ts.date()} {ts.hour}_{ts.minute}.gcode"
-#     output = ""
-#     output += ";-------MAPPING------\n"
-#     output += f";DPI: {layers[0].dpi} ppp\n"
-#     output += f";void_max: {layers[0].void_max} % of path_radius\n"
-#     output += f";max_internal_walls: {layers[0].max_internal_walls}\n"
-#     output += f";max_external_walls: {layers[0].max_external_walls}\n"
-#     output += f";n_max: {layers[0].n_max} trilhas para bottleneck\n"
-#     output += ";-------Welding program 1 contours------\n"
-#     output += f";Program name: {layers[0].program_cont}\n"
-#     diam_cont = configuracoes.lista_programas["name"==layers[0].program_cont]["bead_diameter"]
-#     output += f";Bead diameter: {diam_cont} mm\n"
-#     sobrep_cont = configuracoes.lista_programas["name"==layers[0].program_cont]["bead_superposition"]
-#     output += f";Bead superposition: {sobrep_cont} % raio real \n"
-#     vel_cont = configuracoes.lista_programas["name"==layers[0].program_cont]["travel_speed"]
-#     output += f";travel_speed: {vel_cont} mm/min \n"
-#     output += f";path_radius: {layers[0].path_radius_cont} pixels\n"
-#     on_pause_cont = configuracoes.lista_programas["name"==layers[0].program_cont]["on_pause"]
-#     output += f";on_pause: {on_pause_cont} ms \n"
-#     off_pause_cont = configuracoes.lista_programas["name"==layers[0].program_cont]["off_pause"]
-#     output += f";off_pause: {off_pause_cont} ms \n"
-#     output += ";-------Welding program 2 bottleneck------\n"
-#     output += f";Program name: {layers[0].program_bridg}\n"
-#     diam_bridg = configuracoes.lista_programas["name"==layers[0].program_bridg]["bead_diameter"]
-#     output += f";Bead diameter: {diam_bridg} mm\n"
-#     sobrep_bridg = configuracoes.lista_programas["name"==layers[0].program_bridg]["bead_superposition"]
-#     output += f";Bead superposition: {sobrep_bridg} % raio real \n"
-#     vel_bridg = configuracoes.lista_programas["name"==layers[0].program_bridg]["travel_speed"]
-#     output += f";travel_speed: {vel_bridg} mm/min \n"
-#     output += f";path_radius: {layers[0].path_radius_bridg} pixels\n"
-#     on_pause_bridg = configuracoes.lista_programas["name"==layers[0].program_bridg]["on_pause"]
-#     output += f";on_pause: {on_pause_bridg} ms \n"
-#     off_pause_bridg = configuracoes.lista_programas["name"==layers[0].program_bridg]["off_pause"]
-#     output += f";off_pause: {off_pause_bridg} ms \n"
-#     output += ";-------Welding program 3 wide_areas------\n"
-#     output += f";Program name: {layers[0].program_larg}\n"
-#     diam_larg = configuracoes.lista_programas["name"==layers[0].program_larg]["bead_diameter"]
-#     output += f";Bead diameter: {diam_larg} mm\n"
-#     sobrep_larg = configuracoes.lista_programas["name"==layers[0].program_larg]["bead_superposition"]
-#     output += f";Bead superposition: {sobrep_larg} % raio real \n"
-#     vel_larg = configuracoes.lista_programas["name"==layers[0].program_larg]["travel_speed"]
-#     output += f";travel_speed: {vel_larg} mm/min \n"
-#     output += f";path_radius: {layers[0].path_radius_larg} pixels\n"
-#     on_pause_larg = configuracoes.lista_programas["name"==layers[0].program_larg]["on_pause"]
-#     output += f";on_pause: {on_pause_larg} ms \n"
-#     off_pause_larg = configuracoes.lista_programas["name"==layers[0].program_larg]["off_pause"]
-#     output += f";off_pause: {off_pause_larg} ms \n"
-#     output += ";-------Welding program 4 Paredes finas------\n"
-#     output += f";Program name: {layers[0].program_tw}\n"
-#     diam_tw = configuracoes.lista_programas["name"==layers[0].program_tw]["bead_diameter"]
-#     output += f";Bead diameter: {diam_tw} mm\n"
-#     sobrep_tw = configuracoes.lista_programas["name"==layers[0].program_tw]["bead_superposition"]
-#     output += f";Bead superposition: {sobrep_tw} % raio real \n"
-#     vel_tw = configuracoes.lista_programas["name"==layers[0].program_tw]["travel_speed"]
-#     output += f";travel_speed: {vel_tw} mm/min \n"
-#     output += f";path_radius: {layers[0].path_radius_tw} pixels\n"
-#     on_pause_tw = configuracoes.lista_programas["name"==layers[0].program_tw]["on_pause"]
-#     output += f";on_pause: {on_pause_tw} ms \n"
-#     off_pause_tw = configuracoes.lista_programas["name"==layers[0].program_tw]["off_pause"]
-#     output += f";off_pause: {off_pause_tw} ms \n"
-#     output += ";------------OUTROS------------\n"
-#     output += f";Ext int superposition: {layers[0].sob_int_ext_per} % raio interno \n"
-#     output += f";N# layers: {layers[0].n_layers}\n"
-#     output += f";p_entre_int_ext;: {p_entre_int_ext} ms \n"
-#     output += f";p_entre_layers: {p_entre_layers} ms \n"
-#     output += f";layer_heights: {layer_heights} mm \n"
-#     output += f";coords_corte: {coords_corte} mm \n"
-#     output += f";coords_substrato: {coords_substrato} mm \n"
-#     output += f";vel_vazio: {vel_vazio} mm/min \n"
-#     output += ";------------FIM INPUTS------------\n"
-#     output += f"G91\n"
-#     output += f"M42 P4 S255; turn off welder\n"
-#     output += f"G28 X0 Y0 Z0\n"
-#     output += f"G1 F360; speed g1\n"
-#     bfr = [0, 0]
-#     base_frame = layers[0].base_frame
-#     p_trigger_longa = 2000
-#     p_trigger_curta = 400
-
-#     for n_layer, layer in enumerate(layers):
-#         layer_tot_lenght = 0
-#         output = posicao_inicial(output, coords_substrato, n_layer)
-#         bfr = coords_substrato
-#         folders.load_islands_hdf5(layer)
-#         for n_island, island in enumerate(layer.islands):
-#             folders.load_island_paths_hdf5(layer.name, island)
-#             folders.load_island_paths_hdf5(layer.name, island)
-#             # itr = [list(x) for x in island.internal_tree_route.sequence]
-#             # etr = [list(x) for x in island.external_tree_route.sequence]
-#             # twtr = [list(x) for x in island.thinwalls_tree_route.sequence]
-#             folders.load_bridges_hdf5(layer.name, island)
-#             print(f"name: {layer.name}/{island.name}")
-#             pts_bridg = points_from_region(layer.name,folders,island,bridges=True)
-#             pts_tw = points_from_region(layer.name,folders,island,tw=True)
-#             pts_cont = points_from_region(layer.name,folders,island,offsets=True)
-#             pts_larg = points_from_region(layer.name,folders,island,zigzags=True)
-#             # if hasattr(island, "bridges"):
-#                 # A1 = [
-#                 #     pt.img_to_points(x.route)
-#                 #     for x in island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
-#                 # ]
-#                 # A2 = [
-#                 #     pt.img_to_points(x.route_b)
-#                 #     for x in island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
-#                 # ]
-#                 # A = A1 + A2
-#                 # for x in A:
-#                 #     pts_bridg = pts_bridg + x
-#             if n_layer % 2:
-#                 # etr = rotate_path_odd_layer(etr, layer.base_frame)
-#                 # itr = rotate_path_odd_layer(itr, layer.base_frame)
-#                 # twtr = rotate_path_odd_layer(twtr, layer.base_frame)
-#                 # pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
-#                 pts_bridg = rotate_path_odd_layer(pts_bridg, layer.base_frame)
-#                 pts_tw = rotate_path_odd_layer(pts_tw, layer.base_frame)
-#                 pts_cont = rotate_path_odd_layer(pts_cont, layer.base_frame)
-#                 pts_larg = rotate_path_odd_layer(pts_larg, layer.base_frame)
-#             # pontos_int = [list(x) for x in itr] + pts_bridg
-#             # pontos_ext = [list(x) for x in etr]
-#             # pontos_ext = [coord for coord in pontos_ext if coord not in pts_bridg]
-#             # pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
-#             # pontos_larg = [list(x) for x in itr]
-#             # pontos_cont = [list(x) for x in etr]
-#             # pontos_brdg = pts_bridg
-#             # pontos_tw = [list(x) for x in island.thinwalls_tree_route.sequence]
-#             chain = [list(x) for x in island.island_route.sequence]
-#             counter = 0
-#             flag_salto = 0
-#             flag_path_type = 99
-#             last_flag = 0
-#             flag_ligado = 0
-#             print(chain)
-#             for i, p in enumerate(chain):
-#                 if p == [0, 0]:
-#                     output, flag_ligado = desligamento(output, flag_ligado, off_pause)
-#                     const_perf = 0
-#                     flag_salto = 1
-#                 else:
-#                     coords = p
-#                     coords = [
-#                         base_frame[0] - coords[0] + coords_substrato[0],
-#                         coords[1] + coords_substrato[1],
-#                     ]
-#                     # if p in pontos_ext:
-#                     #     flag_path_type = 0
-#                     #     vel = travel_speed
-#                     #     texto_mudanca = ";----Externo----\n;TYPE:WALL-OUTER\n"
-#                     #     const_perf = 5
-#                     # elif p in pontos_int:
-#                     #     flag_path_type = 1
-#                     #     vel = vel_int
-#                     #     texto_mudanca = ";----Interno----\n;TYPE:SKIN\n"
-#                     #     const_perf = 8
-#                     # elif p in pontos_tw:
-#                     #     flag_path_type = 2
-#                     #     vel = vel_thin_wall
-#                     #     texto_mudanca = ";----ThinWalls----\n;TYPE:WALL-INNER\n"
-#                     #     const_perf = 0.5
-#                     if p in pts_cont:
-#                         flag_path_type = 1
-#                         vel = vel_cont
-#                         texto_mudanca = ";----contour----\n;TYPE:WALL-OUTER\n"
-#                         const_perf = 5
-#                         off_pause = off_pause_cont
-#                         on_pause = on_pause_cont
-#                     elif p in pts_bridg:
-#                         flag_path_type = 2
-#                         vel = vel_bridg
-#                         texto_mudanca = ";----Estrangulamento----\n;TYPE:SKIN\n"
-#                         const_perf = 8
-#                         off_pause = off_pause_bridg
-#                         on_pause = on_pause_bridg
-#                     elif p in pts_larg:
-#                         flag_path_type = 3
-#                         vel = vel_larg
-#                         texto_mudanca = ";----Area Larga----\n;TYPE:WALL-INNER\n"
-#                         const_perf = 0.5
-#                         off_pause = off_pause_larg
-#                         on_pause = on_pause_larg
-#                     elif p in pts_tw:
-#                         flag_path_type = 4
-#                         vel = vel_tw
-#                         texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
-#                         const_perf = 0.5
-#                         off_pause = off_pause_tw
-#                         on_pause = on_pause_tw
-#                     else:
-#                         flag_path_type = 0
-#                         vel = vel_vazio
-#                         texto_mudanca = ";----perdido----\n"
-#                         const_perf = 0
-#                     if i == 1:
-#                         output, flag_ligado = religamento(output, flag_ligado, on_pause)
-#                     if flag_path_type != last_flag:
-#                         if flag_path_type == 1 and last_flag == 0:
-#                             output, flag_ligado = desligamento(output, flag_ligado, off_pause)
-#                             output += f"G4 P{p_entre_int_ext}\n"
-#                             output, flag_ligado = religamento(output, flag_ligado, on_pause)
-#                         output += f"G1 F{vel}; speed g1\n"
-#                         output += "M42 P4 S0\n"
-#                         output += f"G4 P{p_trigger_curta}\n"
-#                         output += "M42 P4 S255\n"
-#                         output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
-#                         last_flag = flag_path_type
-#                         print(f"Changed program to: {flag_path_type}")
-#                         output += texto_mudanca
-#                     desloc = np.subtract(coords, bfr)
-#                     dist = distance.euclidean(coords, bfr)
-#                     if flag_salto == 1 or flag_ligado == 0:
-#                         const_perf = 0
-#                     extrus = dist*const_perf
-#                     layer_tot_lenght += dist
-#                     # output += (
-#                     #     f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel} E{extrus}\n"
-#                     # )
-#                     output += (
-#                         f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
-#                     )
-#                     output += "M400\n"
-#                     bfr = coords
-#                     counter += 1
-#                     if flag_salto == 1:
-#                         output, flag_ligado = religamento(output, flag_ligado, on_pause)
-#                         flag_salto = 0
-#             output = posicao_de_corte(output, coords_corte)
-#             output += ";____________________________________\n"
-#             output += f"G28 X0 Y0\n"
-#             print(
-#                 f"Total layer linear lenght {n_layer} = {layer_tot_lenght*mm_per_pixel}mm"
-#             )
-#             print(
-#                 f"Time estimation with {vel_cont}mm/min = {layer_tot_lenght*mm_per_pixel/vel_cont}min\n"
-#             )
-#     output += f"G1 Z20\n"
-#     output += f"G28 X0\n"
-#     output += f"G28 Y0\n"
-#     output += f"M104 S0; End of Gcode\n"
-#     os.chdir(folders.output)
-#     f = open(outFile, "w")
-#     f.write(output)
-#     f.close()
-#     os.chdir(folders.home)
-#     return
 
 
 def get_program_params(program, lista_programas):
@@ -2408,7 +2018,7 @@ def points_from_region(
                 island.bridges.cross_over_bridges + island.bridges.zigzag_bridges
             )
     if zigzags:
-        from components.zigzag import ZigZag
+        from components.large_areas import ZigZag
 
         folders.load_zigzags_hdf5(layer_name, island)
         if hasattr(island, "zigzags"):

@@ -6,7 +6,7 @@ from more_itertools import last
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Offset
 from components.thin_walls import ThinWallRegions, ThinWall
-from components.zigzag import ZigZag, ZigZagRegions
+from components.large_areas import ZigZag, ZigZagRegions
 from components.layer import Layer, Island
 from components.path_tools import Path
 from cv2 import imread

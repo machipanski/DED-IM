@@ -2,7 +2,10 @@ from __future__ import annotations
 import cv2
 import numpy as np
 from components import skeleton as sk
-from skimage.morphology import disk, thin
+from skimage.morphology import disk
+
+# from skimage.morphology import disk, thin, binary_dilation, selem
+from skimage import morphology
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -21,7 +24,7 @@ from components.elements import (
 def closing(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         closed = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_CLOSE, disk(kernel_size)
+            img.astype(np.uint8), cv2.MORPH_CLOSE, morphology.disk(kernel_size)
         )
     if kernel_size is None:
         closed = cv2.morphologyEx(
@@ -56,7 +59,7 @@ def detect_contours(
 def dilation(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         kernel_img = []
-        dilated = cv2.dilate(img.astype(np.uint8), disk(kernel_size))
+        dilated = cv2.dilate(img.astype(np.uint8), morphology.disk(kernel_size))
     if kernel_size is None:
         kernel_size = []
         dilated = cv2.dilate(img.astype(np.uint8), kernel_img.astype(np.uint8))
@@ -66,7 +69,7 @@ def dilation(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
 def erosion(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         kernel_img = []
-        dilated = cv2.erode(img.astype(np.uint8), disk(kernel_size))
+        dilated = cv2.erode(img.astype(np.uint8), morphology.disk(kernel_size))
     if kernel_size is None:
         kernel_size = []
         dilated = cv2.erode(img.astype(np.uint8), kernel_img.astype(np.uint8))
@@ -97,10 +100,50 @@ def find_failures(img, base):
     return result
 
 
+def grassfire_wave(
+    image, mask, kernel_img=None, kernel_size=1, max_iterations=500, kernel_type="disk"
+):
+    """
+    :param image: 2D numpy array with integer labels (0 = background).
+    :param mask: 2D binary numpy array (same shape as image) where dilation can occur (1 = dilatable, 0 = blocked).
+    :param kernel_img: Structuring element for dilation (default: 3x3 cross-shaped for connectivity).
+    :param kernel_size: Size of the structuring element (default: 1).
+    :return: Modified image after dilation.
+    Perform iterative morphological dilation on a multi-label image,
+    expanding each label only into background (0) pixels without overwriting other labels.
+    """
+    if (kernel_img is None) or (kernel_size != 1):
+        if kernel_type == "disk":
+            kernel_img = morphology.disk(kernel_size)
+        elif kernel_type == "diamond":
+            kernel_img = morphology.diamond(kernel_size)
+        while True:
+            new_image = (
+                image.copy()
+            )  # Work on a copy to avoid modifying during iteration
+            unique_labels = np.unique(image)
+            for label in unique_labels:
+                if label == 0:
+                    continue  # Skip background
+                # Create binary mask for this label
+                label_mask = image == label
+                # Dilate the mask
+                dilated_mask = morphology.binary_dilation(label_mask, kernel_img)
+                # Update only background pixels in the dilated area that are also 1 in the mask
+                update_condition = (dilated_mask) & (image == 0) & (mask == 1)
+                new_image[update_condition] = label
+            # Check for convergence: if no changes, stop
+            if np.array_equal(new_image, image) or max_iterations <= 0:
+                break
+            image = new_image
+            max_iterations -= 1
+    return image
+
+
 def gradient(img, kernel_img=None, kernel_size=None):
     if kernel_img is None:
         grad = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_GRADIENT, disk(kernel_size)
+            img.astype(np.uint8), cv2.MORPH_GRADIENT, morphology.disk(kernel_size)
         )
     if kernel_size is None:
         grad = cv2.morphologyEx(
@@ -112,7 +155,7 @@ def gradient(img, kernel_img=None, kernel_size=None):
 def blackhat(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         blackhat = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_BLACKHAT, disk(kernel_size)
+            img.astype(np.uint8), cv2.MORPH_BLACKHAT, morphology.disk(kernel_size)
         )
     if kernel_size is None:
         blackhat = cv2.morphologyEx(
@@ -141,45 +184,45 @@ def make_parabola_kernel(size=7, center_value=3, edge_value=0.1):
 def make_mask(layer: Layer, size: str) -> np.ndarray:
     """Creates a mask element for morphological operations"""
     if size == "full_tw":
-        mask = disk(round(layer.path_radius_tw))
+        mask = morphology.disk(round(layer.path_radius_tw))
     if size == "half_tw":
-        mask = disk(round(layer.path_radius_tw * 0.5))
+        mask = morphology.disk(round(layer.path_radius_tw * 0.5))
     if size == "3_4_tw":
-        mask = disk(round(layer.path_radius_tw * 0.75))
+        mask = morphology.disk(round(layer.path_radius_tw * 0.75))
     if size == "3_2_tw":
-        mask = disk(round(layer.path_radius_tw * 1.5))
+        mask = morphology.disk(round(layer.path_radius_tw * 1.5))
     if size == "double_tw":
-        mask = disk(round(layer.path_radius_tw * 2))
+        mask = morphology.disk(round(layer.path_radius_tw * 2))
     if size == "full_cont":
-        mask = disk(round(layer.path_radius_cont))
+        mask = morphology.disk(round(layer.path_radius_cont))
     if size == "half_cont":
-        mask = disk(round(layer.path_radius_cont * 0.5))
+        mask = morphology.disk(round(layer.path_radius_cont * 0.5))
     if size == "3_4_cont":
-        mask = disk(round(layer.path_radius_cont * 0.75))
+        mask = morphology.disk(round(layer.path_radius_cont * 0.75))
     if size == "3_2_cont":
-        mask = disk(round(layer.path_radius_cont * 1.5))
+        mask = morphology.disk(round(layer.path_radius_cont * 1.5))
     if size == "double_cont":
-        mask = disk(round(layer.path_radius_cont * 2))
+        mask = morphology.disk(round(layer.path_radius_cont * 2))
     if size == "full_bridg":
-        mask = disk(round(layer.path_radius_bridg))
+        mask = morphology.disk(round(layer.path_radius_bridg))
     if size == "half_bridg":
-        mask = disk(round(layer.path_radius_bridg * 0.5))
+        mask = morphology.disk(round(layer.path_radius_bridg * 0.5))
     if size == "3_4_bridg":
-        mask = disk(round(layer.path_radius_bridg * 0.75))
+        mask = morphology.disk(round(layer.path_radius_bridg * 0.75))
     if size == "3_2_bridg":
-        mask = disk(round(layer.path_radius_bridg * 1.5))
+        mask = morphology.disk(round(layer.path_radius_bridg * 1.5))
     if size == "double_bridg":
-        mask = disk(round(layer.path_radius_bridg * 2))
+        mask = morphology.disk(round(layer.path_radius_bridg * 2))
     if size == "full_larg":
-        mask = disk(round(layer.path_radius_larg))
+        mask = morphology.disk(round(layer.path_radius_larg))
     if size == "half_larg":
-        mask = disk(round(layer.path_radius_larg * 0.5))
+        mask = morphology.disk(round(layer.path_radius_larg * 0.5))
     if size == "3_4_larg":
-        mask = disk(round(layer.path_radius_larg * 0.75))
+        mask = morphology.disk(round(layer.path_radius_larg * 0.75))
     if size == "3_2_larg":
-        mask = disk(round(layer.path_radius_larg * 1.5))
+        mask = morphology.disk(round(layer.path_radius_larg * 1.5))
     if size == "double_larg":
-        mask = disk(round(layer.path_radius_larg * 2))
+        mask = morphology.disk(round(layer.path_radius_larg * 2))
     return mask
 
 
@@ -202,14 +245,14 @@ def make_distancer(layer: Layer, region: str, percentage: float = 50) -> np.ndar
     displacement = orig_diam_mm * (
         (100 - percentage) / 100
     )  # para isolar o diametro real da trilha
-    mask = disk(round(displacement * layer.pxl_per_mm))
+    mask = morphology.disk(round(displacement * layer.pxl_per_mm))
     return mask
 
 
 def opening(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
     if kernel_img is None:
         opened = cv2.morphologyEx(
-            img.astype(np.uint8), cv2.MORPH_OPEN, disk(kernel_size)
+            img.astype(np.uint8), cv2.MORPH_OPEN, morphology.disk(kernel_size)
         )
     if kernel_size is None:
         opened = cv2.morphologyEx(
@@ -219,7 +262,7 @@ def opening(img: np.ndarray, kernel_img=None, kernel_size=None) -> np.ndarray:
 
 
 def thinning(img):
-    return thin(img, max_num_iter=None)
+    return morphology.thin(img, max_num_iter=None)
 
 
 def colored_dilation(image, kernel):

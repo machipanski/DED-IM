@@ -232,6 +232,39 @@ def filter_first_unique_images(image_list):
     return result
 
 
+def filter_segments_img_by_length(
+    imgs: List[np.ndarray], min_length: int
+) -> List[np.ndarray]:
+    """
+    :param imgs: List[np.ndarray] = list of segment images
+    :param min_length: int = minimum length to keep the segment
+    :return: List [np.ndarray] = filtered list of segment images
+    """
+    filtered = []
+    for i in imgs:
+        if np.sum(i.astype(bool)) >= min_length:
+            filtered.append(i)
+    return filtered
+
+
+def filter_img_elements_by_openess(
+    img: np.ndarray, radius: int = None, kernell: np.ndarray = None
+) -> np.ndarray:
+    """
+    :param img: np.ndarray = image to be filtered
+    :param element: np.ndarray = structuring element for opening operation
+    :return: np.ndarray = filtered image
+    """
+    filtered = np.zeros_like(img)
+    if kernell is None:
+        kernell = mt.disk(radius)
+    elements = divide_by_connected(img)[0]
+    for i in elements:
+        if np.sum(mt.opening(i, kernel_img=kernell)) > 0:  # minimum area threshold
+            filtered = np.logical_or(filtered, i)
+    return filtered
+
+
 def final_mapping(layer: Layer, folders: System_Paths):
     isl_final_map = np.zeros(layer.base_frame)
     regions_imgs = []
@@ -537,19 +570,14 @@ def has_contact(fail, new_zigzag):
 
 def image_subtract(gray_img1: np.ndarray, gray_img2: np.ndarray) -> np.ndarray:
     """
+    :param gray_img1: numpy.ndarray = Grayscale image data from which gray_img2 will be subtracted
+    :param gray_img2: numpy.ndarray = Grayscale image data which will be subtracted from gray_img1
+    :return new_img: numpy.ndarray = subtracted image
     This is a function used to subtract values of one
     gray-scale image array from another gray-scale image array. The
     resulting gray-scale image array has a minimum element value of zero.
     That is all negative values resulting from the
     subtraction are forced to zero.
-    Inputs:
-    gray_img1   = Grayscale image data from which gray_img2 will be subtracted
-    gray_img2   = Grayscale image data which will be subtracted from gray_img1
-    Returns:
-    new_img = subtracted image
-    :param gray_img1: numpy.ndarray
-    :param gray_img2: numpy.ndarray
-    :return new_img: numpy.ndarray
     """
     new_img = gray_img1.astype(np.float64) - gray_img2.astype(
         np.float64
@@ -656,10 +684,12 @@ def rotate_img_ccw(img: np.ndarray) -> np.ndarray:
     return cv2.rotate(img.astype(np.uint8), cv2.ROTATE_90_COUNTERCLOCKWISE)
 
 
-def sum_imgs_colored(imgs_list, limited=False):
+def sum_imgs_colored(imgs_list, limited=False, start_color=1) -> np.ndarray:
     """recieves a list of images and add returns a lebeled version of them"""
+    if imgs_list == []:
+        return []
     all = np.zeros_like(imgs_list[0], np.uint16)
-    color = 1
+    color = start_color
     for img in imgs_list:
         all = np.add(img.astype(np.uint16) * color, all)
         if limited and color == 4:

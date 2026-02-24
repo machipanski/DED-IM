@@ -1,5 +1,8 @@
 from __future__ import annotations
+import dis
 from email.headerregistry import Group
+from math import dist
+from turtle import distance
 from typing import TYPE_CHECKING
 
 import cv2
@@ -7,6 +10,7 @@ import numpy as np
 import components.ploters as ploters
 import random
 from components import morphology_tools as mt, path_tools
+
 from scipy.ndimage import distance_transform_edt
 from skimage import morphology as skmorph
 from components import images_tools as it
@@ -16,63 +20,108 @@ if TYPE_CHECKING:
     from typing import List
 
 
-def create_prune_skel(original_img: np.ndarray, size_prune=0, distance=0):
+# def create_prune_skel_ndimage(original_img: np.ndarray, size_prune=0, distance=0):
+#     """
+#     :param original_img: np.ndarray: binary image to be skeletonized
+#     :param size_prune: int: size to prune the skeleton branches
+#     :param distance: int: distance threshold to prune the skeleton branches
+#     :return sem_galhos: np.ndarray: pruned skeleton image
+#     :return dist: np.ndarray: distance transform of the original image
+#     :return segment_objects: list: list of contours of the pruned skeleton segments
+
+#     Creates, prunes and divides the skeleton of the original image
+#     """
+#     skel = skmorph.skeletonize(original_img.astype(bool))
+#     skel = skel.astype(np.uint16)
+#     dist = cv2.distanceTransform(original_img.astype(np.uint8), cv2.DIST_L2, 5)
+#     sem_galhos, segmented_img, segment_objects = prune(
+#         skel_img=skel.astype(np.uint16),
+#         size=size_prune,
+#         distance=distance,
+#         dist_map=dist,
+#     )
+#     return sem_galhos, dist, segment_objects
+
+
+def medial_axis(
+    original_img: np.ndarray,
+    min_seg_length: int,
+    min_seg_distance: int = 0,
+    return_dist_map=False,
+    return_segment_objects=False,
+    hi_sensibility=False,
+    method="zhang",
+):
     """
     :param original_img: np.ndarray: binary image to be skeletonized
-    :param size_prune: int: size to prune the skeleton branches
-    :param distance: int: distance threshold to prune the skeleton branches
+    :param min_seg_length: int: minimum length of segments to be kept in the skeleton
+    :param min_seg_distance: int: minimum distance of segments to be kept in the skeleton
     :return sem_galhos: np.ndarray: pruned skeleton image
-    :return dist: np.ndarray: distance transform of the original image
-    :return segment_objects: list: list of contours of the pruned skeleton segments
+    :return dist: (optional) np.ndarray: distance transform of the original image
+    :return segment_objects: list: (optional) list of contours of the pruned skeleton segments
 
-    Creates, prunes and divides the skeleton of the original image
+    Creates, prunes and divides the skeleton of the original image USING skmorph.skeletonize
     """
-    skel = skmorph.skeletonize(original_img.astype(bool))
-    skel = skel.astype(np.uint16)
-    dist = distance_transform_edt(original_img)
-    sem_galhos, segmented_img, segment_objects = prune(
-        skel_img=skel.astype(np.uint16),
-        size=size_prune,
-        distance=distance,
-        dist_map=dist,
-    )
-    return sem_galhos, dist, segment_objects
-
-
-def create_prune_divide_skel(original_img: np.ndarray, size_prune):
-    """
-    :param original_img: np.ndarray: binary image to be skeletonized
-    :param size_prune: int: size to prune the skeleton branches
-    :return sem_galhos: np.ndarray: pruned skeleton image
-    :return dist: np.ndarray: distance transform of the original image
-    :return segment_objects: list: list of contours of the pruned skeleton segments
-    
-    Creates, prunes and divides the skeleton of the original image
-    """
-    skel = skmorph.skeletonize(original_img.astype(bool))
-    skel = skel.astype(np.uint16)
-    dist = cv2.distanceTransform(original_img.astype(np.uint8), cv2.DIST_L2, 5)
-    sem_galhos, segmented_img, segment_objects = prune(
-        skel_img=skel.astype(np.uint16), size=size_prune
-    )
-    if np.sum(sem_galhos) == 0:
-        sem_galhos, segmented_img, segment_objects = prune(
-            skel_img=skel.astype(np.uint16), size=round(size_prune / 2)
+    dist = None
+    if hi_sensibility:
+        ma, dist = skmorph.medial_axis(original_img.astype(bool), return_distance=True)
+    else:
+        ma = skmorph.skeletonize(original_img.astype(bool), method="zhang")
+        ma = ma.astype(np.uint16)
+    segment_objects = None
+    if min_seg_distance > 0 or min_seg_length > 0:
+        _, segment_objects = segment_skeleton(ma)
+        ma, segmented_img, segment_objects = prune(
+            ma.astype(np.uint16),
+            segment_objects,
+            min_seg_length=min_seg_length,
+            min_seg_distance=min_seg_distance,
+            original_img=original_img,
         )
-    if np.sum(sem_galhos) == 0:
-        sem_galhos = skel
-        segment_objects = segment_skeleton(skel, mask=None)
-    skeleton_graph, trunks_img, segment_objects = path_tools.skel_to_graph(
-        sem_galhos, 2
-    )
-    segment_objects = [pt.invert_x_y(list(seg)) for seg in segment_objects]
-    return sem_galhos, dist, segment_objects
+        if np.sum(ma) == 0:
+            ma, segmented_img, segment_objects = prune(
+                skel_img=ma.astype(np.uint16),
+                min_seg_length=round(min_seg_length / 2),
+                min_seg_distance=min_seg_distance,
+                original_img=original_img,
+            )
+    if return_segment_objects == True:
+        # segment_objects = segment_skeleton(sem_galhos, mask=None)
+        # skeleton_graph, trunks_img, segment_objects = path_tools.skel_to_graph(
+        #     sem_galhos, 2
+        # )
+        if segment_objects is None:
+            _, segment_objects = segment_skeleton(ma)
+        segment_pixl_coords = []
+        for x in segment_objects:
+            x = [y[0].tolist() for y in x]
+            segment_pixl_coords.append(x)
+        segment_pixl_coords = [pt.invert_x_y(list(seg)) for seg in segment_pixl_coords]
+        if return_dist_map:
+            # dist = cv2.distanceTransform(original_img.astype(np.uint8), cv2.DIST_L2, 5)
+            if dist is None:
+                dist = distance_transform_edt(original_img)
+            return ma, dist, segment_pixl_coords
+        return ma, segment_pixl_coords
+    if return_dist_map == True:
+        # dist = cv2.distanceTransform(original_img.astype(np.uint8), cv2.DIST_L2, 5)
+        if dist is None:
+            dist = distance_transform_edt(original_img)
+        return ma, dist
+    return ma
 
 
-def create_prune_divide_normalize_skel(rest_of_picture: np.ndarray, path_radius: int):
+def medial_axis_transform(
+    img: np.ndarray,
+    normalize_by=0,
+    min_seg_length=0,
+    min_seg_distance=0,
+    hi_sensibility=False,
+    method="zhang",
+):
     """
     :param rest_of_picture: np.ndarray: binary image to be skeletonized
-    :param path_radius: int: radius of the path to normalize the skeleton
+    :param normalize_by: int: value to normalize the skeleton by
     :return norm_trunks: np.ndarray: list of normalized trunk images
     :return norm_dist_map: np.ndarray: normalized distance map
     :return medial_transform: np.ndarray: medial transform image
@@ -80,21 +129,30 @@ def create_prune_divide_normalize_skel(rest_of_picture: np.ndarray, path_radius:
     Breaks the image into its MAT components - already normalized to the number
     of routes that fit in the parallel direction
     """
-    sem_galhos, sem_galhos_dist, trunks = create_prune_divide_skel(
-        rest_of_picture.astype(np.uint8), path_radius
+    sem_galhos, sem_galhos_dist, trunks = medial_axis(
+        img.astype(np.uint8),
+        min_seg_length=min_seg_length,
+        min_seg_distance=min_seg_distance,
+        return_dist_map=True,
+        return_segment_objects=True,
+        hi_sensibility=hi_sensibility,
+        method=method,
     )
     medial_transform = sem_galhos * sem_galhos_dist
-    trunks = [it.points_to_img(x, np.zeros_like(rest_of_picture)) for x in trunks]
-    trunks = it.eliminate_duplicates(trunks)
-    normalized_dist_map = sem_galhos_dist / path_radius
-    normalized_trunks = [trunk * normalized_dist_map for trunk in trunks]
-    return normalized_trunks, normalized_dist_map, medial_transform
+    trunks_imgs = [it.points_to_img(x, np.zeros_like(img)) for x in trunks]
+    trunks_imgs = it.eliminate_duplicates(trunks_imgs)
+    if normalize_by > 0:
+        normalized_dist_map = sem_galhos_dist / normalize_by
+        normalized_trunks_imgs = [trunk * normalized_dist_map for trunk in trunks_imgs]
+        return medial_transform, normalized_dist_map, trunks, normalized_trunks_imgs
+    return medial_transform, sem_galhos_dist, trunks, trunks_imgs
 
 
 def break_too_big_parts(
-    normalized_trunks: List[np.ndarray], 
-    normalized_dist_map: np.ndarray, 
+    normalized_trunks: List[np.ndarray],
+    normalized_dist_map: np.ndarray,
     necks_max_paths: int,
+    reversed=False,
 ):
     """
     :param normalized_trunks: List[np.ndarray]: list of normalized trunk images
@@ -106,7 +164,10 @@ def break_too_big_parts(
     """
     minus_bigger_than_limmit = []
     for trunk in normalized_trunks:
-        less_than_limmit = np.logical_and(trunk > 0, trunk <= necks_max_paths)
+        if reversed:
+            less_than_limmit = np.logical_and(trunk > 0, trunk >= necks_max_paths)
+        else:
+            less_than_limmit = np.logical_and(trunk > 0, trunk <= necks_max_paths)
         divided, _, num = it.divide_by_connected(less_than_limmit)
         if divided != []:
             minus_bigger_than_limmit = minus_bigger_than_limmit + divided
@@ -114,8 +175,8 @@ def break_too_big_parts(
         np.multiply(x, normalized_dist_map, dtype=np.float32)
         for x in minus_bigger_than_limmit
     ]
-    ccc = minus_bigger_than_limmit[0]
-    ddd = it.sum_imgs(minus_bigger_than_limmit)
+    # ccc = minus_bigger_than_limmit[0]
+    # ddd = it.sum_imgs(minus_bigger_than_limmit)
     return minus_bigger_than_limmit
 
 
@@ -132,7 +193,10 @@ def filter_trunks_with_smaller_than(minus_bigger_than_limmit, necks_max_paths):
 
 
 def reduce_origin(
-    candidate: np.ndarray, necks_max_paths: int, norm_dist_map: np.ndarray
+    candidate: np.ndarray,
+    necks_max_paths: int,
+    norm_dist_map: np.ndarray,
+    inversed=False,
 ):
     """
     :param candidate: np.ndarray: image of the trunk
@@ -160,6 +224,8 @@ def reduce_origin(
             path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)
         )
     reduced_origin = np.logical_and(candidate != 0, candidate < necks_max_paths)
+    if inversed:
+        reduced_origin = np.logical_and(candidate != 0, candidate > necks_max_paths)
     if np.sum(reduced_origin) == 0:
         return np.zeros_like(candidate), []
     ends = pt.img_to_points(find_tips(reduced_origin.astype(bool)))
@@ -189,40 +255,48 @@ def reduce_origin(
     return reduced_origin * norm_dist_map, origin_chain[0]
 
 
-def prune(skel_img: np.ndarray, size=0, distance=0, dist_map=[], mask=None, it_prune=0):
-    """Inputs:
-    skel_img    = Skeletonized image
-    size        = Size to get pruned off each branch
-    mask        = (Optional) binary mask for debugging. If provided, debug image will be overlaid on the mask.
-    Returns:
-    pruned_img      = Pruned image
-    segmented_img   = Segmented debugging image
-    segment_objects = List of contours
-    :param skel_img: numpy.ndarray
-    :param size: int
-    :param mask: numpy.ndarray
-    :return pruned_img: numpy.ndarray
-    :return segmented_img: numpy.ndarray
-    :return segment_objects: list
+def prune(
+    skel_img: np.ndarray,
+    segment_objects: List,
+    min_seg_length=0,
+    min_seg_distance=0,
+    dist_map=None,
+    original_img=None,
+    mask=None,
+    iterative_prune=0,
+):
+    """
+    :param skel_img: numpy.ndarray = Skeletonized image
+    :param size: int = Size to get pruned off each branch
+    :param min_seg_length: int = Minimal Length threshold to branches
+    :param min_seg_distance: int = Distance threshold to prune branches NEEDS ORIGINAL IMAGE or DISTANCE MAP
+    :param original_img: numpy.ndarray = (Optional) original image for distance calculations
+    :param mask: numpy.ndarray = (Optional) binary mask for debugging. If provided, debug image will be overlaid on the mask.
+    :param iterative_prune: int = (Optional) Number of iterations to iteratively prune endpoints
+    :return pruned_img: numpy.ndarray = Pruned image
+    :return segmented_img: numpy.ndarray = Segmented debugging image
+    :return segment_objects: list = List of contours
 
     Prune the ends of skeletonized segments.
     The pruning algorithm proposed by https://github.com/karnoldbio
     Segments a skeleton into discrete pieces, prunes off all segments less than or
     equal to user specified size. Returns the remaining objects as a list and the
     pruned skeleton.
+
+    Modified by Matheus A. Chipanski: does the same as above, but also prunes segments that have
+    distance less than min_seg_distance from the original image. By this way removing sharp artifacts.
     """
     pruned_img = skel_img.copy()
     cleaned_img = pruned_img
-    _, objects = segment_skeleton(cleaned_img)
     kept_segments = []
     removed_segments = []
-    if size > 0:
+    if min_seg_length > 0:
         # If size>0 then check for segments that are smaller than size pixels long
         # Sort through segments since we don't want to remove primary segments
-        secondary_objects, _, BBB = segment_sort(cleaned_img, objects)
+        secondary_objects, _, BBB = segment_sort(cleaned_img, segment_objects)
         # Keep segments longer than specified size
         for i in range(0, len(secondary_objects)):
-            if len(secondary_objects[i]) > size:
+            if len(secondary_objects[i]) > min_seg_length:
                 kept_segments.append(secondary_objects[i])
             else:
                 removed_segments.append(secondary_objects[i])
@@ -232,7 +306,7 @@ def prune(skel_img: np.ndarray, size=0, distance=0, dist_map=[], mask=None, it_p
         # Subtract all short segments from the skeleton image
         pruned_img = it.image_subtract(cleaned_img, removed_barbs)
     segmented_img, segment_objects = segment_skeleton(pruned_img, mask)
-    if distance > 0:
+    if min_seg_distance > 0:
         # If size>0 then check for segments that are smaller than size pixels long
         # Sort through segments since we don't want to remove primary segments
         secondary_objects, _, BBB = segment_sort(pruned_img, segment_objects)
@@ -242,8 +316,11 @@ def prune(skel_img: np.ndarray, size=0, distance=0, dist_map=[], mask=None, it_p
             obj_img = it.points_to_img(
                 pt.invert_x_y(pontos_obj), np.zeros_like(pruned_img)
             )
+            if dist_map is None:
+                # dist_map = cv2.distanceTransform(original_img, cv2.DIST_L2, 5)
+                dist_map = distance_transform_edt(original_img)
             transform_secondary = obj_img * dist_map
-            over_distance = transform_secondary > distance
+            over_distance = transform_secondary > min_seg_distance
             if np.sum(over_distance) > 0:
                 removed_segments.append(secondary_objects[i])
             else:
@@ -253,25 +330,21 @@ def prune(skel_img: np.ndarray, size=0, distance=0, dist_map=[], mask=None, it_p
         cv2.drawContours(removed_barbs, removed_segments, -1, 1, 1, lineType=8)
         # Subtract all short segments from the skeleton image
         pruned_img = it.image_subtract(pruned_img, removed_barbs)
-        # pruned_img = _iterative_prune(pruned_img, 3)
-    if it_prune > 0:
-        pruned_img = _iterative_prune(pruned_img, it_prune)
+    if iterative_prune > 0:
+        pruned_img = _iterative_prune(pruned_img, iterative_prune)
     segmented_img, segment_objects = segment_skeleton(pruned_img, mask)
     return pruned_img, segmented_img, segment_objects
 
 
 def _iterative_prune(skel_img: np.ndarray, size):
-    """Iteratively remove endpoints (tips) from a skeletonized image.
-    The pruning algorithm was inspired by Jean-Patrick Pommier: https://gist.github.com/jeanpat/5712699
-    Iteratively remove endpoints (tips) from a skeleton
-    Inputs:
-    skel_img    = Skeletonized image
-    size        = Size to get pruned off each branch
-    Returns:
+    """
     pruned_img  = Pruned image
-    :param skel_img: numpy.ndarray
-    :param size: int
+    :param skel_img: numpy.ndarray = Skeletonized image
+    :param size: int = Size to get pruned off each branch
     :return pruned_img: numpy.ndarray
+
+    Iteratively remove endpoints (tips) from a skeletonized image.
+    The pruning algorithm was inspired by Jean-Patrick Pommier: https://gist.github.com/jeanpat/5712699
     """
     pruned_img = skel_img.copy()
     for _ in range(0, size):
@@ -281,14 +354,13 @@ def _iterative_prune(skel_img: np.ndarray, size):
 
 
 def segment_skeleton(skel_img: np.ndarray, mask=None):
-    """Segment a skeleton image into pieces.
-
-    Inputs:
+    """
     :param skel_img: numpy.ndarray
     :param mask: numpy.ndarray
-    Returns:
     :return segmented_img: numpy.ndarray
     :return segment_objects: list of contours
+
+    Segment a skeleton image into pieces.
     """
     # Find branch points
     bp = find_branch_pts(skel_img)
@@ -362,6 +434,7 @@ def find_branch_pts(skel_img: np.ndarray):
     """
     :param skel_img: numpy.ndarray = Skeletonized image
     :return branch_pts_img: numpy.ndarray = Image with just branch points
+
     Find branch points in a skeletonized image.
     The branching algorithm was inspired by Jean-Patrick Pommier: https://gist.github.com/jeanpat/5712699
     """
@@ -410,7 +483,7 @@ def segment_sort(skel_img: np.ndarray, objects: List):
     :return primary_objects: list = List of primary objects (stem)
     :return secondary_objects: list = List of secondary segments (leaf)
     :return labeled_img: numpy.ndarray = Segmented debugging image
-    
+
     Modified from PlantCV (https://plantcv.readthedocs.io/en/stable/)
     Sort segments from a skeletonized image into two categories: leaf objects and other objects.
     """
@@ -442,8 +515,10 @@ def segment_sort(skel_img: np.ndarray, objects: List):
     return secondary_objects, primary_objects, labeled_img
 
 
-def reconstruct_img_from_skeleton(medial_img):
+def reconstruct_img_from_skeleton(medial_img: np.ndarray):
     """
+    :param medial_img: np.ndarray = Image where each pixel indicates the radius of the circle.
+
     Receives an image (2D numpy array) where each pixel indicates the radius of the circle.
     Returns a binary image with all circles filled.
     """
@@ -639,12 +714,12 @@ def close_bridge_contour(
             )
         # Se houverem pontos demais por causa dos contours, faz uma poda
         if len(starts_and_ends1) > 2:
-            line1, _, _ = prune(skel_img=line1, size=2)
+            line1, _, _ = prune(skel_img=line1, min_seg_length=2)
             starts_and_ends1 = pt.x_y_para_pontos(
                 np.where(find_tips(line1.astype(np.uint8)))
             )
         if len(starts_and_ends2) > 2:
-            line2, _, _ = prune(skel_img=line2, size=2)
+            line2, _, _ = prune(skel_img=line2, min_seg_length=2)
             starts_and_ends2 = pt.x_y_para_pontos(
                 np.where(find_tips(line2.astype(np.uint8)))
             )
@@ -772,7 +847,13 @@ def close_bridge_contour(
 
 
 def reduce_lines_overshoot(candidate: np.ndarray, origin_points: List[np.ndarray]):
-    """Determines the start and end for each trunk, then reduces the margins until all its bottlenecks are encompassed"""
+    """
+    :param candidate: np.ndarray: image of the line
+    :param origin_points: List[np.ndarray]: list of origin points
+    :return: np.ndarray: reduced line image
+
+    Determines the start and end for each trunk, then reduces the margins until all its bottlenecks are encompassed
+    """
     t_ends = pt.img_to_points(find_tips(candidate.astype(bool)))
     origin_chain = pt.invert_x_y(
         path_tools.make_a_chain_open_segment(candidate.astype(bool), t_ends)

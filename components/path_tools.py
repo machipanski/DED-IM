@@ -100,13 +100,41 @@ def calculate_angle(p1, p2, p3):
     return abs(angulo_deg)
 
 
-def find_curvature_pts(seq, ang=60):
+# def find_curvature_pts(seq, ang=60):
+#     curvature_pts = []
+#     pontos = seq + seq
+#     for i in range(1, len(pontos) - 1):
+#         p1 = pontos[i - 1]
+#         p2 = pontos[i]
+#         p3 = pontos[i + 1]
+#         angulo = calculate_angle(p1, p2, p3)
+#         if angulo > ang:
+#             if len(curvature_pts) == 0:
+#                 first_angled = p2
+#             else:
+#                 if p2 == first_angled:
+#                     break
+#             curvature_pts.append(p2)
+#     return curvature_pts
+
+
+def find_curvature_pts(seq, ang=60, radius=1):
+    """
+    Return the points in `seq` whose turning angle exceeds `ang`.
+
+    `radius` controls how many steps on either side of the current
+    point are used when computing the angle.  A value of 1 is the
+    original behaviour (three consecutive pixels); larger values
+    look further along the path before and after the candidate.
+    """
     curvature_pts = []
     pontos = seq + seq
-    for i in range(1, len(pontos) - 1):
-        p1 = pontos[i - 1]
+    length = len(pontos)
+    # ensure we don’t walk off the end of the doubled list
+    for i in range(radius, length - radius):
+        p1 = pontos[i - radius]
         p2 = pontos[i]
-        p3 = pontos[i + 1]
+        p3 = pontos[i + radius]
         angulo = calculate_angle(p1, p2, p3)
         if angulo > ang:
             if len(curvature_pts) == 0:
@@ -764,7 +792,8 @@ def draw_tangent_from_seq(points, length, img):
         return tng_img
     last_point = points[-1]
     second_last_point = points[-2]
-    slope = pt.calculate_tangent(second_last_point, last_point)
+    # slope = pt.calculate_tangent(second_last_point, last_point)
+    slope = pt.calculate_tangent(points[-5:])
     # if slope == None:
     #     slope = -9999
     # Extend the tangent line

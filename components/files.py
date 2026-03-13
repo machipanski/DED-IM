@@ -1,12 +1,15 @@
 from __future__ import annotations
+from ast import In
 from email.headerregistry import Group
 from typing import TYPE_CHECKING
+from venv import create
 
 from more_itertools import last
+from components import large_areas
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Offset
 from components.thin_walls import ThinWallRegions, ThinWall
-from components.large_areas import ZigZag, ZigZagRegions
+from components.large_areas import Sub_island, ZigZag, ZigZagRegions
 from components.layer import Layer, Island
 from components.path_tools import Path
 from cv2 import imread
@@ -309,15 +312,65 @@ class System_Paths:
         zzr_group = island_group.get("zigzags")
         if zzr_group:
             island.zigzags = ZigZagRegions()
-            cob = island.zigzags.regions
-            for i_key, i_item in zzr_group.items():
-                region_group = zzr_group.get(i_key)
-                if isinstance(i_item, h5py.Group):
-                    cob.append(ZigZag(i_key, []))
-                    for k_key, k_item in region_group.items():
-                        setattr(cob[-1], k_key, np.array(k_item))
-                else:
-                    setattr(island.zigzags, i_key, np.array(i_item))
+            int_isl = island.zigzags.internal_islands
+            int_isl_group = zzr_group.get("internal_islands")
+            for i_key, i_item in int_isl_group.items():
+                thisimage = self.load_img_hdf5(
+                    f"/{layer_name}/{island.name}/zigzags/internal_islands/{i_key}",
+                    "img",
+                )
+                thislarge_areas = self.load_img_hdf5(
+                    f"/{layer_name}/{island.name}/zigzags/internal_islands/{i_key}",
+                    "large_areas",
+                )
+                int_isl.append(
+                    Sub_island(i_key, thisimage, large_areas=thislarge_areas)
+                )
+                region_group = int_isl_group.get(i_key)
+                for j_key, j_item in region_group.items():
+                    if isinstance(j_item, h5py.Group):
+                        if j_key.startswith("l_regions"):
+                            l_region_group = region_group.get(j_key)
+                            for l_key, l_item in l_region_group.items():
+                                setattr(
+                                    int_isl[-1],
+                                    "l_regions",
+                                    int_isl[-1].l_regions
+                                    + [
+                                        ZigZag(
+                                            l_key,
+                                            [],
+                                            **dict(l_region_group.attrs),
+                                        )
+                                    ],
+                                )
+                                for k_key, k_item in l_region_group.get(l_key).items():
+                                    setattr(
+                                        int_isl[-1].l_regions[-1],
+                                        k_key,
+                                        np.array(k_item),
+                                    )
+                        if j_key.startswith("w_regions"):
+                            w_region_group = region_group.get(j_key)
+                            for w_key, w_item in w_region_group.items():
+                                setattr(
+                                    int_isl[-1],
+                                    "w_regions",
+                                    int_isl[-1].w_regions
+                                    + [
+                                        ZigZag(
+                                            w_key,
+                                            [],
+                                            **dict(w_region_group.attrs),
+                                        )
+                                    ],
+                                )
+                                for k_key, k_item in w_region_group.get(w_key).items():
+                                    setattr(
+                                        int_isl[-1].w_regions[-1],
+                                        k_key,
+                                        np.array(k_item),
+                                    )
         f.close()
         os.chdir(self.home)
         return
@@ -549,29 +602,91 @@ class System_Paths:
                     self.delete_item_hdf5(base_path)
                     self.create_new_hdf5_group(base_path)
                     self.save_props_hdf5(base_path, isl.__dict__)
-                    for reg in isl.zigzags.regions:
-                        if isinstance(reg.name, int):
-                            reg.name = f"ZZ_{reg.name:03d}"
-                        self.create_new_hdf5_group(f"{base_path}/{reg.name}")
-                        self.save_img_hdf5(f"{base_path}/{reg.name}", "img", reg.img)
-                        if len(reg.route) > 0:
+                    self.create_new_hdf5_group(f"{base_path}/internal_islands")
+                    for int_isl in isl.zigzags.internal_islands:
+                        int_isl.name = f"IN_SL_{int_isl.name:03d}"
+                        sub_island_path = f"{base_path}/internal_islands/{int_isl.name}"
+                        self.create_new_hdf5_group(sub_island_path)
+                        self.save_img_hdf5(f"{sub_island_path}", "img", int_isl.img)
+                        if np.sum(int_isl.large_areas) > 0:
                             self.save_img_hdf5(
-                                f"{base_path}/{reg.name}", "route", reg.route
+                                f"{sub_island_path}",
+                                "large_areas",
+                                int_isl.large_areas,
                             )
-                        else:
-                            self.delete_item_hdf5(f"{base_path}/{reg.name}/route")
-                        if len(reg.trail) > 0:
-                            self.save_img_hdf5(
-                                f"{base_path}/{reg.name}", "trail", reg.trail
+                        if len(int_isl.l_regions) > 0:
+                            internal_island_path = (
+                                f"{base_path}/internal_islands/{int_isl.name}"
                             )
+                            self.create_new_hdf5_group(internal_island_path)
+                            for l_reg in int_isl.l_regions:
+                                l_reg.name = f"LRG_REG_{l_reg.name:03d}"
+                                l_reg_path = (
+                                    f"{internal_island_path}/l_regions/{l_reg.name}"
+                                )
+                                self.create_new_hdf5_group(l_reg_path)
+                                self.save_img_hdf5(l_reg_path, "img", l_reg.img)
+                                if len(l_reg.route) > 0:
+                                    self.save_img_hdf5(
+                                        l_reg_path,
+                                        "route",
+                                        l_reg.route,
+                                    )
+                                else:
+                                    self.delete_item_hdf5(f"{l_reg_path}/route")
+                                if len(l_reg.trail) > 0:
+                                    self.save_img_hdf5(
+                                        l_reg_path,
+                                        "trail",
+                                        l_reg.trail,
+                                    )
+                                else:
+                                    self.delete_item_hdf5(f"{l_reg_path}/trail")
                         else:
-                            self.delete_item_hdf5(f"{base_path}/{reg.name}/trail")
-                        if len(reg.origin) > 0:
-                            self.save_img_hdf5(
-                                f"{base_path}/{reg.name}", "origin", reg.origin
+                            self.delete_item_hdf5(
+                                f"{base_path}/internal_islands/{int_isl.name}/l_regions"
                             )
+                        if len(int_isl.w_regions) > 0:
+                            internal_island_path = (
+                                f"{base_path}/internal_islands/{int_isl.name}"
+                            )
+                            self.create_new_hdf5_group(internal_island_path)
+                            for w_reg in int_isl.w_regions:
+                                w_reg.name = f"WEAV_REG_{w_reg.name:03d}"
+                                w_reg_path = (
+                                    f"{internal_island_path}/w_regions/{w_reg.name}"
+                                )
+                                self.create_new_hdf5_group(w_reg_path)
+                                self.save_img_hdf5(w_reg_path, "img", w_reg.img)
+                                if len(w_reg.route) > 0:
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "route",
+                                        w_reg.route,
+                                    )
+                                else:
+                                    self.delete_item_hdf5(f"{w_reg_path}/route")
+                                if len(w_reg.origin) > 0:
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "origin",
+                                        w_reg.origin,
+                                    )
+                                else:
+                                    self.delete_item_hdf5(f"{w_reg_path}/origin")
+                                if len(w_reg.trail) > 0:
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "trail",
+                                        w_reg.trail,
+                                    )
+                                else:
+                                    self.delete_item_hdf5(f"{w_reg_path}/trail")
                         else:
-                            self.delete_item_hdf5(f"{base_path}/{reg.name}/origin")
+                            self.delete_item_hdf5(
+                                f"{base_path}/internal_islands/{int_isl.name}/w_regions"
+                            )
+
         return
 
     def save_routes_bridges_hdf5(self, layer_name, islands: List[Island]):

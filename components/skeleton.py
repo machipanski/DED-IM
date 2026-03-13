@@ -68,6 +68,7 @@ def medial_axis(
     else:
         ma = skmorph.skeletonize(original_img.astype(bool), method="zhang")
         ma = ma.astype(np.uint16)
+        orig_ma = ma.copy()
     segment_objects = None
     if min_seg_distance > 0 or min_seg_length > 0:
         _, segment_objects = segment_skeleton(ma)
@@ -81,10 +82,13 @@ def medial_axis(
         if np.sum(ma) == 0:
             ma, segmented_img, segment_objects = prune(
                 skel_img=ma.astype(np.uint16),
+                segment_objects=segment_objects,
                 min_seg_length=round(min_seg_length / 2),
                 min_seg_distance=min_seg_distance,
                 original_img=original_img,
             )
+            if np.sum(ma) == 0:
+                ma = orig_ma
     if return_segment_objects == True:
         # segment_objects = segment_skeleton(sem_galhos, mask=None)
         # skeleton_graph, trunks_img, segment_objects = path_tools.skel_to_graph(
@@ -178,6 +182,27 @@ def break_too_big_parts(
     # ccc = minus_bigger_than_limmit[0]
     # ddd = it.sum_imgs(minus_bigger_than_limmit)
     return minus_bigger_than_limmit
+
+
+def extend_origins_perpendicular_to_border(img, divisor, path_radius):
+    ends_divisor = mt.hitmiss_ends_v2(divisor)
+    _, wa_contour = mt.detect_contours(img, return_img=True)
+    not_touching = pt.img_to_points(
+        np.logical_and(ends_divisor, np.logical_not(wa_contour))
+    )
+    origin_seq = path_tools.img_to_chain(divisor)[0]
+    new_divisor = divisor.copy()
+    for point in not_touching:
+        origin_seq = path_tools.set_first_pt_in_seq(origin_seq, point)
+        origin_seq = path_tools.cut_repetition(origin_seq)
+        tng_end = path_tools.draw_tangent_from_seq(
+            list(reversed(origin_seq)), path_radius * 4, np.zeros_like(img)
+        )
+        new_divisor = np.logical_or(new_divisor, tng_end)
+
+    sub_division = it.image_subtract(img, new_divisor)
+    # wa.sub_division = sub_division
+    return new_divisor
 
 
 def filter_trunks_with_smaller_than(minus_bigger_than_limmit, necks_max_paths):

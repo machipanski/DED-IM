@@ -271,12 +271,23 @@ def final_mapping(layer: Layer, folders: System_Paths):
     for isl in layer.islands:
         folders.load_zigzags_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
-            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
-                regions_imgs.append(
-                    sum_imgs_colored(
-                        [reg.img for reg in isl.zigzags.regions], limited=True
-                    ).astype(np.uint16)
-                )
+            if (
+                hasattr(isl.zigzags, "internal_islands")
+                and len(isl.zigzags.internal_islands) > 0
+            ):
+                for int_isl in isl.zigzags.internal_islands:
+                    if hasattr(int_isl, "w_regions") and len(int_isl.w_regions) > 0:
+                        regions_imgs.append(
+                            sum_imgs_colored(
+                                [reg.img for reg in int_isl.w_regions], limited=True
+                            ).astype(np.uint16)
+                        )
+                    if hasattr(int_isl, "l_regions") and len(int_isl.l_regions) > 0:
+                        regions_imgs.append(
+                            sum_imgs_colored(
+                                [reg.img for reg in int_isl.l_regions], limited=True
+                            ).astype(np.uint16)
+                        )
         folders.load_thin_walls_hdf5(layer.name, isl)
         if hasattr(isl, "thin_walls"):
             if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:

@@ -133,15 +133,16 @@ def ask_parameters_zigzags_routes(configurations):
     msg = "Wide parameters"
     title = "Wide parameters"
     fieldNames = [
-        "Style (0=Fermat zigzag, 1=Simple zigzag, 2=Weaving)",
+        "Style (0=Fermat zigzag, 1=Simple zigzag)",
         "sobreposição(%) interna",
         "sobreposição(%) externa",
+        "sobreposição(%) zigzag",
     ]
-    fieldDefs = [1, 20, 30]
-    style, sob_int, sob_out = ask_parameters_constructor(
+    fieldDefs = [1, 20, 20, 20]
+    style, sob_int, sob_out, sob_zig = ask_parameters_constructor(
         msg, title, fieldNames, fieldDefs
     )
-    return style, sob_int, sob_out
+    return style, sob_int, sob_out, sob_zig
 
 
 def ask_parameters_offset_routes(configurations):

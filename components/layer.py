@@ -1046,18 +1046,11 @@ class Layer:
         def make_weaveble_channels(
             island: Island, large_weaving_limmit, path_radius
         ) -> Island:
-            # island.rest_of_picture_f3 = folders.load_img_hdf5(
-            #     f"/{self.name}/{island.name}", "rest_of_picture_f3"
-            # )
-            # rest_of_picture_f2 = folders.load_img_hdf5(
-            #     f"/{self.name}/{island.name}", "rest_of_picture_f2"
-            # )
             if np.sum(island.rest_of_picture_f3) > 0:
                 for int_isl in island.zigzags.internal_islands:
                     int_isl.weaveble_channels(
                         path_radius,
                         island.bridges.zigzag_bridges,
-                        island.rest_of_picture_f3,
                     )
             return island
 
@@ -1071,11 +1064,12 @@ class Layer:
             )
             if np.sum(island.rest_of_picture_f3) > 0:
                 for int_isl in island.zigzags.internal_islands:
-                    int_isl.scan_monotonic(
-                        path_radius,
-                        island.bridges.zigzag_bridges,
-                        large_weaving_limmit,
-                    )
+                    if np.sum(int_isl.large_areas) > 0:
+                        int_isl.scan_monotonic(
+                            path_radius,
+                            island.bridges.zigzag_bridges,
+                            large_weaving_limmit,
+                        )
             return island
 
         self.program_larg = name_prog
@@ -1094,16 +1088,17 @@ class Layer:
         with Timer("  Further dividing weaveble areas into channels"):
             make_weaveble_channels(large_weaving_limmit, self.path_radius_larg)
         with Timer("  Dividing largest areas into monotonic regions"):
-            find_monotonic(large_weaving_limmit, self.path_radius_larg )
+            find_monotonic(large_weaving_limmit, self.path_radius_larg)
         with Timer("  Saving monotonic regions images"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def make_zigzag_routes(self, folders: System_Paths, style, sob_int, sob_out):
+    def make_zigzag_routes(
+        self, folders: System_Paths, style, sob_in: int, sob_out: int, sob_zig: int
+    ):
         folders.load_islands_hdf5(self)
         # mask_distancer_internal = mt.make_distancer(self, "int_ext", percentage=sob_int)
-        sob_inwards = sob_int
         for isl in self.islands:
             with Timer(f"  Generating zigzag routes, Layer:{self.name}"):
                 folders.load_zigzags_hdf5(self.name, isl)
@@ -1111,12 +1106,13 @@ class Layer:
                     isl.zigzags.make_routes_z(
                         self.base_frame,
                         self.path_radius_larg,
-                        sob_inwards,
+                        sob_in,
                         sob_out,
+                        sob_zig,
                         style,
                     )
 
-        with Timer("  Saving images of zigzag routes"):
-            folders.save_regs_zigzags_hdf5(self.name, self.islands)
-            folders.save_props_hdf5(f"/{self.name}", self.__dict__)
+        # with Timer("  Saving images of zigzag routes"):
+        #     folders.save_regs_zigzags_hdf5(self.name, self.islands)
+        #     folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return

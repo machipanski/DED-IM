@@ -31,13 +31,30 @@ def contour_to_list(ctr):
     return [[x[0][1], x[0][0]] for x in ctr[0].tolist()]
 
 
-def calculate_tangent(p1, p2):
-    """Calculate the slope (tangent) between two points."""
-    dy = p2[0] - p1[0]
-    dx = p2[1] - p1[1]
-    if dx == 0:  # Avoid division by zero
-        return None  # Vertical line
-    return dy / dx
+# def calculate_tangent(p1, p2):
+# """Calculate the slope (tangent) between two points."""
+# dy = p2[0] - p1[0]
+# dx = p2[1] - p1[1]
+# if dx == 0:  # Avoid division by zero
+#     return None  # Vertical line
+# return dy / dx
+
+
+def calculate_tangent(points):
+    """Calculate tangent using PCA to find best-fit line direction."""
+    points = np.asarray(points, dtype=float)
+    if len(points) < 2:
+        return None
+    # Center the points
+    center = points.mean(axis=0)
+    centered = points - center
+    # SVD to find principal direction
+    U, S, Vt = np.linalg.svd(centered, full_matrices=False)
+    direction = Vt[0]  # Principal component
+    # Calculate slope from direction vector (y, x)
+    if abs(direction[1]) < 1e-10:
+        return None
+    return direction[0] / direction[1]
 
 
 def distance_pts(a, b):

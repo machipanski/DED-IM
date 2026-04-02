@@ -1256,7 +1256,7 @@ def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
             c = it.points_to_img(b, np.zeros_like(line_img))
             line_toremove = it.sum_imgs([line_toremove, c])
         line_img_cut = it.image_subtract(line_img, line_toremove)
-        line_img, _, _ = sk.prune(line_img_cut, iterative_prune=2)
+        line_img, _, _ = sk.prune(line_img_cut, [], iterative_prune=2)
         endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
         endpoints = pt.img_to_points(endpoints_img)
         print("tentando cortar os galhos menores")

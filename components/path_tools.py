@@ -1246,25 +1246,31 @@ def make_offset_graph(filtered_regions, regs_touching):
     return graph
 
 
-def make_zigzag_graph(zigzag_regions, zigzags_bridges, base_frame):
+def make_regions_graph(
+    a_regions, b_regions, base_frame, apendix="", ends=False, path_radius=None
+):
     graph = nx.Graph()
     pos_zigzag_nodes = {}
-    for i in zigzag_regions:
+    for i in a_regions:
         new_center = i.center
-        graph.add_node("z" + str(i.name))
-        pos_zigzag_nodes.update({"z" + str(i.name): new_center})
-    if not zigzags_bridges:
-        reg_neig = it.neighborhood(zigzag_regions)
+        graph.add_node(apendix + str(i.name))
+        pos_zigzag_nodes.update({apendix + str(i.name): new_center})
+    if not b_regions:
+        reg_neig = it.neighborhood(a_regions, ends=ends, path_radius=path_radius)
     else:
-        reg_neig, _, comb_neig = it.neighborhood(zigzag_regions, zigzags_bridges)
-        for j in zigzags_bridges:
+        reg_neig, _, comb_neig = it.neighborhood(
+            a_regions, b_regions, ends, path_radius=path_radius
+        )
+        for j in b_regions:
             new_center = j.center
-            graph.add_node("b" + str(j.name))
-            pos_zigzag_nodes.update({"b" + str(j.name): new_center})
+            graph.add_node(apendix + str(j.name))
+            pos_zigzag_nodes.update({apendix + str(j.name): new_center})
         for ligacao in comb_neig:
-            graph.add_edge("z" + str(ligacao[0]), "b" + str(ligacao[1]), weight=2)
+            graph.add_edge(
+                apendix + str(ligacao[0]), apendix + str(ligacao[1]), weight=2
+            )
     for ligacao in reg_neig:
-        graph.add_edge("z" + str(ligacao[0]), "z" + str(ligacao[1]), weight=1)
+        graph.add_edge(apendix + str(ligacao[0]), apendix + str(ligacao[1]), weight=1)
     return graph, pos_zigzag_nodes
 
 

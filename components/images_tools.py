@@ -1,6 +1,7 @@
 from __future__ import annotations
 import copy
 import itertools
+from math import e
 import random
 import cv2
 import numpy as np
@@ -419,19 +420,21 @@ def individual_routes(layer: Layer, folders: System_Paths):
                     )
         folders.load_zigzags_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
-            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
-                if (
-                    hasattr(isl.zigzags.regions[0], "route")
-                    and len(isl.zigzags.regions[0].route) > 0
-                ):
-                    # regions_imgs.append(
-                    #     sum_imgs_colored(
-                    #         [reg.route for reg in isl.zigzags.regions], limited=True
-                    #     ).astype(np.uint16)
-                    #     * 101
-                    # )
-                    aaaa = sum_imgs_colored([x.route for x in isl.zigzags.regions])
-                    regions_imgs.append(aaaa * 101)
+            if (
+                hasattr(isl.zigzags, "internal_islands")
+                and len(isl.zigzags.internal_islands) > 0
+            ):
+                for intisl in isl.zigzags.internal_islands:
+                    if hasattr(intisl, "l_regions") and len(intisl.l_regions) > 0:
+                        for l_reg in intisl.l_regions:
+                            if hasattr(l_reg, "route"):
+                                aaaa = l_reg.route
+                                regions_imgs.append(aaaa * 101)
+                    if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
+                        for w_reg in intisl.w_regions:
+                            if hasattr(w_reg, "route"):
+                                aaaa = w_reg.route
+                                regions_imgs.append(aaaa * 101)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
@@ -461,16 +464,9 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         )
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
-                    if (
-                        hasattr(isl.bridges.offset_bridges[0], "route")
-                        and len(isl.bridges.offset_bridges[0].route) > 0
-                    ):
-                        regions_imgs.append(
-                            sum_imgs(
-                                [reg.route for reg in isl.bridges.offset_bridges]
-                            ).astype(np.uint16)
-                            * 801
-                        )
+                    for bridg in isl.bridges.offset_bridges:
+                        if np.sum(bridg.route) > 0:
+                            regions_imgs.append(bridg.route.astype(np.uint16) * 801)
             if hasattr(isl.bridges, "cross_over_bridges"):
                 if (
                     hasattr(isl.bridges.cross_over_bridges[0], "route")
@@ -485,6 +481,88 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         )
         isl_ind_routes = sum_imgs(regions_imgs)
     return isl_ind_routes
+
+
+def individual_routes_b(layer: Layer, folders: System_Paths):
+    isl_ind_routes_b = np.zeros(layer.base_frame)
+    regions_imgs = []
+    for isl in layer.islands:
+        folders.load_thin_walls_hdf5(layer.name, isl)
+        if hasattr(isl, "thin_walls"):
+            if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+                if (
+                    hasattr(isl.thin_walls.regions[0], "route")
+                    and len(isl.thin_walls.regions[0].route) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs(
+                            [reg.route_b for reg in isl.thin_walls.regions]
+                        ).astype(np.uint16)
+                        * 501
+                    )
+        folders.load_zigzags_hdf5(layer.name, isl)
+        if hasattr(isl, "zigzags"):
+            if (
+                hasattr(isl.zigzags, "internal_islands")
+                and len(isl.zigzags.internal_islands) > 0
+            ):
+                for intisl in isl.zigzags.internal_islands:
+                    if hasattr(intisl, "l_regions") and len(intisl.l_regions) > 0:
+                        for l_reg in intisl.l_regions:
+                            if hasattr(l_reg, "route_b"):
+                                aaaa = l_reg.route_b
+                                regions_imgs.append(aaaa * 101)
+                    if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
+                        for w_reg in intisl.w_regions:
+                            if hasattr(w_reg, "route_b"):
+                                aaaa = w_reg.route_b
+                                regions_imgs.append(aaaa * 101)
+        folders.load_offsets_hdf5(layer.name, isl)
+        if hasattr(isl, "offsets"):
+            if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+                if (
+                    hasattr(isl.offsets.regions[0], "route")
+                    and len(isl.offsets.regions[0].route) > 0
+                ):
+                    regions_imgs.append(
+                        sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
+                            np.uint16
+                        )
+                        * 601
+                    )
+        folders.load_bridges_hdf5(layer.name, isl)
+        if hasattr(isl, "bridges"):
+            if hasattr(isl.bridges, "zigzag_bridges"):
+                if len(isl.bridges.zigzag_bridges) > 0:
+                    if (
+                        hasattr(isl.bridges.zigzag_bridges[0], "route_b")
+                        and len(isl.bridges.zigzag_bridges[0].route_b) > 0
+                    ):
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.route_b for reg in isl.bridges.zigzag_bridges]
+                            ).astype(np.uint16)
+                            * 701
+                        )
+            if hasattr(isl.bridges, "offset_bridges"):
+                if len(isl.bridges.offset_bridges) > 0:
+                    for bridg in isl.bridges.offset_bridges:
+                        if np.sum(bridg.route) > 0:
+                            regions_imgs.append(bridg.route.astype(np.uint16) * 801)
+            if hasattr(isl.bridges, "cross_over_bridges"):
+                if (
+                    hasattr(isl.bridges.cross_over_bridges[0], "route_b")
+                    and len(isl.bridges.cross_over_bridges[0].route_b) > 0
+                ):
+                    if len(isl.bridges.cross_over_bridges) > 0:
+                        regions_imgs.append(
+                            sum_imgs(
+                                [reg.route_b for reg in isl.bridges.cross_over_bridges]
+                            ).astype(np.uint16)
+                            * 901
+                        )
+        isl_ind_routes_b = sum_imgs(regions_imgs)
+    return isl_ind_routes_b
 
 
 def individual_trails(layer: Layer, folders: System_Paths):
@@ -506,19 +584,21 @@ def individual_trails(layer: Layer, folders: System_Paths):
                     )
         folders.load_zigzags_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
-            if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
-                if (
-                    hasattr(isl.zigzags.regions[0], "trail")
-                    and len(isl.zigzags.regions[0].trail) > 0
-                ):
-                    # regions_imgs.append(
-                    #     sum_imgs_colored(
-                    #         [reg.trail for reg in isl.zigzags.regions], limited=True
-                    #     ).astype(np.uint16)
-                    #     * 101
-                    # )
-                    aaaa = sum_imgs_colored([x.trail for x in isl.zigzags.regions])
-                    regions_imgs.append(aaaa * 101)
+            if (
+                hasattr(isl.zigzags, "internal_islands")
+                and len(isl.zigzags.internal_islands) > 0
+            ):
+                for intisl in isl.zigzags.internal_islands:
+                    if hasattr(intisl, "l_regions") and len(intisl.l_regions) > 0:
+                        for l_reg in intisl.l_regions:
+                            if hasattr(l_reg, "trail"):
+                                aaaa = l_reg.trail
+                                regions_imgs.append(aaaa * 101)
+                    if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
+                        for w_reg in intisl.w_regions:
+                            if hasattr(w_reg, "trail"):
+                                aaaa = w_reg.trail
+                                regions_imgs.append(aaaa * 101)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
@@ -548,16 +628,9 @@ def individual_trails(layer: Layer, folders: System_Paths):
                         )
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
-                    if (
-                        hasattr(isl.bridges.offset_bridges[0], "trail")
-                        and len(isl.bridges.offset_bridges[0].trail) > 0
-                    ):
-                        regions_imgs.append(
-                            sum_imgs(
-                                [reg.trail for reg in isl.bridges.offset_bridges]
-                            ).astype(np.uint16)
-                            * 801
-                        )
+                    for bridg in isl.bridges.offset_bridges:
+                        if np.sum(bridg.trail) > 0:
+                            regions_imgs.append(bridg.trail.astype(np.uint16) * 801)
             if hasattr(isl.bridges, "cross_over_bridges"):
                 if (
                     hasattr(isl.bridges.cross_over_bridges[0], "trail")
@@ -604,28 +677,82 @@ def points_to_img(pts_list, img):
     return img
 
 
-def neighborhood(group1, group2=[]):
+def neighborhood(group1, group2=[], ends=False, path_radius=10):
     neighbor_areas_g1 = []
     for area_a, area_b in itertools.combinations(group1, 2):
-        atual = np.logical_or(area_a.img, area_b.img)
+        if ends:
+            atual = np.add(
+                mt.dilation(
+                    np.logical_or(
+                        mt.hitmiss_ends_v2(area_a.route),
+                        mt.hitmiss_ends_v2(area_a.route_b),
+                    ),
+                    kernel_size=2 * path_radius,
+                ),
+                mt.dilation(
+                    np.logical_or(
+                        mt.hitmiss_ends_v2(area_b.route),
+                        mt.hitmiss_ends_v2(area_b.route_b),
+                    ),
+                    kernel_size=2 * path_radius,
+                ),
+            )
+        else:
+            atual = np.logical_or(area_a.img, area_b.img)
         _, n_labels = label(atual, return_num=True, connectivity=2)
         # print(area_a.name, area_b.name)
-        if n_labels <= 1:
+        if n_labels <= 1 or (ends and (atual == 2).any()):
             neighbor_areas_g1.append([area_a.name, area_b.name])
     if not group2:
         return neighbor_areas_g1
     else:
         neighbor_areas_g2 = []
         for area_a, area_b in itertools.combinations(group2, 2):
-            atual = np.logical_or(area_a.img, area_b.img)
+            if ends:
+                atual = np.add(
+                    mt.dilation(
+                        np.logical_or(
+                            mt.hitmiss_ends_v2(area_a.route),
+                            mt.hitmiss_ends_v2(area_a.route_b),
+                        ),
+                        kernel_size=2 * path_radius,
+                    ),
+                    mt.dilation(
+                        np.logical_or(
+                            mt.hitmiss_ends_v2(area_b.route),
+                            mt.hitmiss_ends_v2(area_b.route_b),
+                        ),
+                        kernel_size=2 * path_radius,
+                    ),
+                )
+            else:
+                atual = np.logical_or(area_a.img, area_b.img)
             _, n_labels = label(atual, return_num=True, connectivity=2)
-            if n_labels == 1 and len(area_b.route) > 0:
+            if n_labels == 1 or (ends and (atual == 2).any()):
                 neighbor_areas_g2.append([area_a.name, area_b.name])
         neighbor_areas_g1xg2 = []
         for area_a, area_b in itertools.product(group1, group2):
-            atual = np.logical_or(area_a.img, area_b.img)
+            if ends:
+                atual = np.add(
+                    mt.dilation(
+                        np.logical_or(
+                            mt.hitmiss_ends_v2(area_a.route),
+                            mt.hitmiss_ends_v2(area_a.route_b),
+                        ),
+                        kernel_size=2 * path_radius,
+                    ),
+                    mt.dilation(
+                        np.logical_or(
+                            mt.hitmiss_ends_v2(area_b.route),
+                            mt.hitmiss_ends_v2(area_b.route_b),
+                        ),
+                        kernel_size=2 * path_radius,
+                    ),
+                )
+            else:
+                atual = np.logical_or(area_a.img, area_b.img)
             _, n_labels = label(atual, return_num=True, connectivity=2)
-            if n_labels == 1 and len(area_b.route) > 0:
+            if n_labels == 1 or (ends and (atual == 2).any()):
                 neighbor_areas_g1xg2.append([area_a.name, area_b.name])
         return neighbor_areas_g1, neighbor_areas_g2, neighbor_areas_g1xg2
 
@@ -699,9 +826,10 @@ def sum_imgs_colored(imgs_list, limited=False, start_color=1) -> np.ndarray:
     """recieves a list of images and add returns a lebeled version of them"""
     if imgs_list == []:
         return []
-    all = np.zeros_like(imgs_list[0], np.uint16)
+    filtered = [img for img in imgs_list if np.any(img)]
+    all = np.zeros_like(filtered[0], np.uint16)
     color = start_color
-    for img in imgs_list:
+    for img in filtered:
         all = np.add(img.astype(np.uint16) * color, all)
         if limited and color == 4:
             color = 1
@@ -712,8 +840,9 @@ def sum_imgs_colored(imgs_list, limited=False, start_color=1) -> np.ndarray:
 
 def sum_imgs(imgs_list: List[np.ndarray]) -> np.ndarray:
     """recieves a list of images and add them up"""
-    all = np.zeros_like(imgs_list[0], np.uint16)
-    for img in imgs_list:
+    filtered = [img for img in imgs_list if np.any(img)]
+    all = np.zeros_like(filtered[0], np.uint16)
+    for img in filtered:
         all = np.add(img, all)
     return all
 

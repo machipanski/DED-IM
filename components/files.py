@@ -604,7 +604,8 @@ class System_Paths:
                     self.save_props_hdf5(base_path, isl.__dict__)
                     self.create_new_hdf5_group(f"{base_path}/internal_islands")
                     for int_isl in isl.zigzags.internal_islands:
-                        int_isl.name = f"IN_SL_{int_isl.name:03d}"
+                        if isinstance(int_isl.name, int):
+                            int_isl.name = f"IN_SL_{int_isl.name:03d}"
                         sub_island_path = f"{base_path}/internal_islands/{int_isl.name}"
                         self.create_new_hdf5_group(sub_island_path)
                         self.save_img_hdf5(f"{sub_island_path}", "img", int_isl.img)
@@ -620,28 +621,39 @@ class System_Paths:
                             )
                             self.create_new_hdf5_group(internal_island_path)
                             for l_reg in int_isl.l_regions:
-                                l_reg.name = f"LRG_REG_{l_reg.name:03d}"
+                                if isinstance(l_reg.name, int):
+                                    l_reg.name = f"LRG_REG_{l_reg.name:03d}"
                                 l_reg_path = (
                                     f"{internal_island_path}/l_regions/{l_reg.name}"
                                 )
                                 self.create_new_hdf5_group(l_reg_path)
                                 self.save_img_hdf5(l_reg_path, "img", l_reg.img)
-                                if len(l_reg.route) > 0:
+                                if np.sum(l_reg.route) > 0:
                                     self.save_img_hdf5(
                                         l_reg_path,
                                         "route",
                                         l_reg.route,
                                     )
-                                else:
-                                    self.delete_item_hdf5(f"{l_reg_path}/route")
-                                if len(l_reg.trail) > 0:
+                                    self.save_img_hdf5(
+                                        l_reg_path,
+                                        "route_b",
+                                        l_reg.route_b,
+                                    )
                                     self.save_img_hdf5(
                                         l_reg_path,
                                         "trail",
                                         l_reg.trail,
                                     )
+                                    self.save_img_hdf5(
+                                        l_reg_path,
+                                        "trail_b",
+                                        l_reg.trail_b,
+                                    )
                                 else:
+                                    self.delete_item_hdf5(f"{l_reg_path}/route")
+                                    self.delete_item_hdf5(f"{l_reg_path}/route_b")
                                     self.delete_item_hdf5(f"{l_reg_path}/trail")
+                                    self.delete_item_hdf5(f"{l_reg_path}/trail_b")
                         else:
                             self.delete_item_hdf5(
                                 f"{base_path}/internal_islands/{int_isl.name}/l_regions"
@@ -652,21 +664,40 @@ class System_Paths:
                             )
                             self.create_new_hdf5_group(internal_island_path)
                             for w_reg in int_isl.w_regions:
-                                w_reg.name = f"WEAV_REG_{w_reg.name:03d}"
+                                if isinstance(w_reg.name, int):
+                                    w_reg.name = f"WEAV_REG_{w_reg.name:03d}"
                                 w_reg_path = (
                                     f"{internal_island_path}/w_regions/{w_reg.name}"
                                 )
                                 self.create_new_hdf5_group(w_reg_path)
                                 self.save_img_hdf5(w_reg_path, "img", w_reg.img)
-                                if len(w_reg.route) > 0:
+                                if np.sum(w_reg.route) > 0:
                                     self.save_img_hdf5(
                                         w_reg_path,
                                         "route",
                                         w_reg.route,
                                     )
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "route_b",
+                                        w_reg.route_b,
+                                    )
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "trail",
+                                        w_reg.trail,
+                                    )
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "trail_b",
+                                        w_reg.trail_b,
+                                    )
                                 else:
                                     self.delete_item_hdf5(f"{w_reg_path}/route")
-                                if len(w_reg.origin) > 0:
+                                    self.delete_item_hdf5(f"{w_reg_path}/route_b")
+                                    self.delete_item_hdf5(f"{w_reg_path}/trail")
+                                    self.delete_item_hdf5(f"{w_reg_path}/trail_b")
+                                if np.sum(w_reg.origin) > 0:
                                     self.save_img_hdf5(
                                         w_reg_path,
                                         "origin",
@@ -674,14 +705,6 @@ class System_Paths:
                                     )
                                 else:
                                     self.delete_item_hdf5(f"{w_reg_path}/origin")
-                                if len(w_reg.trail) > 0:
-                                    self.save_img_hdf5(
-                                        w_reg_path,
-                                        "trail",
-                                        w_reg.trail,
-                                    )
-                                else:
-                                    self.delete_item_hdf5(f"{w_reg_path}/trail")
                         else:
                             self.delete_item_hdf5(
                                 f"{base_path}/internal_islands/{int_isl.name}/w_regions"
@@ -707,7 +730,13 @@ class System_Paths:
                             region_path, f"route", reg.route.astype(bool)
                         )
                         self.save_img_hdf5(
+                            region_path, f"route_b", reg.route_b.astype(bool)
+                        )
+                        self.save_img_hdf5(
                             region_path, f"trail", reg.trail.astype(bool)
+                        )
+                        self.save_img_hdf5(
+                            region_path, f"trail_b", reg.trail_b.astype(bool)
                         )
                         self.save_props_hdf5(region_path, reg.__dict__)
                     for reg in isl.bridges.cross_over_bridges:
@@ -958,3 +987,41 @@ class Config:
             ).__dict__
         )
         self.updateConfigs()
+
+
+def export_graph_to_graphml(
+    graph: nx.Graph,
+    filepath: str,
+    write_gexf: bool = False,
+    write_edgelist: bool = False,
+):
+    """Save a NetworkX graph in GraphML (plus optional formats).
+
+    Args:
+        graph: networkx graph object.
+        filepath: path to output file (.graphml). If folder does not exist, it is created.
+        write_gexf: also write a .gexf when True.
+        write_edgelist: also write a .edgelist CSV when True.
+
+    Returns:
+        dict with written paths.
+    """
+    outdir = os.path.dirname(filepath)
+    if outdir and not os.path.isdir(outdir):
+        os.makedirs(outdir, exist_ok=True)
+
+    nx.write_graphml(graph, filepath)
+    result = {"graphml": filepath}
+
+    base, _ = os.path.splitext(filepath)
+    if write_gexf:
+        gexf_path = f"{base}.gexf"
+        nx.write_gexf(graph, gexf_path)
+        result["gexf"] = gexf_path
+
+    if write_edgelist:
+        edgelist_path = f"{base}.edgelist"
+        nx.write_edgelist(graph, edgelist_path, data=["weight"])
+        result["edgelist"] = edgelist_path
+
+    return result

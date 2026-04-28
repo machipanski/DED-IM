@@ -178,11 +178,10 @@ class Bridge:
             print("Error: no line 2")
         return line_ci1, line_ci2
 
-    # TODO: mover para tools
     def find_center(self):
         contour = mt.detect_contours(self.img)
         contour = pt.contour_to_list(contour)
-        pt.points_center(contour)
+        self.center = pt.points_center(contour)
 
     def get_linked_offsets(self, offset_regions):
         linked_offsets = []
@@ -1529,11 +1528,21 @@ def make_zz_or_co_bridge_route(
         )
         region.reference_points_b = region.reference_points
         region.find_center()
+    ends_n = len(pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag)))
+    if ends_n > 2:
+        new_zigzag = sk.medial_axis(new_zigzag, path_radius)
+        new_zigzag, _, _ = sk.prune(new_zigzag, path_radius, iterative_prune=4)
+    region.route = new_zigzag
+
+    ends_n = len(pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag_b)))
+    if ends_n > 2:
+        new_zigzag_b = sk.medial_axis(new_zigzag_b, path_radius)
+        new_zigzag_b, _, _ = sk.prune(new_zigzag_b, path_radius, iterative_prune=4)
     region.route = new_zigzag
     region.route_b = new_zigzag_b
-    # aaaa = it.sum_imgs([region.route, line_ci1,line_ci2,eroded, it.points_to_img(pts_trns_ci1, np.zeros_like(eroded)), region.img, lines_limitrofes, origin_axis, region.origin])
     region.trail = mt.dilation(region.route, kernel_size=path_radius)
     region.trail_b = mt.dilation(region.route_b, kernel_size=path_radius)
+    # aaaa = it.sum_imgs([region.route, line_ci1,line_ci2,eroded, it.points_to_img(pts_trns_ci1, np.zeros_like(eroded)), region.img, lines_limitrofes, origin_axis, region.origin])
     return region
 
 

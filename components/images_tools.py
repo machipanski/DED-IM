@@ -480,6 +480,27 @@ def individual_routes(layer: Layer, folders: System_Paths):
                             * 901
                         )
         isl_ind_routes = sum_imgs(regions_imgs)
+    aaaaaa = sum_imgs_colored(
+        [
+            isl.zigzags.internal_islands[1].w_regions[1].route,
+            isl.zigzags.internal_islands[1].w_regions[0].route,
+            isl.bridges.zigzag_bridges[1].route_b,
+            isl.zigzags.internal_islands[0].w_regions[1].route,
+            isl.zigzags.internal_islands[0].w_regions[0].route_b,
+            isl.zigzags.internal_islands[0].l_regions[0].route,
+            isl.zigzags.internal_islands[0].w_regions[5].route,
+            isl.zigzags.internal_islands[0].w_regions[4].route_b,
+            isl.bridges.zigzag_bridges[0].route,
+            isl.zigzags.internal_islands[2].w_regions[2].route,
+            isl.zigzags.internal_islands[2].w_regions[1].route,
+            isl.zigzags.internal_islands[2].w_regions[0].route_b,
+            isl.zigzags.internal_islands[0].w_regions[2].route,
+            isl.zigzags.internal_islands[0].w_regions[3].route_b,
+        ]
+    )
+    import matplotlib.pyplot as plt
+
+    plt.imsave("sequence.png", aaaaaa, vmin=0, vmax=1000)
     return isl_ind_routes
 
 
@@ -754,6 +775,95 @@ def neighborhood(group1, group2=[], ends=False, path_radius=10):
             _, n_labels = label(atual, return_num=True, connectivity=2)
             if n_labels == 1 or (ends and (atual == 2).any()):
                 neighbor_areas_g1xg2.append([area_a.name, area_b.name])
+        return neighbor_areas_g1, neighbor_areas_g2, neighbor_areas_g1xg2
+
+
+def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2=""):
+
+    def check_neighbors(g1, g2, n_list):
+        if not g2:
+            iteration = list(itertools.combinations(g1, 2))
+        else:
+            iteration = list(itertools.product(g1, g2))
+        for area_a, area_b in iteration:
+            aa = np.add(
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_a.route),
+                    kernel_size=path_radius * 2,
+                ),
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_b.route),
+                    kernel_size=path_radius * 2,
+                ),
+            )
+            if (aa == 2).any():
+                n_list.append(
+                    [
+                        apendix1 + area_a.name + "_route",
+                        apendix2 + area_b.name + "_route",
+                    ]
+                )
+            ab = np.add(
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_a.route),
+                    kernel_size=path_radius * 2,
+                ),
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_b.route_b),
+                    kernel_size=path_radius * 2,
+                ),
+            )
+            if (ab == 2).any():
+                n_list.append(
+                    [
+                        apendix1 + area_a.name + "_route",
+                        apendix2 + area_b.name + "_route_b",
+                    ]
+                )
+            ba = np.add(
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_a.route_b),
+                    kernel_size=path_radius * 2,
+                ),
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_b.route),
+                    kernel_size=path_radius * 2,
+                ),
+            )
+            if (ba == 2).any():
+                n_list.append(
+                    [
+                        apendix1 + area_a.name + "_route_b",
+                        apendix2 + area_b.name + "_route",
+                    ]
+                )
+            bb = np.add(
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_a.route_b),
+                    kernel_size=path_radius * 2,
+                ),
+                mt.dilation(
+                    mt.hitmiss_ends_v2(area_b.route_b),
+                    kernel_size=path_radius * 2,
+                ),
+            )
+            if (bb == 2).any():
+                n_list.append(
+                    [
+                        apendix1 + area_a.name + "_route_b",
+                        apendix2 + area_b.name + "_route_b",
+                    ]
+                )
+        return n_list
+
+    if not group2:
+        apendix2 = apendix1
+        neighbor_areas_g1 = check_neighbors(group1, [], [])
+        return neighbor_areas_g1
+    else:
+        neighbor_areas_g1 = check_neighbors(group1, [], [])
+        neighbor_areas_g2 = check_neighbors(group2, [], [])
+        neighbor_areas_g1xg2 = check_neighbors(group1, group2, [])
         return neighbor_areas_g1, neighbor_areas_g2, neighbor_areas_g1xg2
 
 

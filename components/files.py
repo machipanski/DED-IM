@@ -142,7 +142,8 @@ class System_Paths:
         try:
             local = f.get(path)
             img = np.array(local[name])
-        except:
+        except Exception as e:
+            print(f"Error occurred while loading image: {e}")
             img = []
         finally:
             f.close()
@@ -900,6 +901,40 @@ class System_Paths:
         os.chdir(self.home)
         return list_layers
 
+    def save_graph(self, graph: nx.Graph, filename: str):
+        """Wrapper to save a graph in multiple formats."""
+        try:
+            path = self.output + "/" + filename
+
+            outdir = os.path.dirname(path)
+            if outdir and not os.path.isdir(outdir):
+                os.makedirs(outdir, exist_ok=True)
+            # nx.write_graphml(graph, path)
+            # result = {"graphml": path}
+            base, _ = os.path.splitext(path)
+            gexf_path = f"{base}.gexf"
+            a = nx.write_gexf(graph, gexf_path)
+            print(f"Saved gexf: {path}")
+        except Exception as e:
+            print(f"Failed saving G1 graph exports: {e}")
+        return
+
+    def load_graph(self, filename: str):
+        """Wrapper to save a graph in multiple formats."""
+        try:
+            dir_before = os.getcwd()
+            os.chdir(self.output)
+            G1 = nx.read_gexf(filename)
+            print("✅ GEXF carregado com sucesso!")
+            print(f"Nós: {G1.number_of_nodes()}")
+            print(f"Arestas: {G1.number_of_edges()}")
+            print("Primeiros nós:", list(G1.nodes(data=True))[:3])
+        except Exception as e:
+            print(f"❌ Erro: {e}")
+        finally:
+            os.chdir(dir_before)
+        return G1
+
 
 @dataclass
 class WeldingProgram:
@@ -987,41 +1022,3 @@ class Config:
             ).__dict__
         )
         self.updateConfigs()
-
-
-def export_graph_to_graphml(
-    graph: nx.Graph,
-    filepath: str,
-    write_gexf: bool = False,
-    write_edgelist: bool = False,
-):
-    """Save a NetworkX graph in GraphML (plus optional formats).
-
-    Args:
-        graph: networkx graph object.
-        filepath: path to output file (.graphml). If folder does not exist, it is created.
-        write_gexf: also write a .gexf when True.
-        write_edgelist: also write a .edgelist CSV when True.
-
-    Returns:
-        dict with written paths.
-    """
-    outdir = os.path.dirname(filepath)
-    if outdir and not os.path.isdir(outdir):
-        os.makedirs(outdir, exist_ok=True)
-
-    nx.write_graphml(graph, filepath)
-    result = {"graphml": filepath}
-
-    base, _ = os.path.splitext(filepath)
-    if write_gexf:
-        gexf_path = f"{base}.gexf"
-        nx.write_gexf(graph, gexf_path)
-        result["gexf"] = gexf_path
-
-    if write_edgelist:
-        edgelist_path = f"{base}.edgelist"
-        nx.write_edgelist(graph, edgelist_path, data=["weight"])
-        result["edgelist"] = edgelist_path
-
-    return result

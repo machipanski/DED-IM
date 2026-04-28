@@ -1,8 +1,10 @@
 from __future__ import annotations
+from hmac import new
 import itertools
 import math
 import random
 import datetime
+import re
 import numpy as np
 import math
 import copy
@@ -19,6 +21,7 @@ from components import images_tools as it
 from components import skeleton as sk
 import os
 from skimage.feature import corner_harris, corner_peaks
+import pulp
 
 if TYPE_CHECKING:
     from components.large_areas import ZigZag
@@ -1246,7 +1249,7 @@ def make_offset_graph(filtered_regions, regs_touching):
     return graph
 
 
-def make_regions_graph(
+def make_regions_graph_by_img(
     a_regions, b_regions, base_frame, apendix="", ends=False, path_radius=None
 ):
     graph = nx.Graph()
@@ -1271,6 +1274,167 @@ def make_regions_graph(
             )
     for ligacao in reg_neig:
         graph.add_edge(apendix + str(ligacao[0]), apendix + str(ligacao[1]), weight=1)
+    return graph, pos_zigzag_nodes
+
+
+def find_distances(ligacao, regions_list, base_frame):
+    import re
+
+    """Extract region name by trying to match with actual region names in the list."""
+
+    def extract_region_name_and_route_type(elem, regions_list):
+        match = re.match(r"(.+?)(_route_b|_route)$", elem)
+        if not match:
+            raise ValueError(f"Invalid ligacao format: {elem}")
+
+        prefix_and_name = match.group(1)
+        route_type = "route_b" if match.group(2) == "_route_b" else "route"
+
+        # Try to find the region name by matching with actual region names in the list
+        # Start from the longest possible match and work backwards
+        region_names = [reg.name for reg in regions_list if hasattr(reg, "name")]
+
+        # Sort by length descending to match longest first
+        region_names_sorted = sorted(region_names, key=len, reverse=True)
+
+        for region_name in region_names_sorted:
+            # Check if the ligacao string ends with the region name (before route/route_b)
+            if prefix_and_name.endswith(region_name):
+                return region_name, route_type
+
+        raise ValueError(
+            f"Could not extract region name from '{ligacao}'. "
+            f"Available regions: {region_names}"
+        )
+
+    # Extract region names and route types
+    region_name_a, route_type_a = extract_region_name_and_route_type(
+        ligacao[0], regions_list
+    )
+    region_name_b, route_type_b = extract_region_name_and_route_type(
+        ligacao[1], regions_list
+    )
+
+    # Find region A in list
+    region_a = None
+    for reg in regions_list:
+        if hasattr(reg, "name") and reg.name == region_name_a:
+            region_a = reg
+            break
+
+    if region_a is None:
+        raise ValueError(f"Region {region_name_a} not found in regions_list")
+
+    if not hasattr(region_a, route_type_a):
+        raise ValueError(
+            f"Region {region_name_a} doesn't have attribute '{route_type_a}'"
+        )
+
+    route_img_a = getattr(region_a, route_type_a)
+    route_points_a = pt.img_to_points(mt.hitmiss_ends_v2(route_img_a))
+
+    # Find region B in list
+    region_b = None
+    for reg in regions_list:
+        if hasattr(reg, "name") and reg.name == region_name_b:
+            region_b = reg
+            break
+
+    if region_b is None:
+        raise ValueError(f"Region {region_name_b} not found in regions_list")
+
+    if not hasattr(region_b, route_type_b):
+        raise ValueError(
+            f"Region {region_name_b} doesn't have attribute '{route_type_b}'"
+        )
+
+    route_img_b = getattr(region_b, route_type_b)
+    route_points_b = pt.img_to_points(mt.hitmiss_ends_v2(route_img_b))
+
+    # Find closest points between the two routes
+    closest_pair = pt.closest_points(route_points_a + route_points_b)
+    point_a, point_b = closest_pair[0], closest_pair[1]
+
+    # Calculate distance
+    distance = pt.distance_pts(point_a, point_b)
+
+    # Draw line connecting the closest points
+    link_img = it.draw_line(np.zeros(base_frame), point_a, point_b)
+
+    aaaa = it.sum_imgs([route_img_a, route_img_b, link_img * 2])
+    return link_img, distance, [point_a, point_b]
+
+
+def make_regions_graph_by_routes(
+    a_regions, b_regions, base_frame, apendix1="", apendix2="", path_radius=None
+):
+    graph = nx.Graph()
+    pos_zigzag_nodes = {}
+    for i in a_regions:
+        i.find_center()
+        graph.add_node(
+            apendix1 + str(i.name) + "_route",
+            int_island=apendix1,
+            x=i.center[1],
+            y=base_frame[0] - i.center[0],
+            region_name=apendix1 + str(i.name),
+        )
+        graph.add_node(
+            apendix1 + str(i.name) + "_route_b",
+            int_island=apendix1,
+            x=i.center[1],
+            y=base_frame[0] - i.center[0],
+            region_name=apendix1 + str(i.name),
+        )
+
+    if not b_regions:
+        reg_neig = it.neighborhood_routes(
+            a_regions, path_radius=path_radius, apendix1=apendix1
+        )
+    else:
+        reg_neig, _, comb_neig = it.neighborhood_routes(
+            a_regions,
+            b_regions,
+            path_radius=path_radius,
+            apendix1=apendix1,
+            apendix2=apendix2,
+        )
+        for j in b_regions:
+            j.find_center()
+            graph.add_node(
+                apendix2 + str(j.name) + "_route",
+                int_island=apendix2,
+                x=j.center[1],
+                y=base_frame[0] - j.center[0],
+                region_name=apendix2 + str(j.name),
+            )
+            graph.add_node(
+                apendix2 + str(j.name) + "_route_b",
+                int_island=apendix2,
+                x=j.center[1],
+                y=base_frame[0] - j.center[0],
+                region_name=apendix2 + str(j.name),
+            )
+        for ligacao in comb_neig:
+            link_img, link_distance, link_points = find_distances(
+                ligacao, a_regions + b_regions, base_frame
+            )
+            graph.add_edge(
+                str(ligacao[0]),
+                str(ligacao[1]),
+                weight=link_distance,
+                link=str(link_points),
+            )
+    for ligacao in reg_neig:
+        link_img, link_distance, link_points = find_distances(
+            ligacao, a_regions + a_regions, base_frame
+        )
+        graph.add_edge(
+            str(ligacao[0]),
+            str(ligacao[1]),
+            weight=link_distance,
+            link=str(link_points),
+        )
     return graph, pos_zigzag_nodes
 
 
@@ -2185,3 +2349,566 @@ def rotate_if_last_is_closest(points):
         rotated = [last] + points[:-1]
         return rotated
     return points
+
+
+def mst_by_lp(regions_graph):
+    """
+    regions_graph: grafo NetworkX com nós no formato "R1_a", "R1_b", etc.
+                   As arestas devem ter um atributo de peso (default 'weight').
+    reg_list: lista de strings com os nomes das regiões (ex: ['R1','R2',...])
+
+    Retorna: (custo, escolha, arestas_da_arvore)
+        escolha: dict {regiao: 'a' ou 'b'}
+        arestas_da_arvore: lista de tuplas (u, v) que formam a MST.
+        Se infactível, retorna (None, None, None).
+    """
+
+    import re
+
+    components = list(nx.connected_components(regions_graph))
+    print(components)
+    subgrafos = [regions_graph.subgraph(c).copy() for c in components]
+
+    for subgraph in subgrafos:
+        reg_set = set()
+        for node in subgraph.nodes():
+            if node.endswith("_route_b"):
+                reg_set.add(node[:-8])
+            elif node.endswith("_route"):
+                reg_set.add(node[:-6])
+        reg_list = sorted(reg_set)
+
+        # Mapeamentos
+        node_to_region = {}
+        node_to_porta = {}
+        for r in reg_list:
+            na = f"{r}_route"
+            nb = f"{r}_route_b"
+            node_to_region[na] = r
+            node_to_porta[na] = "_route"
+            node_to_region[nb] = r
+            node_to_porta[nb] = "_route_b"
+
+        prob = pulp.LpProblem("MST_Portas_SingleFlow", pulp.LpMinimize)
+
+        # Variáveis de escolha: x[r] = 1 se '_route', 0 se '_route_b'
+        x = {r: pulp.LpVariable(f"x_{r}", cat="Binary") for r in reg_list}
+
+        # Variáveis de arestas reais
+        y = {}
+        for u, v in subgraph.edges():
+            edge = tuple(sorted((u, v)))
+            if edge not in y:
+                y[edge] = pulp.LpVariable(f"y_{edge[0]}_{edge[1]}", cat="Binary")
+
+        # Arestas artificiais do super_root para cada porta
+        SUPER = "SUPER_ROOT"
+        art_edges = []
+        for r in reg_list:
+            na = f"{r}_route"
+            nb = f"{r}_route_b"
+            edge_a = tuple(sorted((SUPER, na)))
+            edge_b = tuple(sorted((SUPER, nb)))
+            y[edge_a] = pulp.LpVariable(f"y_art_{na}", cat="Binary")
+            y[edge_b] = pulp.LpVariable(f"y_art_{nb}", cat="Binary")
+            art_edges.append(edge_a)
+            art_edges.append(edge_b)
+            # Só pode usar aresta artificial se a porta correspondente for a escolhida
+            prob += y[edge_a] <= x[r], f"art_{na}_forca"
+            prob += y[edge_b] <= (1 - x[r]), f"art_{nb}_forca"
+
+        # Exatamente uma aresta artificial deve ser usada (define a raiz da árvore)
+        prob += pulp.lpSum(y[e] for e in art_edges) == 1, "uma_raiz"
+
+        # Restrição: nós não escolhidos não podem ter arestas reais incidentes
+        for r in reg_list:
+            na = f"{r}_route"
+            nb = f"{r}_route_b"
+            for u, v in subgraph.edges(na):
+                edge = tuple(sorted((u, v)))
+                prob += y[edge] <= x[r], f"real_{na}_{edge}"
+            for u, v in subgraph.edges(nb):
+                edge = tuple(sorted((u, v)))
+                prob += y[edge] <= (1 - x[r]), f"real_{nb}_{edge}"
+
+        # ---------- Single-Commodity Flow ----------
+        # Variáveis de fluxo: fluxo[(u,v)] contínuo >=0
+        fluxo = {}
+        for edge in y:
+            fluxo[edge] = pulp.LpVariable(f"f_{edge[0]}_{edge[1]}", lowBound=0)
+
+        # O SUPER produz n-1 unidades de fluxo total (uma para cada região exceto a que serve de raiz)
+        # Mas como a raiz é uma das regiões, o fluxo total saindo do SUPER deve ser n-1.
+        outflow_SUPER = pulp.lpSum(fluxo[e] for e in art_edges if e[0] == SUPER)
+        n = len(reg_list)
+        prob += outflow_SUPER == n - 1, "fluxo_total_super"
+
+        # Para cada nó real v, balanço de fluxo:
+        # - Se v for a porta escolhida como raiz (conectada ao SUPER), ela recebe fluxo do SUPER e distribui.
+        # - Se v for uma porta escolhida mas não raiz, ela deve consumir 1 unidade.
+        # - Se v não for escolhida, não pode ter fluxo (já garantido pelas arestas y).
+        for v in subgraph.nodes():
+            reg_v = node_to_region[v]
+            porta_v = node_to_porta[v]
+
+            inflow = pulp.lpSum(
+                fluxo[tuple(sorted((u, v)))] for u in subgraph.neighbors(v)
+            )
+            outflow = pulp.lpSum(
+                fluxo[tuple(sorted((v, w)))] for w in subgraph.neighbors(v)
+            )
+            # Inclui fluxo de/para SUPER
+            for edge in art_edges:
+                if v in edge:
+                    if edge[0] == SUPER:  # SUPER -> v
+                        inflow += fluxo[edge]
+                    else:  # v -> SUPER (não deve ocorrer porque o fluxo só sai do SUPER)
+                        outflow += fluxo[edge]
+
+            # Determina se esta porta é a escolhida
+            if porta_v == "_route":
+                escolhida = x[reg_v]
+            else:
+                escolhida = 1 - x[reg_v]
+
+            # Se for a porta raiz, ela está conectada ao SUPER e portanto não consome fluxo (balanço = + fluxo recebido do SUPER?)
+            # Na verdade, a raiz recebe fluxo do SUPER e distribui para os outros; seu balanço líquido é inflow - outflow = - (n-1) ?
+            # Precisamos identificar qual nó está ligado ao SUPER. Podemos usar uma variável auxiliar:
+            # raiz_escolhida[v] = 1 se a aresta artificial (SUPER, v) for usada.
+            raiz_usada = pulp.LpVariable(f"raiz_{v}", cat="Binary")
+            # Relaciona com y[edge] do SUPER->v
+            for edge in art_edges:
+                if edge[1] == v and edge[0] == SUPER:
+                    prob += raiz_usada == y[edge]
+            # Agora o balanço:
+            # Se raiz_usada = 1: inflow - outflow = -(n-1) + 1? Não, a raiz não consome, apenas repassa.
+            # O SUPER já injetou n-1. Para cada outro nó consumidor, o balanço é +1 (consumo).
+            # Vamos usar a formulação padrão: cada nó (exceto a raiz) consome 1 unidade.
+            # Portanto: inflow - outflow = 1 se for consumidor (escolhida=1 e raiz_usada=0)
+            #            inflow - outflow = -(n-1) se for a raiz (escolhida=1 e raiz_usada=1)
+            #            inflow - outflow = 0 caso contrário.
+
+            # Simplificando: a raiz não precisa de balanço especial se tratarmos o SUPER como fonte única.
+            # O SUPER gera n-1. Cada nó real que é escolhido (exceto a raiz) deve consumir 1.
+            # Portanto, defina delta[v] = 1 se for consumidor, -(n-1) se for raiz, 0 cc.
+
+            # Vamos construir a expressão do balanço:
+            balanco = inflow - outflow
+
+            # Coeficientes para as três situações
+            # Situação 1: nó é a raiz -> balanco = -(n-1)
+            prob += balanco >= -(n - 1) * raiz_usada, f"bal_raiz_low_{v}"
+            prob += (
+                balanco <= -(n - 1) * raiz_usada + (1 - raiz_usada) * 1000,
+                f"bal_raiz_up_{v}",
+            )
+
+            # Situação 2: nó é consumidor (escolhida=1 e não raiz) -> balanco = 1
+            consumidor = escolhida - raiz_usada  # será 1 se for escolhida e não raiz
+            prob += balanco >= 1 * consumidor, f"bal_cons_low_{v}"
+            prob += (
+                balanco <= 1 * consumidor + (1 - consumidor) * 1000,
+                f"bal_cons_up_{v}",
+            )
+
+            # Quando não é nem raiz nem consumidor (escolhida=0), o balanco deve ser 0, mas isso já é forçado pelas restrições acima?
+            # Para garantir, podemos adicionar:
+            # Se escolhida = 0, então balanco = 0.
+            prob += balanco <= 1000 * escolhida, f"bal_zero_up_{v}"
+            prob += balanco >= -1000 * escolhida, f"bal_zero_low_{v}"
+
+        # Capacidade: fluxo só pode passar se aresta está na árvore
+        for edge in y:
+            prob += fluxo[edge] <= n * y[edge], f"cap_{edge}"
+
+        # Função objetivo: peso das arestas reais (artificiais têm peso 0)
+        custo_total = pulp.lpSum(
+            subgraph[u][v].get("weight", 1) * y[tuple(sorted((u, v)))]
+            for u, v in subgraph.edges()
+        )
+        prob += custo_total
+
+        # Resolve
+        solver = pulp.PULP_CBC_CMD(msg=True)
+        prob.solve(solver)
+
+        # Extrai solução
+        escolha = {}
+        for r in reg_list:
+            escolha[r] = "_route" if pulp.value(x[r]) > 0.5 else "_route_b"
+
+        arestas_arvore = []
+        for edge, var in y.items():
+            if edge[0] != SUPER and edge[1] != SUPER and pulp.value(var) > 0.5:
+                arestas_arvore.append(edge)
+
+        custo = pulp.value(prob.objective)
+    return custo, escolha, arestas_arvore
+
+
+def verifica_combinacao_portas(subgraph, reg_list, max_n=15):
+    """Testa exaustivamente se existe alguma escolha de portas que torne o subgrafo conexo."""
+    from itertools import product
+
+    n = len(reg_list)
+    if n > max_n:
+        print(
+            f"Número de regiões ({n}) excede {max_n}. Não é possível testar todas as combinações."
+        )
+        return None
+    for combo in product(["_route", "_route_b"], repeat=n):
+        escolha = dict(zip(reg_list, combo))
+        sub = nx.Graph()
+        for r, p in escolha.items():
+            sub.add_node(f"{r}{p}")
+        for u, v, data in subgraph.edges(data=True):
+            if u in sub and v in sub:
+                sub.add_edge(u, v, **data)
+        if nx.is_connected(sub):
+            return True
+    return False
+
+
+def obter_regiao(no):
+    """Extrai nome da região do nó (ex: 'R1_caminho1' -> 'R1')"""
+    return no.split("_route")[0]
+
+
+def encontrar_caminho_dp(regions_graph, max_regioes=15):
+    """DP com bitmasking para performance"""
+    components = list(nx.connected_components(regions_graph))
+    print(components)
+    subgrafos = [regions_graph.subgraph(c).copy() for c in components]
+
+    for subgraph in subgrafos:
+        regioes = set()
+        for node in subgraph.nodes():
+            if node.endswith("_route_b"):
+                regioes.add(node[:-8])
+            elif node.endswith("_route"):
+                regioes.add(node[:-6])
+        regioes = sorted(regioes)
+        n_regioes = len(regioes)
+
+        regiao_id = {reg: i for i, reg in enumerate(regioes)}
+
+        # dp[no][mascara] = melhor caminho
+        memo = {}
+
+        def dp(atual, mascara):
+            if bin(mascara).count("1") == n_regioes:
+                return [atual]
+
+            chave = (atual, mascara)
+            if chave in memo:
+                return memo[chave]
+
+            melhor_caminho = None
+            for proximo in subgraph.neighbors(atual):
+                reg_id = regiao_id[obter_regiao(proximo)]
+                if (mascara & (1 << reg_id)) == 0:
+                    caminho_parcial = dp(proximo, mascara | (1 << reg_id))
+                    if caminho_parcial:
+                        if melhor_caminho is None or len(caminho_parcial) < len(
+                            melhor_caminho
+                        ):
+                            melhor_caminho = [atual] + caminho_parcial
+
+            memo[chave] = melhor_caminho
+            return melhor_caminho
+
+        # Testa todos os inícios
+        for inicio in subgraph.nodes():
+            caminho = dp(inicio, 0)
+            if caminho:
+                return caminho
+    return None
+
+
+def sequence_from_botleneck_to_leaves(graph: nx.Graph, folders: System_Paths):
+
+    def filtrar_nos_finais(G, no_inicial, nos_com_um_vizinho):
+        """
+        BFS no NetworkX: remove nós da lista que compartilham 'region_name'
+        com nós alcançados do grafo.
+        """
+        from collections import deque
+
+        # Copia a lista para não modificar original
+        nos_finais = nos_com_um_vizinho.copy()
+
+        # BFS com deque
+        fila = deque([no_inicial])
+        visitados = {no_inicial}
+
+        eliminar = []
+        regions_already_removed = []
+
+        nivel = 0
+        while fila:
+            nivel_size = len(fila)
+            nivel += 1
+            print(f"Nível {nivel}: {nivel_size} nós")
+
+            # Processa todos os nós deste nível
+            for _ in range(nivel_size):
+                no_atual = fila.popleft()
+
+                # Novos vizinhos diretos
+                for vizinho in G.neighbors(no_atual):
+                    if vizinho not in visitados:
+                        visitados.add(vizinho)
+                        fila.append(vizinho)
+                        region_name_novo = G.nodes[vizinho].get("region_name", "")
+                        para_remover = []
+                        for no_final in nos_finais:
+                            if (
+                                no_final != vizinho
+                                and G.nodes[no_final].get("region_name", "")
+                                == region_name_novo
+                                and region_name_novo not in regions_already_removed
+                            ):
+                                para_remover.append(no_final)
+                                regions_already_removed.append(region_name_novo)
+                        for no_remover in para_remover:
+                            nos_finais.remove(no_remover)
+                            print(
+                                f"  ✓ Removido '{no_remover}' (region_name: '{region_name_novo}') "
+                                f"por vizinho '{vizinho}'"
+                            )
+                            eliminar.append(no_remover)
+        return eliminar
+
+    def filtrar_nos_no_meio(G, no_inicial):
+        """
+        Busca nós que tenham vizinhos entre si com o mesmo region_name.
+        Quando um nó possui dois ou mais vizinhos com region_name igual,
+        remove o vizinho mais distante de no_inicial.
+        Retorna a lista de subgrafos dos componentes conexos resultantes.
+        """
+        distances = nx.single_source_dijkstra_path_length(
+            G, no_inicial, weight="weight"
+        )
+        remover = set()
+
+        for no in list(G.nodes()):
+            grupos_por_region = {}
+            for vizinho in G.neighbors(no):
+                region = G.nodes[vizinho].get("region_name", "")
+                grupos_por_region.setdefault(region, []).append(vizinho)
+
+            for grupo in grupos_por_region.values():
+                if len(grupo) > 1:
+                    mais_distante = max(
+                        grupo, key=lambda n: distances.get(n, float("inf"))
+                    )
+                    remover.add(mais_distante)
+
+        G.remove_nodes_from(remover)
+        return G
+
+    graph_copy = graph.copy()
+    components = list(nx.connected_components(graph_copy))
+    subgraphs = [graph_copy.subgraph(component).copy() for component in components]
+    new_subgraphs = []
+    for subgraph in subgraphs:
+        centrality = nx.betweenness_centrality(subgraph)
+        # highest_value = max(centrality.values())
+        botleneck_root = max(centrality, key=centrality.get)
+        botleneck_region_name = subgraph.nodes[botleneck_root].get(
+            "region_name", "unknown"
+        )
+        nodes_with_same_region = list(
+            filter(
+                lambda x: x != botleneck_root,
+                [
+                    node
+                    for node in subgraph.nodes()
+                    if subgraph.nodes[node].get("region_name") == botleneck_region_name
+                ],
+            )
+        )
+        subgraph.remove_nodes_from(nodes_with_same_region)
+        mst = no_repeating_prim_mst(subgraph, start_node=botleneck_root)
+        folders.save_graph(mst, "mst_before")
+        # mst = nx.minimum_spanning_tree(subgraph)
+        # folders.save_graph(mst, "mst_before")
+        # nodes_to_remove = ["ss"]
+        # count = 0
+        # while len(nodes_to_remove) > 0 and count < 10:
+        #     nodes_with_one_neighbor = [
+        #         node for node, degree in mst.degree() if degree == 1
+        #     ]
+        #     nodes_to_remove = filtrar_nos_finais(
+        #         mst, botleneck_root, nodes_with_one_neighbor
+        #     )
+        #     mst.remove_nodes_from(nodes_to_remove)
+        #     subgraph.remove_nodes_from(nodes_to_remove)
+        #     folders.save_graph(mst, f"mst_after_{count}")
+        #     folders.save_graph(subgraph, f"full_after")
+        #     count += 1
+        # mst = filtrar_nos_no_meio(mst, botleneck_root)
+
+        # eliminar nós com mais de 2 conexões, mantendo apenas a de maior e menor betweenness
+        # centrality = nx.betweenness_centrality(mst)
+        bifurcation_nodes = [node for node in mst.nodes() if mst.degree(node) > 2]
+        for node in bifurcation_nodes:
+            neighbors = list(mst.neighbors(node))
+            neighbor_betweenness = {n: centrality.get(n, 0) for n in neighbors}
+            max_bt_neighbor = max(neighbor_betweenness, key=neighbor_betweenness.get)
+            min_bt_neighbor = min(neighbor_betweenness, key=neighbor_betweenness.get)
+            print(
+                f"Keep edges to: {max_bt_neighbor} (max BT) and {min_bt_neighbor} (min BT)"
+            )
+            to_remove = [
+                n for n in neighbors if n not in [max_bt_neighbor, min_bt_neighbor]
+            ]
+            for n in to_remove:
+                if mst.has_edge(node, n):
+                    mst.remove_edge(node, n)
+        new_subgraphs.append(mst)
+    new_graph = nx.compose_all(new_subgraphs)
+    folders.save_graph(new_graph, "separados")
+    return new_graph
+
+
+def combine_routes_and_draw_links(new_graph, island, base_frame):
+    """
+    Combina as imagens de route/route_b dos nós do new_graph em uma única matriz.
+    Depois, para cada aresta, desenha linhas na imagem combinada com base na propriedade "link".
+    """
+    import re
+
+    def parse_node_label(node_label):
+        """Retorna (region_name, route_attr) a partir do label do nó."""
+        if not isinstance(node_label, str):
+            node_label = str(node_label)
+
+        match = re.match(r"(.+?)(_route_b|_route)$", node_label)
+        if not match:
+            return None, None
+
+        prefix_and_name = match.group(1)
+        route_attr = "route_b" if match.group(2) == "_route_b" else "route"
+
+        # Quebra por prefixos conhecidos
+        if prefix_and_name.startswith("IN_SL"):
+            slmatch = re.match(r"(IN_SL_.+?)(_)(.+?)$", prefix_and_name)
+            adress = [slmatch.group(1), slmatch.group(3)]
+        else:
+            adress = [prefix_and_name]
+        return adress, route_attr
+
+    combined_img = np.zeros(base_frame, dtype=np.uint8)
+
+    # Combina as imagens dos nós
+    for node in new_graph.nodes():
+        node_data = new_graph.nodes[node]
+        label = node_data.get("label", node)
+        adress, route_attr = parse_node_label(label)
+
+        # Procura a região na estrutura island
+        region = None
+        if adress[0].startswith("ZB"):
+            # Procura entre zigzag bridges
+            for zb in island.bridges.zigzag_bridges:
+                if hasattr(zb, "name") and zb.name == adress[0]:
+                    region = zb
+                    break
+        else:
+            # Procura em offsets, zigzags, etc.
+            for subisland in island.zigzags.internal_islands:
+                if hasattr(subisland, "name") and subisland.name == adress[0]:
+                    for reg in subisland.l_regions + subisland.w_regions:
+                        if hasattr(reg, "name") and reg.name == adress[1]:
+                            region = reg
+                            break
+                if region:
+                    break
+
+        if region is None:
+            continue
+
+        if hasattr(region, route_attr):
+            route_img = getattr(region, route_attr)
+            combined_img = np.logical_or(combined_img, route_img.astype(bool))
+
+    # Desenha linhas para as arestas
+    for u, v, data in new_graph.edges(data=True):
+        link_str = data.get("link", "")
+        if link_str:
+            try:
+                # Assume link_str é uma string como "[[y1,x1], [y2,x2]]"
+                points = eval(link_str)
+                if isinstance(points, list) and len(points) == 2:
+                    p1, p2 = points
+                    combined_img = it.draw_line(combined_img, p1, p2)
+            except (ValueError, SyntaxError):
+                print(f"Erro ao parsear link: {link_str}")
+
+    return combined_img
+
+
+def no_repeating_prim_mst(G, start_node=None):
+    """
+    Modified Prim's algorithm for Minimum Spanning Tree with constraints.
+
+    - Only adds nodes if their 'region_name' is not already in the tree.
+    - Stops when the tree has half the number of nodes in the original graph.
+
+    Parameters:
+    G (networkx.Graph): The input graph with 'weight' on edges and 'region_name' on nodes.
+    start_node: The starting node. If None, uses the first node.
+
+    Returns:
+    networkx.Graph: The resulting tree.
+    """
+    import heapq
+
+    if start_node is None:
+        start_node = list(G.nodes())[0]
+
+    included_nodes = set([start_node])
+    included_regions = set([G.nodes[start_node]["region_name"]])
+    tree_edges = []
+    pq = []  # Priority queue: (weight, u, v)
+
+    # Add initial edges from start_node
+    for neighbor in G.neighbors(start_node):
+        if G.nodes[neighbor]["region_name"] not in included_regions:
+            heapq.heappush(
+                pq, (G[start_node][neighbor]["weight"], start_node, neighbor)
+            )
+
+    target_size = len(G.nodes()) // 2
+
+    while len(included_nodes) < target_size + 1 and pq:
+        weight, u, v = heapq.heappop(pq)
+
+        if (
+            v not in included_nodes
+            and G.nodes[v]["region_name"] not in included_regions
+        ):
+            included_nodes.add(v)
+            included_regions.add(G.nodes[v]["region_name"])
+            edge_attrs = {"weight": weight}
+            if "link" in G[u][v]:
+                edge_attrs["link"] = G[u][v]["link"]
+            tree_edges.append((u, v, edge_attrs))
+
+            # Add new edges from v
+            for neighbor in G.neighbors(v):
+                if (
+                    neighbor not in included_nodes
+                    and G.nodes[neighbor]["region_name"] not in included_regions
+                ):
+                    heapq.heappush(pq, (G[v][neighbor]["weight"], v, neighbor))
+
+    # Create the tree graph
+    tree = nx.Graph()
+    tree.add_edges_from(tree_edges)
+    # Copy node attributes
+    for node in tree.nodes():
+        tree.nodes[node].update(G.nodes[node])
+
+    return tree

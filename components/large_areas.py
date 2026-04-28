@@ -2,6 +2,7 @@ from http.client import TOO_EARLY
 import itertools
 import math
 import copy
+from operator import ne
 import re
 from tkinter import W
 import numpy as np
@@ -706,7 +707,7 @@ class ZigZag:
     def find_center(self):
         contour = mt.detect_contours(self.img)
         contour = pt.contour_to_list(contour)
-        pt.points_center(contour)
+        self.center = pt.points_center(contour)
 
 
 class ZigZagRegions:
@@ -826,8 +827,10 @@ class ZigZagRegions:
         return
 
     def make_graph(self, zigzags_bridges, base_frame):
-        self.zigzags_graph, self.pos_zigzag_nodes = path_tools.make_regions_graph(
-            self.regions, zigzags_bridges, base_frame
+        self.zigzags_graph, self.pos_zigzag_nodes = (
+            path_tools.make_regions_graph_by_routes(
+                self.regions, zigzags_bridges, base_frame
+            )
         )
         self.zigzags_mst, zigzags_mst_sequence = path_tools.regions_mst(
             self.zigzags_graph
@@ -989,9 +992,24 @@ class ZigZagRegions:
                         new_zigzag.astype(np.uint8), kernel_size=path_radius
                     )
                 l_region.route = new_zigzag
+                ends_n = len(pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag)))
+                if ends_n > 2:
+                    new_zigzag = sk.medial_axis(new_zigzag, path_radius)
+                    new_zigzag, _, _ = sk.prune(
+                        new_zigzag, path_radius, iterative_prune=4
+                    )
+                    l_region.route = new_zigzag
                 l_region.route_b = np.logical_or(
                     lines, (it.image_subtract(internal_border_img, new_zigzag))
                 )
+                ends_n = len(pt.img_to_points(mt.hitmiss_ends_v2(l_region.route_b)))
+                if ends_n > 2:
+                    new_zigzag_b = sk.medial_axis(l_region.route_b, path_radius)
+                    new_zigzag_b, _, _ = sk.prune(
+                        new_zigzag_b, path_radius, iterative_prune=4
+                    )
+                    l_region.route_b = new_zigzag_b
+                    ends_n = len(pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag_b)))
                 l_region.trail = new_trail
                 l_region.trail_b = mt.dilation(
                     l_region.route_b.astype(np.uint8), kernel_size=path_radius
@@ -1527,49 +1545,37 @@ def make_weaving_wide_route(
             superposition = np.sum(np.logical_and(line, new_zigzag))
             if superposition < 4:
                 new_zigzag = np.logical_or(new_zigzag, line)
-        new_zigzag = np.logical_or(new_zigzag, cutted_corners)
+        if np.sum(cutted_corners) > 0:
+            separated, _, n = it.divide_by_connected(cutted_corners)
+            ends = pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag))
+            for line in separated:
+                separated_ends = pt.img_to_points(mt.hitmiss_ends_v2(line))
+                closest_point_from_cutted = pt.closest_points(ends + separated_ends)
+                link = it.draw_line(
+                    np.zeros_like(new_zigzag),
+                    closest_point_from_cutted[0],
+                    closest_point_from_cutted[1],
+                )
+                new_zigzag = np.logical_or(new_zigzag, link)
+            new_zigzag = np.logical_or(new_zigzag, cutted_corners)
         new_zigzag = sk.medial_axis(new_zigzag, 2)
-
-        # repeated_points = pt.repeated_in_list(closes1 + closes2)
-
-        # new_zigzagV2 = weaving_zigzag(
-        #     new_contourV2,
-        #     new_contour_imgV2,
-        #     lines_transversais_v2,
-        #     lines_limitrofes_v2,
-        #     extr_int_ptsV2,
-        #     0,
-        #     repeated_points,
-        # )
-        # new_zigzagV2 = np.logical_or(new_zigzagV2, lines_transversais_v2)
-        # new_zigzagV2 = np.logical_or(new_zigzagV2, cutted_corners)
-        # new_zigzagV2 = sk.medial_axis(new_zigzagV2, 2)
-
-        # new_zigzagV2_b = weaving_zigzag(
-        #     new_contourV2,
-        #     new_contour_imgV2,
-        #     lines_transversais_v2,
-        #     lines_limitrofes_v2,
-        #     extr_int_ptsV2,
-        #     1,
-        #     repeated_points,
-        # )
-        # new_zigzagV2_b = np.logical_or(new_zigzagV2_b, lines_transversais_v2)
-        # new_zigzagV2_b = np.logical_or(new_zigzagV2_b, cutted_corners)
-        # new_zigzagV2_b = sk.medial_axis(new_zigzagV2_b, 2)
-
-        # new_zigzag_b = weaving_zigzag(
-        #     new_contour,
-        #     new_contour_img,
-        #     lines_transversais,
-        #     lines_limitrofes,
-        #     extr_int_pts,
-        #     1,
-        # )
         for line in lines_limitrofes_separadas:
             superposition = np.sum(np.logical_and(line, new_zigzag_b))
             if superposition < 4:
                 new_zigzag_b = np.logical_or(new_zigzag_b, line)
+        if np.sum(cutted_corners) > 0:
+            separated, _, n = it.divide_by_connected(cutted_corners)
+            ends = pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag_b))
+            for line in separated:
+                separated_ends = pt.img_to_points(mt.hitmiss_ends_v2(line))
+                closest_point_from_cutted = pt.closest_points(ends + separated_ends)
+                link = it.draw_line(
+                    np.zeros_like(new_zigzag),
+                    closest_point_from_cutted[0],
+                    closest_point_from_cutted[1],
+                )
+                new_zigzag_b = np.logical_or(new_zigzag_b, link)
+            new_zigzag_b = np.logical_or(new_zigzag_b, cutted_corners)
         new_zigzag_b = np.logical_or(new_zigzag_b, cutted_corners)
         new_zigzag_b = sk.medial_axis(new_zigzag_b, 2)
 
@@ -1588,6 +1594,7 @@ def make_weaving_wide_route(
     _, labels, _ = it.divide_by_connected(lines_transversais)
     labels = mt.dilation(labels, kernel_size=path_radius)
     return new_zigzag, new_zigzag_b
+
     # AQUI É IMPORTANTE, NAO JOGA FORAAAA
     # aaaaaaaa = it.sum_imgs(
     #     [total_sobreposition, eroded, mt.dilation(new_zigzag, kernel_size=path_radius)]

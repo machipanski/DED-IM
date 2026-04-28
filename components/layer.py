@@ -274,6 +274,32 @@ class Layer:
             folders.save_internal_routes_hdf5(self.name, self.islands)
         return
 
+    def close_routes_internalV2(self, folders: System_Paths):
+        folders.load_islands_hdf5(self)
+        for isl in self.islands:
+            folders.load_bridges_hdf5(self.name, isl)
+            folders.load_zigzags_hdf5(self.name, isl)
+            island_internal_graph = folders.load_graph(
+                f"{self.name}_{isl.name}_INT_neighborhood.gexf"
+            )
+            with Timer("  eliminating redundant routes by bottleneck"):
+                G = path_tools.sequence_from_botleneck_to_leaves(
+                    island_internal_graph,
+                    folders,
+                )
+            aaa = path_tools.combine_routes_and_draw_links(G, isl, self.base_frame)
+
+            if isl.internal_tree_route != []:
+                with Timer("  Connecting zigzag bridges"):
+                    isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
+                    isl.internal_tree_route.get_img(self.base_frame)
+            else:
+                print("   No internal routes found")
+                isl.internal_tree_route = Path("0", [], [])
+        with Timer("  Saving route images"):
+            folders.save_internal_routes_hdf5(self.name, self.islands)
+        return
+
     def close_routes_thinwalls(self, folders: System_Paths):
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -1126,7 +1152,7 @@ class Layer:
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def areas_interfaces(self, folders: System_Paths):
+    def internal_areas_interfaces(self, folders: System_Paths):
         import networkx as nx
 
         for isl in self.islands:
@@ -1143,133 +1169,129 @@ class Layer:
                     if len(isl.zigzags.internal_islands) > 0:
                         for i, int_isl in enumerate(isl.zigzags.internal_islands):
                             subisland_graph, subisland_nodes = (
-                                path_tools.make_regions_graph(
+                                path_tools.make_regions_graph_by_routes(
                                     int_isl.w_regions,
                                     int_isl.l_regions,
                                     self.base_frame,
-                                    apendix=int_isl.name + "_",
-                                    ends=True,
+                                    apendix1=int_isl.name + "_",
+                                    apendix2=int_isl.name + "_",
                                     path_radius=self.path_radius_larg,
                                 )
                             )
-                            subisland_mst, subisland_sequence = path_tools.regions_mst(
-                                subisland_graph
-                            )
+                            # subisland_mst, subisland_sequence = path_tools.regions_mst(
+                            #     subisland_graph
+                            # )
                             subisland_graphs.append(subisland_graph)
-                            sub_islands_sequence.append(subisland_sequence)
+                            # sub_islands_sequence.append(subisland_sequence)
                     G1 = nx.union_all(subisland_graphs)
-                    print(
-                        f"Graph G1 - Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}"
-                    )
-                    print("\nEdges:")
-                    for u, v, data in G1.edges(data=True):
-                        print(f"  {u} -- {v}: weight={data.get('weight', 'N/A')}")
+                    # print(
+                    #     f"LARGE AREAS GRAPH: Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}\n"
+                    # )
+                    # print("Edges:")
+                    # for u, v, data in G1.edges(data=True):
+                    #     print(f"  {u} -- {v}: weight={data.get('weight', 'N/A')}")
+                    # print("\n")
+                    # folders.save_graph(
+                    #     G1, f"{self.name}_{isl.name}_LA_neighborhood.gexf"
+                    # )
 
                     if hasattr(isl, "bridges"):
+                        subisland_graphs = []
+                        G2 = nx.Graph()
                         if hasattr(isl.bridges, "zigzag_bridges"):
                             for bridge in isl.bridges.zigzag_bridges:
-                                G1.add_node(str(bridge.name))
                                 for int_isl in isl.zigzags.internal_islands:
-
-                                    _, _, comb_neig = it.neighborhood(
-                                        [bridge],
-                                        [
-                                            reg
-                                            for reg in int_isl.w_regions
-                                            + int_isl.l_regions
-                                        ],
-                                        ends=True,
-                                        path_radius=self.path_radius_larg,
-                                    )
-                                    for ligacao in comb_neig:
-                                        G1.add_edge(
-                                            str(ligacao[0]),
-                                            int_isl.name + "_" + str(ligacao[1]),
-                                            weight=3,
+                                    subisland_graph, subisland_nodes = (
+                                        path_tools.make_regions_graph_by_routes(
+                                            [bridge],
+                                            int_isl.l_regions + int_isl.w_regions,
+                                            self.base_frame,
+                                            apendix1="",
+                                            apendix2=int_isl.name + "_",
+                                            path_radius=self.path_radius_larg,
                                         )
+                                    )
+                                    # subisland_mst, subisland_sequence = (
+                                    #     path_tools.regions_mst(subisland_graph)
+                                    # )
+                                    subisland_graphs.append(subisland_graph)
+                                    # sub_islands_sequence.append(subisland_sequence)
+                            G2 = nx.compose_all(subisland_graphs)
+                            multiplier = 5
+                            for u, v in G2.edges():
+                                G2[u][v]["weight"] = (
+                                    G2[u][v].get("weight", 1) * multiplier
+                                )
                         print(
-                            f"Graph G1 - Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}"
+                            f"LARGE AREAS bridges: Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}\n"
                         )
-                        for u, v, data in G1.edges(data=True):
+                        for u, v, data in G2.edges(data=True):
                             print(f"  {u} -- {v}: weight={data.get('weight', 'N/A')}")
+                        print("\n")
 
-                            # Export G1 to GraphML for GraphStudioNext
-                        try:
-                            g1_path = path.join(
-                                folders.output,
-                                f"G1_{self.name}_{isl.name}.graphml",
-                            )
-                            files.export_graph_to_graphml(
-                                G1, g1_path, write_gexf=True, write_edgelist=True
-                            )
-                            print(f"Saved GraphML: {g1_path}")
-                        except Exception as e:
-                            print(f"Failed saving G1 graph exports: {e}")
+                        G3 = nx.compose(G1, G2)
+                        print(
+                            f"INTERNAL GRAPH - Nodes: {G3.number_of_nodes()}, Edges: {G3.number_of_edges()}"
+                        )
+                        for u, v, data in G3.edges(data=True):
+                            print(f"  {u} -- {v}: weight={data.get('weight', 'N/A')}")
+                        print("\n")
+                        folders.save_graph(
+                            G3, f"{self.name}_{isl.name}_INT_neighborhood.graphml"
+                        )
+        return
 
-                    for ligacao in reg_neig:
-                        graph.add_edge(
-                            "z" + str(ligacao[0]), "z" + str(ligacao[1]), weight=1
-                        )
-                        #         regions_imgs.append(
-                        #             it.sum_imgs_colored(
-                        #                 [reg.img for reg in int_isl.w_regions], limited=True
-                        #             ).astype(np.uint16)
-                        #         )
-                        #     if hasattr(int_isl, "l_regions") and len(int_isl.l_regions) > 0:
-                        #         regions_imgs.append(
-                        #             sum_imgs_colored(
-                        #                 [reg.img for reg in int_isl.l_regions], limited=True
-                        #             ).astype(np.uint16)
-                        #         )
-                folders.load_thin_walls_hdf5(self.name, isl)
-                if hasattr(isl, "thin_walls"):
-                    if (
-                        hasattr(isl.thin_walls, "regions")
-                        and len(isl.thin_walls.regions) > 0
-                    ):
-                        regions_imgs.append(
-                            sum_imgs(
-                                [reg.img for reg in isl.thin_walls.regions]
-                            ).astype(np.uint16)
-                            * 5
-                        )
-                folders.load_offsets_hdf5(self.name, isl)
-                if hasattr(isl, "offsets"):
-                    if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
-                        regions_imgs.append(
-                            sum_imgs([reg.img for reg in isl.offsets.regions]).astype(
-                                np.uint16
-                            )
-                            * 6
-                        )
-                folders.load_bridges_hdf5(self.name, isl)
-                if hasattr(isl, "bridges"):
-                    if hasattr(isl.bridges, "zigzag_bridges"):
-                        if len(isl.bridges.zigzag_bridges) > 0:
-                            regions_imgs.append(
-                                sum_imgs(
-                                    [reg.img for reg in isl.bridges.zigzag_bridges]
-                                ).astype(np.uint16)
-                                * 7
-                            )
-                    if hasattr(isl.bridges, "offset_bridges"):
-                        if len(isl.bridges.offset_bridges) > 0:
-                            regions_imgs.append(
-                                sum_imgs(
-                                    [reg.img for reg in isl.bridges.offset_bridges]
-                                ).astype(np.uint16)
-                                * 8
-                            )
-                    if hasattr(isl.bridges, "cross_over_bridges"):
-                        if len(isl.bridges.cross_over_bridges) > 0:
-                            regions_imgs.append(
-                                sum_imgs(
-                                    [reg.img for reg in isl.bridges.cross_over_bridges]
-                                ).astype(np.uint16)
-                                * 9
-                            )
-                isl_final_map = sum_imgs(regions_imgs)
-        with Timer("  Saving images of zigzag routes"):
-            folders.save_regs_zigzags_hdf5(self.name, self.islands)
-            folders.save_props_hdf5(f"/{self.name}", self.__dict__)
+        #         aaa = path_tools.sequence_from_botleneck_to_leaves(G3)
+
+        #         folders.load_thin_walls_hdf5(self.name, isl)
+        #         if hasattr(isl, "thin_walls"):
+        #             if (
+        #                 hasattr(isl.thin_walls, "regions")
+        #                 and len(isl.thin_walls.regions) > 0
+        #             ):
+        #                 regions_imgs.append(
+        #                     sum_imgs(
+        #                         [reg.img for reg in isl.thin_walls.regions]
+        #                     ).astype(np.uint16)
+        #                     * 5
+        #                 )
+        #         folders.load_offsets_hdf5(self.name, isl)
+        #         if hasattr(isl, "offsets"):
+        #             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
+        #                 regions_imgs.append(
+        #                     sum_imgs([reg.img for reg in isl.offsets.regions]).astype(
+        #                         np.uint16
+        #                     )
+        #                     * 6
+        #                 )
+        #         folders.load_bridges_hdf5(self.name, isl)
+        #         if hasattr(isl, "bridges"):
+        #             if hasattr(isl.bridges, "zigzag_bridges"):
+        #                 if len(isl.bridges.zigzag_bridges) > 0:
+        #                     regions_imgs.append(
+        #                         sum_imgs(
+        #                             [reg.img for reg in isl.bridges.zigzag_bridges]
+        #                         ).astype(np.uint16)
+        #                         * 7
+        #                     )
+        #             if hasattr(isl.bridges, "offset_bridges"):
+        #                 if len(isl.bridges.offset_bridges) > 0:
+        #                     regions_imgs.append(
+        #                         sum_imgs(
+        #                             [reg.img for reg in isl.bridges.offset_bridges]
+        #                         ).astype(np.uint16)
+        #                         * 8
+        #                     )
+        #             if hasattr(isl.bridges, "cross_over_bridges"):
+        #                 if len(isl.bridges.cross_over_bridges) > 0:
+        #                     regions_imgs.append(
+        #                         sum_imgs(
+        #                             [reg.img for reg in isl.bridges.cross_over_bridges]
+        #                         ).astype(np.uint16)
+        #                         * 9
+        #                     )
+        #         isl_final_map = sum_imgs(regions_imgs)
+        # with Timer("  Saving images of zigzag routes"):
+        #     folders.save_regs_zigzags_hdf5(self.name, self.islands)
+        #     folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return

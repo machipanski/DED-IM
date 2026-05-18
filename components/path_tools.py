@@ -5,23 +5,25 @@ import math
 import random
 import datetime
 import re
-import numpy as np
 import math
 import copy
-import networkx as nx
+from sys import intern
+from tkinter import EW
+from tracemalloc import start
 import skimage
-from re import L
-from tkinter import X
+import os
+import pulp
+import heapq
+import networkx as nx
+import numpy as np
 from typing import TYPE_CHECKING
-from cv2 import boundingRect, arcLength, approxPolyDP
-from scipy.spatial import distance_matrix, distance
+from skimage.feature import corner_harris, corner_peaks
+from cv2 import arcLength, approxPolyDP
+from scipy.spatial import distance
 from components import points_tools as pt
 from components import morphology_tools as mt
 from components import images_tools as it
 from components import skeleton as sk
-import os
-from skimage.feature import corner_harris, corner_peaks
-import pulp
 
 if TYPE_CHECKING:
     from components.large_areas import ZigZag
@@ -42,6 +44,10 @@ class Path:
             img = []
         if jumps is None:
             jumps = []
+        if isinstance(seq, np.ndarray):
+            seq = seq.tolist()
+        if isinstance(jumps, np.ndarray):
+            jumps = jumps.tolist()
         self.name = name
         self.sequence = seq
         self.regions = regions
@@ -75,13 +81,15 @@ class Path:
         if hasattr(island, "bridges"):
             if len(island.bridges.cross_over_bridges):
                 for cb in island.bridges.cross_over_bridges:
-                    if np.logical_and(cb.route, self.img).any():
-                        self.regions["cross_over_bridges"].append(cb.name)
+                    if len(cb.route) > 0:
+                        if np.logical_and(cb.route, self.img).any():
+                            self.regions["cross_over_bridges"].append(cb.name)
         if hasattr(island, "bridges"):
             if len(island.bridges.offset_bridges):
                 for ob in island.bridges.offset_bridges:
-                    if np.logical_and(ob.route, self.img).any():
-                        self.regions["offset_bridges"].append(ob.name)
+                    if len(ob.route) > 0:
+                        if np.logical_and(ob.route, self.img).any():
+                            self.regions["offset_bridges"].append(ob.name)
         if hasattr(island, "bridges"):
             if len(island.bridges.zigzag_bridges):
                 for zb in island.bridges.zigzag_bridges:
@@ -101,24 +109,6 @@ def calculate_angle(p1, p2, p3):
     angulo_rad = np.arctan2(np.linalg.det([v1, v2]), np.dot(v1, v2))
     angulo_deg = np.degrees(angulo_rad)
     return abs(angulo_deg)
-
-
-# def find_curvature_pts(seq, ang=60):
-#     curvature_pts = []
-#     pontos = seq + seq
-#     for i in range(1, len(pontos) - 1):
-#         p1 = pontos[i - 1]
-#         p2 = pontos[i]
-#         p3 = pontos[i + 1]
-#         angulo = calculate_angle(p1, p2, p3)
-#         if angulo > ang:
-#             if len(curvature_pts) == 0:
-#                 first_angled = p2
-#             else:
-#                 if p2 == first_angled:
-#                     break
-#             curvature_pts.append(p2)
-#     return curvature_pts
 
 
 def find_curvature_pts(seq, ang=60, radius=1):
@@ -330,32 +320,94 @@ def middle_of_the_line(line_img):
     return pt.invert_x_y([seq[int(len(seq) / 2)]])[0]
 
 
+def include_half_loops(start_path, not_yet_included_looping_routes, limmit_points):
+    """
+    Builds a new sequence by following the start_path.sequence point by point.
+    When a point is found that exists in limmit_points AND in one of the not_yet_included_looping_routes sequences,
+    includes the entire sequence of that route and continues scanning the original start_path.
+    """
+    new_sequence = []
+    looping_points = []
+    route_map = []  # list of (point_tuple, route index)
+    for idx, route in enumerate(not_yet_included_looping_routes):
+        for point in route.sequence:
+            point_tuple = tuple(point)
+            looping_points.append(point_tuple)
+            route_map.append((point_tuple, idx))
+
+    included_route_idxs = set()
+    limmit_points_tuples = [tuple(p) for p in limmit_points]
+
+    i = 0
+    while i < len(start_path.sequence):
+        point = tuple(start_path.sequence[i])
+        if point in limmit_points_tuples and point in looping_points:
+            route_idx = next(
+                (
+                    idx
+                    for pt, idx in route_map
+                    if pt == point and idx not in included_route_idxs
+                ),
+                None,
+            )
+            if route_idx is None:
+                new_sequence.append(start_path.sequence[i])
+                i += 1
+                continue
+            included_route_idxs.add(route_idx)
+            looping_route = not_yet_included_looping_routes[route_idx]
+            looping_route.sequence = set_first_pt_in_seq(looping_route.sequence, point)
+            looping_route_tuples = {tuple(p) for p in looping_route.sequence}
+            new_sequence.extend(looping_route.sequence)
+            skip_count = 0
+            for j in range(i, len(start_path.sequence)):
+                if tuple(start_path.sequence[j]) in looping_route_tuples:
+                    skip_count += 1
+                else:
+                    break
+            i += skip_count
+            if len(included_route_idxs) == len(not_yet_included_looping_routes):
+                new_sequence.extend(start_path.sequence[i:])
+                break
+        else:
+            new_sequence.append(start_path.sequence[i])
+            i += 1
+
+    it.create_drawing_gif(
+        new_sequence, 100, start_path.img.shape, output_path="looping_inclusion.gif"
+    )
+
+    new_start_path = start_path
+    new_start_path.sequence = new_sequence
+    new_start_path.get_img(base_frame=start_path.img.shape)
+    return new_start_path
+
+
 def connect_cross_over_bridges(island: Island) -> Path:
-    def find_interruption_points(
+    def add_cross_over_bridges_in_seq(
         island,
+        rota_antiga,
         nova_rota,
         cross_overs_included,
         offssets_included,
-        order_crossover_regions,
         pts_valido_comeco,
     ):
-        closest_points = {}
-        closest_centers = []
-        flag_first = len(pts_valido_comeco)
-        for bridge in island.bridges.cross_over_bridges:
-            if not (bridge.name in list(cross_overs_included)):
-                if set(bridge.linked_offset_regions).intersection(offssets_included):
-                    A = bridge.extreme_points
-                    closest_a = pt.closest_point(A[0], nova_rota)
-                    closest_b = pt.closest_point(A[1], nova_rota)
-                    closest_c = pt.closest_point(A[2], nova_rota)
-                    closest_d = pt.closest_point(A[3], nova_rota)
-                    cp = [closest_a, closest_b, closest_c, closest_d]
-                    cp.sort(key=lambda x: x[1])
-                    cp = cp[:2]
-                    cp = [x[0] for x in cp]
-                    if cp[0] == cp[1]:
-                        nova_rota.remove(cp[0])
+        def find_interruption_points(
+            island,
+            nova_rota,
+            cross_overs_included,
+            offssets_included,
+            order_crossover_regions,
+            pts_valido_comeco,
+        ):
+            closest_points = {}
+            closest_centers = []
+            flag_first = len(pts_valido_comeco)
+            for bridge in island.bridges.cross_over_bridges:
+                if not (bridge.name in list(cross_overs_included)):
+                    if set(bridge.linked_offset_regions).intersection(
+                        offssets_included
+                    ):
                         A = bridge.extreme_points
                         closest_a = pt.closest_point(A[0], nova_rota)
                         closest_b = pt.closest_point(A[1], nova_rota)
@@ -365,75 +417,72 @@ def connect_cross_over_bridges(island: Island) -> Path:
                         cp.sort(key=lambda x: x[1])
                         cp = cp[:2]
                         cp = [x[0] for x in cp]
-                    closest_points[str(bridge.name)] = cp
-                    origin_mid = middle_of_the_line(bridge.origin)
-                    closest_mid, _ = pt.closest_point(origin_mid, nova_rota)
-                    closest_centers.append(closest_mid)
-        special = []
-        for k in closest_points.values():
-            special = special + k
-        interruption_points = []
-        flags = np.zeros(len(closest_points.keys()))
-        flag_valido_comeco = 0
-        for point in nova_rota:
-            if point in special:
-                flag_valido_comeco += 1
-                for i, cp in enumerate(list(closest_points.values())):
-                    if point in cp:
-                        flags[i] += 1
-                        if flags[i] == 2:
-                            B = [(point in x) for x in list(closest_points.values())]
-                            idx = B.index(True)
-                            order_crossover_regions.append(
-                                list(closest_points.keys())[idx]
-                            )
-                            interruption_points.append(point)
-            if (flags == 1).any() and not flag_first:
-                pts_valido_comeco.append(point)
-            # if flag_valido_comeco%2 == 0 and not flag_first:
-            #     pts_valido_comeco.append(point)
-        if not flag_first:
-            aaaa = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
-            bbbb = it.sum_imgs(
-                [aaaa, it.points_to_img(closest_centers, np.zeros_like(island.img))]
-            )
-            if pt.list_inside_list(closest_centers, pts_valido_comeco):
-                pts_valido_comeco = list(
-                    filter(lambda x: x not in pts_valido_comeco, nova_rota)
+                        if cp[0] == cp[1]:
+                            nova_rota.remove(cp[0])
+                            A = bridge.extreme_points
+                            closest_a = pt.closest_point(A[0], nova_rota)
+                            closest_b = pt.closest_point(A[1], nova_rota)
+                            closest_c = pt.closest_point(A[2], nova_rota)
+                            closest_d = pt.closest_point(A[3], nova_rota)
+                            cp = [closest_a, closest_b, closest_c, closest_d]
+                            cp.sort(key=lambda x: x[1])
+                            cp = cp[:2]
+                            cp = [x[0] for x in cp]
+                        closest_points[str(bridge.name)] = cp
+                        origin_mid = middle_of_the_line(bridge.origin)
+                        closest_mid, _ = pt.closest_point(origin_mid, nova_rota)
+                        closest_centers.append(closest_mid)
+            special = []
+            for k in closest_points.values():
+                special = special + k
+            interruption_points = []
+            flags = np.zeros(len(closest_points.keys()))
+            flag_valido_comeco = 0
+            for point in nova_rota:
+                if point in special:
+                    flag_valido_comeco += 1
+                    for i, cp in enumerate(list(closest_points.values())):
+                        if point in cp:
+                            flags[i] += 1
+                            if flags[i] == 2:
+                                B = [
+                                    (point in x) for x in list(closest_points.values())
+                                ]
+                                idx = B.index(True)
+                                order_crossover_regions.append(
+                                    list(closest_points.keys())[idx]
+                                )
+                                interruption_points.append(point)
+                if (flags == 1).any() and not flag_first:
+                    pts_valido_comeco.append(point)
+                # if flag_valido_comeco%2 == 0 and not flag_first:
+                #     pts_valido_comeco.append(point)
+            if not flag_first:
+                aaaa = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
+                bbbb = it.sum_imgs(
+                    [aaaa, it.points_to_img(closest_centers, np.zeros_like(island.img))]
                 )
-                cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
-                dddd = it.sum_imgs(
-                    [cccc, it.points_to_img(closest_centers, np.zeros_like(island.img))]
-                )
-        return interruption_points, order_crossover_regions, pts_valido_comeco
+                if pt.list_inside_list(closest_centers, pts_valido_comeco):
+                    pts_valido_comeco = list(
+                        filter(lambda x: x not in pts_valido_comeco, nova_rota)
+                    )
+                    cccc = it.points_to_img(
+                        pts_valido_comeco, np.zeros_like(island.img)
+                    )
+                    dddd = it.sum_imgs(
+                        [
+                            cccc,
+                            it.points_to_img(
+                                closest_centers, np.zeros_like(island.img)
+                            ),
+                        ]
+                    )
+            return interruption_points, order_crossover_regions, pts_valido_comeco
 
-    start_path = list(
-        filter(lambda x: "Reg_000" in x.regions["offsets"], island.external_tree_route)
-    )
-    if len(start_path) > 0:
-        start_path = start_path[0]
-    else:
-        start_path = list(
-            filter(
-                lambda x: "Reg_000" in x.regions["thin_walls"],
-                island.external_tree_route,
-            )
-        )
-        if len(start_path) > 0:
-            start_path = start_path[0]
-        else:
-            raise ValueError("Error: no start path found")
-    offssets_included = set(start_path.regions["offsets"])
-    cross_overs_included = set(start_path.regions["cross_over_bridges"])
-    offset_bridges_included = set(start_path.regions["offset_bridges"])
-    all_its = []
-    pts_valido_comeco = []
-    rota_antiga = start_path.sequence.copy()
-    nova_rota = start_path.sequence.copy()
-    stop = 0
-    saltos = []
-    counter = 0
-    if hasattr(island, "bridges"):
+        stop = 0
+        saltos = []
+        counter = 0
+        all_its = []
         while not stop:
             order_crossover_regions = []
             interruption_points, order_crossover_regions, pts_valido_comeco = (
@@ -483,8 +532,61 @@ def connect_cross_over_bridges(island: Island) -> Path:
             else:
                 stop = 1
             counter += 1
+        return nova_rota, cross_overs_included, offssets_included, saltos
+
+    start_path = list(
+        filter(lambda x: "Reg_000" in x.regions["offsets"], island.external_tree_route)
+    )
+    if len(start_path) > 0:
+        start_path = start_path[0]
     else:
-        # nova_rota = start_path.sequence
+        start_path = list(
+            filter(
+                lambda x: "Reg_000" in x.regions["thin_walls"],
+                island.external_tree_route,
+            )
+        )
+        if len(start_path) > 0:
+            start_path = start_path[0]
+        else:
+            raise ValueError("Error: no start path found")
+    offssets_included = set(start_path.regions["offsets"])
+    cross_overs_included = set(start_path.regions["cross_over_bridges"])
+    offset_bridges_included = set(start_path.regions["offset_bridges"])
+    pts_valido_comeco = []
+    rota_antiga = start_path.sequence.copy()
+    nova_rota = start_path.sequence.copy()
+    aaaa = it.sum_imgs([x.img for x in island.external_tree_route])
+    start_path_img_looping = np.zeros_like(island.img)
+    if np.sum(aaaa == 2) > 0:
+        limmit_points = pt.img_to_points(mt.hitmiss_ends_v2(aaaa == 2))
+        for reg_name in start_path.regions["offsets"]:
+            not_yet_included_looping_routes = [
+                path
+                for path in island.external_tree_route
+                if path != start_path
+                and any(reg_name in regions for regions in path.regions.values())
+            ]
+            start_path = include_half_loops(
+                start_path, not_yet_included_looping_routes, limmit_points
+            )
+            start_path.get_img(base_frame=island.img.shape)
+            # reg = list(filter(lambda x: x.name == reg_name, island.offsets.regions))[0]
+            # reg_img = reg.route
+    rota_antiga = start_path.sequence.copy()
+    nova_rota = start_path.sequence.copy()
+    if hasattr(island, "bridges"):
+        nova_rota, cross_overs_included, offssets_included, saltos = (
+            add_cross_over_bridges_in_seq(
+                island,
+                rota_antiga,
+                nova_rota,
+                cross_overs_included,
+                offssets_included,
+                pts_valido_comeco,
+            )
+        )
+    else:
         saltos = []
     new_regions = {
         "offsets": list(offssets_included),
@@ -493,43 +595,27 @@ def connect_cross_over_bridges(island: Island) -> Path:
         "offset_bridges": list(offset_bridges_included),
         "zigzag_bridges": [],
     }
-    # if len(list(cross_overs_included)) > 0:
-    #     cccc = it.points_to_img(pts_valido_comeco, np.zeros_like(island.img))
-    #     new_start = random.choice(pts_valido_comeco)
-    #     nova_rota = set_first_pt_in_seq(nova_rota, new_start)
     new_route = Path("exterior tree", nova_rota, new_regions, jumps=saltos)
-    # aaa = new_route.get_img()
+    aaa = new_route.get_img(base_frame=island.img.shape)
     return new_route
 
 
-def connect_internal_external(island: Island, path_radius_int_ext):
-    filling = island.zigzags.all_zigzags
-    if np.sum(filling) > 0:
-        most_external = island.offsets.regions[0].route.astype(np.uint8)
-        dilation_kernel = int(path_radius_int_ext * 2)
-        touching = np.zeros_like(island.img)
-        while np.sum(touching) == 0:
-            aaa = it.sum_imgs(
-                [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
-            )
-            touching = aaa == 2
-            dilation_kernel = dilation_kernel + 2
-        dilation_kernel = dilation_kernel + 2
-        aaa = it.sum_imgs(
-            [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
+def connect_internal_external(
+    island: Island, path_radius_ext, sobrep_int_ext_perc, intern_zz_style
+):
+    chosen_external = []
+    chosen_internal = []
+    if intern_zz_style == 0:
+        filling = it.sum_imgs(
+            [
+                it.points_to_img(x.sequence, np.zeros_like(island.img))
+                for x in island.internal_tree_route
+            ]
         )
-        touching = aaa == 2
-        candidates_internal = pt.img_to_points(touching)
-        chosen_internal = random.choice(candidates_internal)
-        external_pts = pt.img_to_points(most_external)
-        chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
-    elif hasattr(island, "bridges"):
-        filling = it.sum_imgs([x.route for x in island.bridges.zigzag_bridges])
-        if len(filling) > 0:
-            # filling = it.sum_imgs(filling)
-            print("Only zigzag bridges")
+        if np.sum(filling) > 0:
             most_external = island.offsets.regions[0].route.astype(np.uint8)
-            dilation_kernel = int(path_radius_int_ext * 2)
+            most_external = most_external.astype(np.uint8)
+            dilation_kernel = int(path_radius_ext * ((100 - sobrep_int_ext_perc) / 100))
             touching = np.zeros_like(island.img)
             while np.sum(touching) == 0:
                 aaa = it.sum_imgs(
@@ -537,21 +623,85 @@ def connect_internal_external(island: Island, path_radius_int_ext):
                 )
                 touching = aaa == 2
                 dilation_kernel = dilation_kernel + 2
-            candidates_internal = pt.img_to_points(touching)
-            chosen_internal = random.choice(
-                pt.img_to_points(mt.hitmiss_ends_v2(filling))
+            dilation_kernel = dilation_kernel + 2
+            aaa = it.sum_imgs(
+                [filling, mt.dilation(most_external, kernel_size=dilation_kernel)]
             )
+            touching = aaa == 2
+            candidates_internal = pt.img_to_points(touching)
+            chosen_internal = random.choice(candidates_internal)
             external_pts = pt.img_to_points(most_external)
             chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
-        else:
+        elif hasattr(island, "bridges"):
+            filling = it.sum_imgs([x.route for x in island.bridges.zigzag_bridges])
+            if len(filling) > 0:
+                # filling = it.sum_imgs(filling)
+                print("Only zigzag bridges")
+                most_external = island.offsets.regions[0].route.astype(np.uint8)
+                dilation_kernel = int(path_radius_int_ext * 2)
+                touching = np.zeros_like(island.img)
+                while np.sum(touching) == 0:
+                    aaa = it.sum_imgs(
+                        [
+                            filling,
+                            mt.dilation(most_external, kernel_size=dilation_kernel),
+                        ]
+                    )
+                    touching = aaa == 2
+                    dilation_kernel = dilation_kernel + 2
+                candidates_internal = pt.img_to_points(touching)
+                chosen_internal = random.choice(
+                    pt.img_to_points(mt.hitmiss_ends_v2(filling))
+                )
+                external_pts = pt.img_to_points(most_external)
+                chosen_external, _ = pt.closest_point(chosen_internal, external_pts)
+            else:
+                most_external = island.offsets.regions[0].route.astype(np.uint8)
+                external_pts = pt.img_to_points(most_external)
+                chosen_external = random.choice(external_pts)
+                chosen_internal = []
+            if chosen_external == []:
+                print("Error: no solution yet")
+                chosen_external = random.choice(pt.img_to_points(most_external))
+                chosen_internal = []
+    elif intern_zz_style == 1:
+        filling = it.sum_imgs(
+            [
+                it.points_to_img(x.sequence, np.zeros_like(island.img))
+                for x in island.internal_tree_route
+            ]
+        )
+        if np.sum(filling) > 0:
             most_external = island.offsets.regions[0].route.astype(np.uint8)
+            most_external = most_external.astype(np.uint8)
             external_pts = pt.img_to_points(most_external)
-            chosen_external = random.choice(external_pts)
-            chosen_internal = []
-        if chosen_external == []:
-            print("Error: no solution yet")
-            chosen_external = random.choice(pt.img_to_points(most_external))
-            chosen_internal = []
+            for x in island.internal_tree_route:
+                possible_filling_starts = [x.sequence[0], x.sequence[-1]]
+                contact_in_start = []
+                for possible_start in possible_filling_starts:
+                    sequence = set_first_pt_in_seq(x.sequence, possible_start)
+                    first_half_route = it.points_to_img(
+                        sequence[0 : len(sequence) // 2], np.zeros_like(island.img)
+                    )
+                    aaa = it.sum_imgs(
+                        [
+                            mt.dilation(first_half_route, kernel_size=path_radius_ext),
+                            mt.dilation(most_external, kernel_size=path_radius_ext),
+                        ]
+                    )
+                    contact_in_start.append(np.sum(aaa == 2))
+                if contact_in_start[0] > contact_in_start[1]:
+                    this_chosen_internal = possible_filling_starts[0]
+                else:
+                    this_chosen_internal = possible_filling_starts[1]
+                chosen_internal.append(this_chosen_internal)
+                this_chosen_external, _ = pt.closest_point(
+                    this_chosen_internal, external_pts
+                )
+                chosen_external.append(this_chosen_external)
+    else:
+        error = "Error: intern_zz_style not implemented"
+        print(error)
     return chosen_external, chosen_internal
 
 
@@ -637,8 +787,20 @@ def connect_offset_bridges(
 
     lista_de_rotas = []
     todas_espirais_img = np.zeros(base_frame)
+    include_after = []
     for region in island.offsets.regions:
-        todas_espirais_img = np.logical_or(todas_espirais_img, region.route)
+        if (
+            np.sum(
+                np.add(
+                    region.route.astype(np.uint8), todas_espirais_img.astype(np.uint8)
+                )
+                == 2
+            )
+            > 0
+        ):
+            include_after.append(region.route)
+        else:
+            todas_espirais_img = np.logical_or(todas_espirais_img, region.route)
     if hasattr(island, "bridges"):
         for bridge in island.bridges.offset_bridges:
             extreme_points = pt.x_y_para_pontos(
@@ -661,6 +823,9 @@ def connect_offset_bridges(
                     base_frame,
                 )
     rotas_isoladas = img_to_chain(todas_espirais_img.astype(np.uint8))
+    for route in include_after:
+        after = img_to_chain(route.astype(np.uint8))
+        rotas_isoladas.extend(after)
     lens = [len(x) for x in rotas_isoladas]
     circunf = 2 * 3.14 * path_radius_cont
     for i, rota in enumerate(rotas_isoladas):
@@ -668,14 +833,24 @@ def connect_offset_bridges(
         lista_de_rotas.append(Path(i, rota))
         if len(island.ext_start) == 0:
             island.ext_start = lista_de_rotas[-1].sequence[0]
-        lista_de_rotas[-1].sequence = set_first_pt_in_seq(
-            lista_de_rotas[-1].sequence,
-            list(island.ext_start),
-        )
+        if len(island.ext_start) > 1 and isinstance(island.ext_start[0], (list, tuple)):
+            lista_de_rotas[-1].sequence = set_first_pt_in_seq(
+                lista_de_rotas[-1].sequence,
+                list(island.ext_start[0]),
+            )
+        else:
+            firstpoint = island.ext_start
+            if isinstance(firstpoint[0], (list, tuple)):
+                firstpoint = island.ext_start[0]
+            lista_de_rotas[-1].sequence = set_first_pt_in_seq(
+                lista_de_rotas[-1].sequence,
+                list(firstpoint),
+            )
         lista_de_rotas[-1].get_img(base_frame)
         lista_de_rotas[-1].get_regions(island)
     if len(lista_de_rotas) == 0:
         print("No offset bridges")
+    aaaa = it.sum_imgs_colored([x.img for x in lista_de_rotas])
     return lista_de_rotas
 
 
@@ -1131,6 +1306,87 @@ def img_to_graph(im):
     return G
 
 
+def img_to_graph_w_loops(im):
+    # CONSTRUCTION OF HORIZONTAL EDGES
+    hy, hx = np.where(np.logical_and(im[1:], im[:-1]))
+    h_units = np.array([hx, hy]).T
+    h_starts = [tuple(n) for n in h_units]
+    h_ends = [
+        tuple(n) for n in h_units + (0, 1)
+    ]  # end positions = start positions shifted by vector (1,0)
+    horizontal_edges = list(zip(h_starts, h_ends))
+    # CONSTRUCTION OF VERTICAL EDGES
+    vy, vx = np.where(
+        np.logical_and(im[:, 1:], im[:, :-1])
+    )  # vertical edge start positions
+    v_units = np.array([vx, vy]).T
+    v_starts = [tuple(n) for n in v_units]
+    v_ends = [
+        tuple(n) for n in v_units + (1, 0)
+    ]  # end positions = start positions shifted by vector (0,1)
+    vertical_edges = list(zip(v_starts, v_ends))
+    # CONSTRUCTION OF POSITIVE DIAGONAL EDGES
+    pdy, pdx = np.where(
+        np.logical_and(im[1:][:, 1:], im[:-1][:, :-1])
+    )  # vertical edge start positions
+    pd_units = np.array([pdx, pdy]).T
+    pd_starts = [tuple(n) for n in pd_units]
+    pd_ends = [
+        tuple(n) for n in pd_units + (1, 1)
+    ]  # end positions = start positions shifted by vector (1,1)
+    positive_diagonal_edges = list(zip(pd_starts, pd_ends))
+    # CONSTRUCTION OF NEGATIVE DIAGONAL EDGES
+    ndy, ndx = np.where(
+        np.logical_and(im[:-1][:, 1:], im[1:][:, :-1])
+    )  # vertical edge start positions
+    ndx = ndx + 1
+    nd_units = np.array([ndx, ndy]).T
+    nd_starts = [tuple(n) for n in nd_units]
+    nd_ends = [
+        tuple(n) for n in nd_units + (-1, 1)
+    ]  # end positions = start positions shifted by vector (-1,1)
+    negative_diagonal_edges = list(zip(nd_starts, nd_ends))
+
+    # Create MultiGraph instead of Graph to support multiple edges
+    G = nx.MultiGraph()
+    G.add_edges_from(horizontal_edges, weight=1)
+    G.add_edges_from(vertical_edges, weight=1)
+    G.add_edges_from(positive_diagonal_edges, weight=1)
+    G.add_edges_from(negative_diagonal_edges, weight=1)
+
+    # ADD EXTRA EDGES FOR PIXELS WITH VALUE "2"
+    # Horizontal neighbors with value "2"
+    hy2, hx2 = np.where(np.logical_and(im[1:] == 2, im[:-1] == 2))
+    h_units_2 = np.array([hx2, hy2]).T
+    h_starts_2 = [tuple(n) for n in h_units_2]
+    h_ends_2 = [tuple(n) for n in h_units_2 + (0, 1)]
+    G.add_edges_from(zip(h_starts_2, h_ends_2), weight=1)
+
+    # Vertical neighbors with value "2"
+    vy2, vx2 = np.where(np.logical_and(im[:, 1:] == 2, im[:, :-1] == 2))
+    v_units_2 = np.array([vx2, vy2]).T
+    v_starts_2 = [tuple(n) for n in v_units_2]
+    v_ends_2 = [tuple(n) for n in v_units_2 + (1, 0)]
+    G.add_edges_from(zip(v_starts_2, v_ends_2), weight=1)
+
+    # Positive diagonal neighbors with value "2"
+    pdy2, pdx2 = np.where(np.logical_and(im[1:][:, 1:] == 2, im[:-1][:, :-1] == 2))
+    pd_units_2 = np.array([pdx2, pdy2]).T
+    pd_starts_2 = [tuple(n) for n in pd_units_2]
+    pd_ends_2 = [tuple(n) for n in pd_units_2 + (1, 1)]
+    G.add_edges_from(zip(pd_starts_2, pd_ends_2), weight=1)
+
+    # Negative diagonal neighbors with value "2"
+    ndy2, ndx2 = np.where(np.logical_and(im[:-1][:, 1:] == 2, im[1:][:, :-1] == 2))
+    ndx2 = ndx2 + 1
+    nd_units_2 = np.array([ndx2, ndy2]).T
+    nd_starts_2 = [tuple(n) for n in nd_units_2]
+    nd_ends_2 = [tuple(n) for n in nd_units_2 + (-1, 1)]
+    G.add_edges_from(zip(nd_starts_2, nd_ends_2), weight=1)
+
+    return G
+
+
 def img_to_graph_com_distancias(im):
     image_array = np.array(im)
     # Create an empty graph
@@ -1351,24 +1607,49 @@ def find_distances(ligacao, regions_list, base_frame):
     route_img_b = getattr(region_b, route_type_b)
     route_points_b = pt.img_to_points(mt.hitmiss_ends_v2(route_img_b))
 
-    # Find closest points between the two routes
-    closest_pair = pt.closest_points(route_points_a + route_points_b)
-    point_a, point_b = closest_pair[0], closest_pair[1]
+    # Find two closest points between the two routes
+    distances_list = []
+    for p_a in route_points_a:
+        for p_b in route_points_b:
+            dist = pt.distance_pts(p_a, p_b)
+            distances_list.append((dist, p_a, p_b))
 
-    # Calculate distance
-    distance = pt.distance_pts(point_a, point_b)
+    # Sort by distance and get the two smallest
+    distances_list.sort(key=lambda x: x[0])
 
-    # Draw line connecting the closest points
-    link_img = it.draw_line(np.zeros(base_frame), point_a, point_b)
+    if len(distances_list) == 0:
+        raise ValueError(
+            f"No points found in routes for regions {region_name_a} and {region_name_b}"
+        )
 
-    aaaa = it.sum_imgs([route_img_a, route_img_b, link_img * 2])
-    return link_img, distance, [point_a, point_b]
+    # Get first two smallest distances
+    first_distance, point_a_1, point_b_1 = distances_list[0]
+    second_distance = None
+    point_a_2 = None
+    point_b_2 = None
+
+    if len(distances_list) > 1:
+        second_distance, point_a_2, point_b_2 = distances_list[1]
+
+    # Draw lines connecting the closest points
+    link_img = it.draw_line(np.zeros(base_frame), point_a_1, point_b_1)
+    if point_a_2 is not None:
+        link_img = it.draw_line(link_img, point_a_2, point_b_2)
+
+    # Return both distances and their corresponding points
+    return (first_distance, [point_a_1, point_b_1]), (
+        second_distance,
+        [point_a_2, point_b_2],
+    )
+
+    # aaaa = it.sum_imgs([route_img_a, route_img_b, link_img * 2])
+    # return link_img, distance, [point_a, point_b]
 
 
 def make_regions_graph_by_routes(
     a_regions, b_regions, base_frame, apendix1="", apendix2="", path_radius=None
 ):
-    graph = nx.Graph()
+    graph = nx.MultiGraph()
     pos_zigzag_nodes = {}
     for i in a_regions:
         i.find_center()
@@ -1416,24 +1697,36 @@ def make_regions_graph_by_routes(
                 region_name=apendix2 + str(j.name),
             )
         for ligacao in comb_neig:
-            link_img, link_distance, link_points = find_distances(
-                ligacao, a_regions + b_regions, base_frame
+            link1, link2 = find_distances(ligacao, a_regions + b_regions, base_frame)
+            graph.add_edge(
+                str(ligacao[0]),
+                str(ligacao[1]),
+                weight=link1[0],
+                link=str(link1[1]),
+                key="a",
             )
             graph.add_edge(
                 str(ligacao[0]),
                 str(ligacao[1]),
-                weight=link_distance,
-                link=str(link_points),
+                weight=link2[0],
+                link=str(link2[1]),
+                key="b",
             )
     for ligacao in reg_neig:
-        link_img, link_distance, link_points = find_distances(
-            ligacao, a_regions + a_regions, base_frame
+        link1, link2 = find_distances(ligacao, a_regions + a_regions, base_frame)
+        graph.add_edge(
+            str(ligacao[0]),
+            str(ligacao[1]),
+            weight=link1[0],
+            link=str(link1[1]),
+            key="a",
         )
         graph.add_edge(
             str(ligacao[0]),
             str(ligacao[1]),
-            weight=link_distance,
-            link=str(link_points),
+            weight=link2[0],
+            link=str(link2[1]),
+            key="b",
         )
     return graph, pos_zigzag_nodes
 
@@ -1488,7 +1781,7 @@ def rotate_path_odd_layer(coords, base_frame):
         if list(p) == [0, 0]:
             new_coords.append(p)
         else:
-            (y, x) = p
+            y, x = p
             angler = (270) * math.pi / 180
             newx = int(x * math.cos(angler) - y * math.sin(angler))
             newy = int(x * math.sin(angler) + y * math.cos(angler)) + base_frame[1]
@@ -1984,8 +2277,6 @@ def initial_position(output, coords, height, vel_vazio, n_layer):
 
 
 def region_points(layer: Layer, island: Island, folders: System_Paths):
-    # folders.load_bridges_hdf5(layer.name, island)
-    # print(f"name: {layer.name}/{island.name}")
     pts_bridg = points_from_region(layer.name, folders, island, bridges=True)
     pts_tw = points_from_region(layer.name, folders, island, tw=True)
     pts_cont = points_from_region(layer.name, folders, island, offsets=True)
@@ -2558,7 +2849,7 @@ def verifica_combinacao_portas(subgraph, reg_list, max_n=15):
         return None
     for combo in product(["_route", "_route_b"], repeat=n):
         escolha = dict(zip(reg_list, combo))
-        sub = nx.Graph()
+        sub = nx.MultiGraph()
         for r, p in escolha.items():
             sub.add_node(f"{r}{p}")
         for u, v, data in subgraph.edges(data=True):
@@ -2625,7 +2916,7 @@ def encontrar_caminho_dp(regions_graph, max_regioes=15):
     return None
 
 
-def sequence_from_botleneck_to_leaves(graph: nx.Graph, folders: System_Paths):
+def sequence_from_botleneck_to_leaves(graph: nx.MultiGraph, folders: System_Paths):
 
     def filtrar_nos_finais(G, no_inicial, nos_com_um_vizinho):
         """
@@ -2772,26 +3063,21 @@ def sequence_from_botleneck_to_leaves(graph: nx.Graph, folders: System_Paths):
     return new_graph
 
 
-def combine_routes_and_draw_links(new_graph, island, base_frame):
+def combine_routes_and_draw_links(new_graph, island, base_frame, path_radius):
     """
     Combina as imagens de route/route_b dos nós do new_graph em uma única matriz.
     Depois, para cada aresta, desenha linhas na imagem combinada com base na propriedade "link".
     """
-    import re
 
     def parse_node_label(node_label):
         """Retorna (region_name, route_attr) a partir do label do nó."""
         if not isinstance(node_label, str):
             node_label = str(node_label)
-
         match = re.match(r"(.+?)(_route_b|_route)$", node_label)
         if not match:
             return None, None
-
         prefix_and_name = match.group(1)
         route_attr = "route_b" if match.group(2) == "_route_b" else "route"
-
-        # Quebra por prefixos conhecidos
         if prefix_and_name.startswith("IN_SL"):
             slmatch = re.match(r"(IN_SL_.+?)(_)(.+?)$", prefix_and_name)
             adress = [slmatch.group(1), slmatch.group(3)]
@@ -2799,15 +3085,57 @@ def combine_routes_and_draw_links(new_graph, island, base_frame):
             adress = [prefix_and_name]
         return adress, route_attr
 
-    combined_img = np.zeros(base_frame, dtype=np.uint8)
+    def trim_path_segments(seq1, seq2, base_frame):
+        """Trim seq1 by removing duplicate-in-segment points from seq2 and return start/end pairs.
 
-    # Combina as imagens dos nós
+        Walk seq1 in order. For each point in seq1 that is also in seq2, start a segment
+        at the first matching point and keep that point in the filtered sequence. Remove
+        all following seq1 points that remain in seq2 until a non-matching point is found.
+        When the segment ends, save the pair [start, end] where end is the last matching point.
+
+        Args:
+            seq1: List of [y, x] points to scan and trim.
+            seq2: List of [y, x] points whose appearances in seq1 define removable segments.
+
+        Returns:
+            filtered_seq1: seq1 without eliminated intermediate seq2 points.
+            segment_pairs: list of [start, end] pairs for each seq2 segment found in seq1.
+        """
+        filtered_seq1 = []
+        segment_pairs = []
+        in_segment = False
+        seg_start = None
+        seg_last = None
+
+        for point in seq1:
+            if point in seq2:
+                if not in_segment:
+                    seg_start = list(point)
+                    seg_last = list(point)
+                    filtered_seq1.append(list(point))
+                    in_segment = True
+                else:
+                    seg_last = list(point)
+                continue
+
+            if in_segment:
+                segment_pairs.append([seg_start, seg_last])
+                in_segment = False
+                seg_start = None
+                seg_last = None
+
+            filtered_seq1.append(list(point))
+
+        if in_segment:
+            segment_pairs.append([seg_start, seg_last])
+
+        return filtered_seq1, segment_pairs
+
+    combined_img = np.zeros(base_frame, dtype=np.uint8)
     for node in new_graph.nodes():
         node_data = new_graph.nodes[node]
         label = node_data.get("label", node)
         adress, route_attr = parse_node_label(label)
-
-        # Procura a região na estrutura island
         region = None
         if adress[0].startswith("ZB"):
             # Procura entre zigzag bridges
@@ -2816,7 +3144,6 @@ def combine_routes_and_draw_links(new_graph, island, base_frame):
                     region = zb
                     break
         else:
-            # Procura em offsets, zigzags, etc.
             for subisland in island.zigzags.internal_islands:
                 if hasattr(subisland, "name") and subisland.name == adress[0]:
                     for reg in subisland.l_regions + subisland.w_regions:
@@ -2825,16 +3152,13 @@ def combine_routes_and_draw_links(new_graph, island, base_frame):
                             break
                 if region:
                     break
-
         if region is None:
             continue
-
         if hasattr(region, route_attr):
             route_img = getattr(region, route_attr)
             combined_img = np.logical_or(combined_img, route_img.astype(bool))
-
-    # Desenha linhas para as arestas
-    for u, v, data in new_graph.edges(data=True):
+    jumps = np.zeros_like(combined_img)
+    for u, v, key, data in new_graph.edges(data=True, keys=True):
         link_str = data.get("link", "")
         if link_str:
             try:
@@ -2842,11 +3166,50 @@ def combine_routes_and_draw_links(new_graph, island, base_frame):
                 points = eval(link_str)
                 if isinstance(points, list) and len(points) == 2:
                     p1, p2 = points
-                    combined_img = it.draw_line(combined_img, p1, p2)
+                    points_dist = pt.distance.euclidean(p1, p2)
+                    if (
+                        key == "a" and points_dist < 3 * path_radius
+                    ):  # Ajuste do limiar conforme necessário
+                        combined_img = it.draw_line(combined_img, p1, p2, color=1)
+                    elif key == "b" or points_dist >= 3 * path_radius:
+                        jumps = it.draw_line(jumps, p1, p2, color=1)
             except (ValueError, SyntaxError):
                 print(f"Erro ao parsear link: {link_str}")
+    allconnected_imgs = it.sum_imgs([combined_img, jumps]).astype(bool)
+    combined_img, internal_paths_imgs, endpoints_pts = clean_excessive_ends(
+        allconnected_imgs
+    )
+    jumps = np.logical_and(jumps, combined_img)
+    connected_routes_separarted_seqs = img_to_chain(combined_img.astype(bool))
+    connected_routes_separarted_seqs = list(
+        filter(lambda x: len(x) > 4, connected_routes_separarted_seqs)
+    )
+    jumps_points = pt.img_to_points(jumps.astype(bool))
+    newroutes = []
+    for i, path in enumerate(connected_routes_separarted_seqs):
+        ends = pt.img_to_points(
+            mt.hitmiss_ends_v2(it.points_to_img(path, np.zeros_like(combined_img)))
+        )
+        path = set_first_pt_in_seq(path, ends[0])
+        path = cut_repetition(path)
+        trimmed_path, jumps_in_path = trim_path_segments(path, jumps_points, base_frame)
+        newjumps = []
+        for j in jumps_in_path:
+            if len(j) == 2 and len(j[0]) == 2 and len(j[1]) == 2:
+                newjumps.append(j[0])
+        newroutes.append(Path("INT_route_" + f"{i:03d}", trimmed_path, jumps=newjumps))
+        it.create_drawing_gif(
+            trimmed_path,
+            100,
+            combined_img.shape,
+            output_path="internal_path_" + f"{i:03d}" + ".gif",
+        )
 
-    return combined_img
+    asdimage = it.sum_imgs_colored(
+        [x.get_img(base_frame) for x in newroutes]
+        + [it.points_to_img(jumps_points, np.zeros_like(combined_img))]
+    )
+    return newroutes, asdimage
 
 
 def no_repeating_prim_mst(G, start_node=None):
@@ -2855,60 +3218,95 @@ def no_repeating_prim_mst(G, start_node=None):
 
     - Only adds nodes if their 'region_name' is not already in the tree.
     - Stops when the tree has half the number of nodes in the original graph.
+    - Additionally, the chosen edge cannot share any points from its "link" property with already visited edges.
+    - Handles MultiGraph with multiple edges per node pair (e.g., keys "a" and "b").
 
     Parameters:
-    G (networkx.Graph): The input graph with 'weight' on edges and 'region_name' on nodes.
+    G (networkx.MultiGraph): The input graph with 'weight' on edges and 'region_name' on nodes.
     start_node: The starting node. If None, uses the first node.
 
     Returns:
-    networkx.Graph: The resulting tree.
+    networkx.MultiGraph: The resulting tree.
     """
-    import heapq
-
     if start_node is None:
         start_node = list(G.nodes())[0]
 
     included_nodes = set([start_node])
     included_regions = set([G.nodes[start_node]["region_name"]])
     tree_edges = []
-    pq = []  # Priority queue: (weight, u, v)
+    visited_points = set()  # Set of points already used in links
+    pq = []  # Priority queue: (weight, u, v, key)
 
     # Add initial edges from start_node
-    for neighbor in G.neighbors(start_node):
+    for u, neighbor, key, data in G.edges(start_node, keys=True, data=True):
         if G.nodes[neighbor]["region_name"] not in included_regions:
-            heapq.heappush(
-                pq, (G[start_node][neighbor]["weight"], start_node, neighbor)
-            )
+            heapq.heappush(pq, (data["weight"], start_node, neighbor, key))
 
     target_size = len(G.nodes()) // 2
 
     while len(included_nodes) < target_size + 1 and pq:
-        weight, u, v = heapq.heappop(pq)
+        weight, u, v, key = heapq.heappop(pq)
 
         if (
             v not in included_nodes
             and G.nodes[v]["region_name"] not in included_regions
         ):
+            # Check if the link points are not already visited
+            link_points = set()
+            if "link" in G[u][v][key]:
+                try:
+                    points = eval(G[u][v][key]["link"])
+                    if isinstance(points, list) and len(points) == 2:
+                        link_points = {tuple(p) for p in points}
+                except (ValueError, SyntaxError):
+                    pass
+            if link_points & visited_points:  # If any point is already visited, skip
+                continue
+
             included_nodes.add(v)
             included_regions.add(G.nodes[v]["region_name"])
             edge_attrs = {"weight": weight}
-            if "link" in G[u][v]:
-                edge_attrs["link"] = G[u][v]["link"]
-            tree_edges.append((u, v, edge_attrs))
+            if "link" in G[u][v][key]:
+                edge_attrs["link"] = G[u][v][key]["link"]
+                visited_points.update(link_points)  # Add points to visited
+            tree_edges.append((u, v, key, edge_attrs))
 
             # Add new edges from v
-            for neighbor in G.neighbors(v):
+            for u, neighbor, key2, data2 in G.edges(v, keys=True, data=True):
                 if (
                     neighbor not in included_nodes
                     and G.nodes[neighbor]["region_name"] not in included_regions
                 ):
-                    heapq.heappush(pq, (G[v][neighbor]["weight"], v, neighbor))
-
-    # Create the tree graph
-    tree = nx.Graph()
+                    heapq.heappush(pq, (data2["weight"], v, neighbor, key2))
+    tree = nx.MultiGraph()
     tree.add_edges_from(tree_edges)
-    # Copy node attributes
     for node in tree.nodes():
         tree.nodes[node].update(G.nodes[node])
-
     return tree
+
+
+def clean_excessive_ends(binary_img: np.ndarray) -> tuple[np.ndarray, list, list]:
+    separated_imgs, _, num_components = it.divide_by_connected(binary_img)
+    pruned_imgs = []
+    endpoint_pairs = []
+    for component_img in separated_imgs:
+        component_img = component_img.astype(np.uint8)
+        current_img = component_img.copy()
+        prune_iterations = 0
+        max_iterations = 10  # Proteção contra loops infinitos
+        while prune_iterations < max_iterations:
+            tips = sk.find_tips(current_img)
+            num_endpoints = np.sum(tips > 0)
+            if num_endpoints <= 2:
+                break
+            if num_endpoints > 2:
+                current_img = sk.prune(current_img, [], iterative_prune=1)[0]
+            prune_iterations += 1
+        if np.sum(current_img) == 0:
+            current_img = component_img.copy()
+        pruned_imgs.append(current_img)
+        final_tips = sk.find_tips(current_img)
+        tip_coords = pt.img_to_points(final_tips)
+        endpoint_pairs.append(tip_coords)
+    combined_img = it.sum_imgs(pruned_imgs)
+    return combined_img, pruned_imgs, endpoint_pairs

@@ -101,10 +101,10 @@ def filter_connected_by_points(binary_img: np.ndarray, points: list) -> np.ndarr
     return result.astype(binary_img.dtype)
 
 
-def draw_line(img, a, b):
+def draw_line(img, a, b, color=1):
     af = tuple(np.flip(a))
     bf = tuple(np.flip(b))
-    return cv2.line(img.astype(np.uint8), af, bf, 1, 1)
+    return cv2.line(img.astype(np.uint8), af, bf, color, 1)
 
 
 def draw_circle(img, center, radius, fill=-1):
@@ -789,11 +789,11 @@ def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2
             aa = np.add(
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_a.route),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_b.route),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
             )
             if (aa == 2).any():
@@ -806,11 +806,11 @@ def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2
             ab = np.add(
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_a.route),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_b.route_b),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
             )
             if (ab == 2).any():
@@ -823,11 +823,11 @@ def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2
             ba = np.add(
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_a.route_b),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_b.route),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
             )
             if (ba == 2).any():
@@ -840,11 +840,11 @@ def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2
             bb = np.add(
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_a.route_b),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
                 mt.dilation(
                     mt.hitmiss_ends_v2(area_b.route_b),
-                    kernel_size=path_radius * 2,
+                    kernel_size=path_radius * 3,
                 ),
             )
             if (bb == 2).any():
@@ -934,13 +934,13 @@ def rotate_img_ccw(img: np.ndarray) -> np.ndarray:
 
 def sum_imgs_colored(imgs_list, limited=False, start_color=1) -> np.ndarray:
     """recieves a list of images and add returns a lebeled version of them"""
-    if imgs_list == []:
-        return []
     filtered = [img for img in imgs_list if np.any(img)]
+    if filtered == []:
+        return []
     all = np.zeros_like(filtered[0], np.uint16)
     color = start_color
     for img in filtered:
-        all = np.add(img.astype(np.uint16) * color, all)
+        all = np.add(img * color, all)
         if limited and color == 4:
             color = 1
         else:
@@ -951,6 +951,8 @@ def sum_imgs_colored(imgs_list, limited=False, start_color=1) -> np.ndarray:
 def sum_imgs(imgs_list: List[np.ndarray]) -> np.ndarray:
     """recieves a list of images and add them up"""
     filtered = [img for img in imgs_list if np.any(img)]
+    if filtered == []:
+        return []
     all = np.zeros_like(filtered[0], np.uint16)
     for img in filtered:
         all = np.add(img, all)
@@ -1059,3 +1061,40 @@ def rectangle_middle_and_corner_points_expanded(shape):
     ]
     middles = [top_middle, bottom_middle, left_middle, right_middle]
     return middles + corners
+
+
+def create_drawing_gif(points, steps, frame_size, output_path="drawing_animation.gif"):
+    """
+    Creates a GIF animation showing the progressive drawing of a sequence of points.
+
+    :param points: List of (y, x) tuples representing the sequence of points to draw.
+    :param steps: Number of points (segments) to add per frame.
+    :param frame_size: Tuple (height, width) for the image size.
+    :param output_path: Path to save the GIF file.
+    """
+    try:
+        from PIL import Image, ImageDraw
+    except ImportError:
+        raise ImportError(
+            "Pillow is required for creating GIFs. Install with: pip install pillow"
+        )
+
+    frames = []
+    img = Image.new(
+        "L", (frame_size[1], frame_size[0]), 0
+    )  # Grayscale image, (width, height)
+    draw = ImageDraw.Draw(img)
+
+    for i in range(0, len(points) - 1, steps):
+        end = min(i + steps, len(points) - 1)
+        for j in range(i, end):
+            y1, x1 = points[j]
+            y2, x2 = points[j + 1]
+            draw.line([x1, y1, x2, y2], fill=255, width=1)
+        frames.append(img.copy())
+
+    if frames:
+        print(f"Saving GIF with {len(frames)} frames to {output_path}...")
+        frames[0].save(
+            output_path, save_all=True, append_images=frames[1:], duration=500, loop=0
+        )

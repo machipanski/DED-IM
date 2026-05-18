@@ -141,10 +141,12 @@ class System_Paths:
         f = h5py.File(self.save_file_name, "r")
         try:
             local = f.get(path)
-            img = np.array(local[name])
-        except Exception as e:
-            print(f"Error occurred while loading image: {e}")
-            img = []
+            if local is None or name not in local:
+                img = np.array([])
+            else:
+                img = np.array(local[name])
+        except Exception:
+            img = np.array([])
         finally:
             f.close()
             os.chdir(self.home)
@@ -199,15 +201,30 @@ class System_Paths:
             )
             # island.external_tree_route.img = list(etr_group.get("img"))
         if itr_group:
-            island.internal_tree_route = Path(
-                "internal_tree_route",
-                list(itr_group.get("sequence")),
-                jumps=list(itr_group.get("jumps")),
-                img=self.load_img_hdf5(
-                    f"/{layer_name}/{island.name}/internal_tree_route", "img"
-                ),
-            )
-            # island.internal_tree_route.img = list(itr_group.get("img"))
+            island.internal_tree_route = []
+            internal_routes = {}
+            for dataset_name in itr_group:
+                if dataset_name.endswith("_sequence"):
+                    route_name = dataset_name[: -len("_sequence")]
+                    values = itr_group.get(dataset_name)[()]
+                    internal_routes.setdefault(route_name, {})["sequence"] = (
+                        values.tolist() if hasattr(values, "tolist") else list(values)
+                    )
+                elif dataset_name.endswith("_jumps"):
+                    route_name = dataset_name[: -len("_jumps")]
+                    values = itr_group.get(dataset_name)[()]
+                    internal_routes.setdefault(route_name, {})["jumps"] = (
+                        values.tolist() if hasattr(values, "tolist") else list(values)
+                    )
+            for route_name in sorted(internal_routes):
+                route_data = internal_routes[route_name]
+                island.internal_tree_route.append(
+                    Path(
+                        route_name,
+                        route_data.get("sequence", []),
+                        jumps=route_data.get("jumps", []),
+                    )
+                )
         if twtr_group:
             island.thinwalls_tree_route = Path(
                 "thinwalls_tree_route",
@@ -310,68 +327,74 @@ class System_Paths:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         island_group = f.get(f"/{layer_name}/{island.name}")
-        zzr_group = island_group.get("zigzags")
-        if zzr_group:
-            island.zigzags = ZigZagRegions()
-            int_isl = island.zigzags.internal_islands
-            int_isl_group = zzr_group.get("internal_islands")
-            for i_key, i_item in int_isl_group.items():
-                thisimage = self.load_img_hdf5(
-                    f"/{layer_name}/{island.name}/zigzags/internal_islands/{i_key}",
-                    "img",
-                )
-                thislarge_areas = self.load_img_hdf5(
-                    f"/{layer_name}/{island.name}/zigzags/internal_islands/{i_key}",
-                    "large_areas",
-                )
-                int_isl.append(
-                    Sub_island(i_key, thisimage, large_areas=thislarge_areas)
-                )
-                region_group = int_isl_group.get(i_key)
-                for j_key, j_item in region_group.items():
-                    if isinstance(j_item, h5py.Group):
-                        if j_key.startswith("l_regions"):
-                            l_region_group = region_group.get(j_key)
-                            for l_key, l_item in l_region_group.items():
-                                setattr(
-                                    int_isl[-1],
-                                    "l_regions",
-                                    int_isl[-1].l_regions
-                                    + [
-                                        ZigZag(
-                                            l_key,
-                                            [],
-                                            **dict(l_region_group.attrs),
+        if island_group is not None:
+            zzr_group = island_group.get("zigzags")
+            if zzr_group:
+                island.zigzags = ZigZagRegions()
+                int_isl = island.zigzags.internal_islands
+                int_isl_group = zzr_group.get("internal_islands")
+                if int_isl_group is not None:
+                    for i_key, i_item in int_isl_group.items():
+                        region_group = int_isl_group.get(i_key)
+                        if region_group is None:
+                            continue
+                        thisimage = (
+                            np.array(region_group.get("img"))
+                            if region_group.get("img") is not None
+                            else np.array([])
+                        )
+                        thislarge_areas = (
+                            np.array(region_group.get("large_areas"))
+                            if region_group.get("large_areas") is not None
+                            else np.array([])
+                        )
+                        int_isl.append(
+                            Sub_island(i_key, thisimage, large_areas=thislarge_areas)
+                        )
+                        for j_key, j_item in region_group.items():
+                            if isinstance(j_item, h5py.Group):
+                                if j_key.startswith("l_regions"):
+                                    l_region_group = region_group.get(j_key)
+                                    for l_key, l_item in l_region_group.items():
+                                        setattr(
+                                            int_isl[-1],
+                                            "l_regions",
+                                            int_isl[-1].l_regions
+                                            + [
+                                                ZigZag(
+                                                    l_key,
+                                                    [],
+                                                    **dict(l_region_group.attrs),
+                                                )
+                                            ],
                                         )
-                                    ],
-                                )
-                                for k_key, k_item in l_region_group.get(l_key).items():
-                                    setattr(
-                                        int_isl[-1].l_regions[-1],
-                                        k_key,
-                                        np.array(k_item),
-                                    )
-                        if j_key.startswith("w_regions"):
-                            w_region_group = region_group.get(j_key)
-                            for w_key, w_item in w_region_group.items():
-                                setattr(
-                                    int_isl[-1],
-                                    "w_regions",
-                                    int_isl[-1].w_regions
-                                    + [
-                                        ZigZag(
-                                            w_key,
-                                            [],
-                                            **dict(w_region_group.attrs),
+                                        for k_key, k_item in l_region_group.get(l_key).items():
+                                            setattr(
+                                                int_isl[-1].l_regions[-1],
+                                                k_key,
+                                                np.array(k_item),
+                                            )
+                                if j_key.startswith("w_regions"):
+                                    w_region_group = region_group.get(j_key)
+                                    for w_key, w_item in w_region_group.items():
+                                        setattr(
+                                            int_isl[-1],
+                                            "w_regions",
+                                            int_isl[-1].w_regions
+                                            + [
+                                                ZigZag(
+                                                    w_key,
+                                                    [],
+                                                    **dict(w_region_group.attrs),
+                                                )
+                                            ],
                                         )
-                                    ],
-                                )
-                                for k_key, k_item in w_region_group.get(w_key).items():
-                                    setattr(
-                                        int_isl[-1].w_regions[-1],
-                                        k_key,
-                                        np.array(k_item),
-                                    )
+                                        for k_key, k_item in w_region_group.get(w_key).items():
+                                            setattr(
+                                                int_isl[-1].w_regions[-1],
+                                                k_key,
+                                                np.array(k_item),
+                                            )
         f.close()
         os.chdir(self.home)
         return
@@ -811,14 +834,14 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
             self.delete_item_hdf5(element_path)
             self.create_new_hdf5_group(element_path)
-            self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
+            # self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
             # self.delete_item_hdf5(f"{element_path}/sequence")
-            self.save_seq_hdf5(
-                element_path, "sequence", isl.internal_tree_route.sequence
-            )
-            self.save_seq_hdf5(element_path, "jumps", isl.internal_tree_route.jumps)
+            for seq in isl.internal_tree_route:
+                print("   " + str(seq))
+                self.save_seq_hdf5(element_path, seq.name + "_sequence", seq.sequence)
+                self.save_seq_hdf5(element_path, seq.name + "_jumps", seq.jumps)
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
-            self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
+            # self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
         return
 
     def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):

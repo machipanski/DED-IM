@@ -19,7 +19,6 @@ from components.path_tools import Path
 from components import points_tools as pt
 import components.skeleton as sk
 
-
 if TYPE_CHECKING:
     from components.files import System_Paths
 
@@ -100,6 +99,7 @@ class Layer:
         self.islands: List[Island]
         self.selected = []
         self.layer_final_path = []
+        self.intern_zz_style = 0
         if kwargs:
             for key, value in kwargs.items():
                 setattr(self, key, value)
@@ -110,60 +110,134 @@ class Layer:
             folders.load_offsets_hdf5(self.name, island)
             folders.load_island_paths_hdf5(self.name, island)
             itr = island.internal_tree_route
-            etr = island.external_tree_route
+            etr = [island.external_tree_route]
             twtr = island.thinwalls_tree_route
             with Timer("  Creating island route img"):
-                if etr.sequence == []:
+                if len(etr) == 0:
                     print("   No external route found")
                     pass
                 else:
-                    if not itr.sequence == []:
-                        itr.sequence = [list(x) for x in itr.sequence]
-                    if not etr.sequence == []:
-                        etr.sequence = [list(x) for x in etr.sequence]
-                    if not twtr.sequence == []:
-                        twtr.sequence = [list(x) for x in twtr.sequence]
-                    island_route_path_for_img = (
-                        etr.sequence + itr.sequence + twtr.sequence
-                    )
-                    island_island_route_img = it.points_to_img(
-                        island_route_path_for_img, np.zeros(self.base_frame)
+                    # if len(itr.sequence) == 0:
+                    #     itr.sequence = [list(x) for x in itr.sequence]
+                    # if len(etr.sequence) == 0:
+                    #     etr.sequence = [list(x) for x in etr.sequence]
+                    # if len(twtr.sequence) == 0:
+                    #     twtr.sequence = [list(x) for x in twtr.sequence]
+                    # island_route_path_for_img = (
+                    #     etr.sequence + itr.sequence + twtr.sequence
+                    # )
+                    island_island_route_img = it.sum_imgs_colored(
+                        [
+                            it.sum_imgs(
+                                [
+                                    it.points_to_img(
+                                        x.sequence, np.zeros(self.base_frame)
+                                    )
+                                    for x in etr
+                                ]
+                            ),
+                            it.sum_imgs(
+                                [
+                                    it.points_to_img(
+                                        x.sequence, np.zeros(self.base_frame)
+                                    )
+                                    for x in itr
+                                ]
+                            ),
+                            it.sum_imgs(
+                                [
+                                    it.points_to_img(
+                                        x.sequence, np.zeros(self.base_frame)
+                                    )
+                                    for x in twtr
+                                ]
+                            ),
+                        ]
                     )
 
             with Timer("  Connecting all parts"):
-                internal_simpl = path_tools.simplifica_retas_masterV2(
-                    itr.sequence, 0.002, itr.jumps
-                )
-                external_simpl = path_tools.simplifica_retas_masterV2(
-                    etr.sequence, 0.002, etr.jumps
-                )
-                thinwalls_simpl = path_tools.simplifica_retas_masterV2(
-                    twtr.sequence, 0.002, twtr.jumps
-                )
-                island_route_path = external_simpl + internal_simpl + thinwalls_simpl
+                externals_simpl = []
+                for e in etr:
+                    if len(e.sequence) > 0:
+                        externals_simpl.append(
+                            path_tools.simplifica_retas_masterV2(
+                                e.sequence, 0.002, e.jumps
+                            )
+                        )
+                internals_simpl = []
+                for i in itr:
+                    if len(i.sequence) > 0:
+                        internals_simpl.append(
+                            path_tools.simplifica_retas_masterV2(
+                                i.sequence, 0.002, i.jumps
+                            )
+                        )
+                thinwalls_simpl = []
+                for t in twtr:
+                    if len(t.sequence) > 0:
+                        thinwalls_simpl.append(
+                            path_tools.simplifica_retas_masterV2(
+                                t.sequence, 0.002, t.jumps
+                            )
+                        )
+
+                island_route_path = [
+                    point
+                    for route in externals_simpl + internals_simpl + thinwalls_simpl
+                    for point in route
+                ]
                 island_island_route_img = it.chain_to_lines(
                     island_route_path, np.zeros(self.base_frame)
                 )
-                if self.odd_layer == 1:
-                    print("   Layer Rotated 90 degrees")
-                    etr.sequence = path_tools.rotate_path_odd_layer(
-                        external_simpl, self.base_frame
-                    )
-                    itr.sequence = path_tools.rotate_path_odd_layer(
-                        internal_simpl, self.base_frame
-                    )
-                    twtr.sequence = path_tools.rotate_path_odd_layer(
-                        thinwalls_simpl, self.base_frame
-                    )
-                    island_route_path = path_tools.rotate_path_odd_layer(
-                        island_route_path, self.base_frame
-                    )
-                    island_island_route_img = it.chain_to_lines(
-                        island_route_path,
-                        np.zeros([self.base_frame[1], self.base_frame[0]]),
-                    )
-                island.regions = [itr.regions + etr.regions + twtr.regions]
-                island.jumps = [itr.jumps + etr.jumps + twtr.jumps]
+                # if self.odd_layer == 1:
+                #     print("   Layer Rotated 90 degrees")
+                #     etr.sequence = path_tools.rotate_path_odd_layer(
+                #         external_simpl, self.base_frame
+                #     )
+                #     itr.sequence = path_tools.rotate_path_odd_layer(
+                #         internal_simpl, self.base_frame
+                #     )
+                #     twtr.sequence = path_tools.rotate_path_odd_layer(
+                #         thinwalls_simpl, self.base_frame
+                #     )
+                #     island_route_path = path_tools.rotate_path_odd_layer(
+                #         island_route_path, self.base_frame
+                #     )
+                #     island_island_route_img = it.chain_to_lines(
+                #         island_route_path,
+                #         np.zeros([self.base_frame[1], self.base_frame[0]]),
+                #     )
+                it.create_drawing_gif(
+                    island_route_path, 100, self.base_frame, output_path="finalpath.gif"
+                )
+                island.regions = []
+                for route in itr:
+                    for reg in route.regions:
+                        if len(reg) > 0:
+                            island.regions.append(reg)
+                for route in etr:
+                    for reg in route.regions:
+                        if len(reg) > 0:
+                            island.regions.append(reg)
+                for route in twtr:
+                    for reg in route.regions:
+                        if len(reg) > 0:
+                            island.regions.append(reg)
+
+                island.jumps = []
+                for route in itr:
+                    for j in route.jumps:
+                        if len(j) > 0:
+                            island.jumps.append(j)
+                for route in etr:
+                    for j in route.jumps:
+                        if len(j) > 0:
+                            island.jumps.append(j)
+                for route in twtr:
+                    for j in route.jumps:
+                        if len(j) > 0:
+                            island.jumps.append(j)
+
                 island.island_route = Path(
                     "island_route",
                     island_route_path,
@@ -287,16 +361,12 @@ class Layer:
                     island_internal_graph,
                     folders,
                 )
-            aaa = path_tools.combine_routes_and_draw_links(G, isl, self.base_frame)
-
-            if isl.internal_tree_route != []:
-                with Timer("  Connecting zigzag bridges"):
-                    isl.internal_tree_route = path_tools.connect_zigzag_bridges(isl)
-                    isl.internal_tree_route.get_img(self.base_frame)
-            else:
-                print("   No internal routes found")
-                isl.internal_tree_route = Path("0", [], [])
-        with Timer("  Saving route images"):
+            isl.internal_tree_route, islnd_internal_comb_img = (
+                path_tools.combine_routes_and_draw_links(
+                    G, isl, self.base_frame, self.path_radius_larg
+                )
+            )
+        with Timer("  Saving internal routes"):
             folders.save_internal_routes_hdf5(self.name, self.islands)
         return
 
@@ -518,14 +588,18 @@ class Layer:
             folders.load_offsets_hdf5(self.name, island)
             folders.load_zigzags_hdf5(self.name, island)
             folders.load_bridges_hdf5(self.name, island)
+            folders.load_island_paths_hdf5(self.name, island)
             with Timer("  Finding the ext-int union point"):
                 # if hasattr(island, "zigzags") and hasattr(island, "offsets"):
                 if len(island.offsets.regions) > 0:
                     if hasattr(island, "zigzags"):
-                        if len(island.zigzags.regions) > 0:
+                        if len(island.zigzags.internal_islands) > 0:
                             island.ext_start, island.int_start = (
                                 path_tools.connect_internal_external(
-                                    island, self.path_radius_int_ext
+                                    island,
+                                    self.path_radius_cont,
+                                    self.sob_int_ext_per,
+                                    self.intern_zz_style,
                                 )
                             )
                     else:
@@ -1149,6 +1223,7 @@ class Layer:
                     )
         with Timer("  Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
+            self.intern_zz_style = style
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
@@ -1161,7 +1236,7 @@ class Layer:
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
             for isl in self.islands:
-                G1 = nx.Graph()
+                G1 = nx.MultiGraph()
                 folders.load_zigzags_hdf5(self.name, isl)
                 subisland_graphs = []
                 sub_islands_sequence = []
@@ -1178,26 +1253,11 @@ class Layer:
                                     path_radius=self.path_radius_larg,
                                 )
                             )
-                            # subisland_mst, subisland_sequence = path_tools.regions_mst(
-                            #     subisland_graph
-                            # )
                             subisland_graphs.append(subisland_graph)
-                            # sub_islands_sequence.append(subisland_sequence)
                     G1 = nx.union_all(subisland_graphs)
-                    # print(
-                    #     f"LARGE AREAS GRAPH: Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}\n"
-                    # )
-                    # print("Edges:")
-                    # for u, v, data in G1.edges(data=True):
-                    #     print(f"  {u} -- {v}: weight={data.get('weight', 'N/A')}")
-                    # print("\n")
-                    # folders.save_graph(
-                    #     G1, f"{self.name}_{isl.name}_LA_neighborhood.gexf"
-                    # )
-
                     if hasattr(isl, "bridges"):
                         subisland_graphs = []
-                        G2 = nx.Graph()
+                        G2 = nx.MultiGraph()
                         if hasattr(isl.bridges, "zigzag_bridges"):
                             for bridge in isl.bridges.zigzag_bridges:
                                 for int_isl in isl.zigzags.internal_islands:
@@ -1211,17 +1271,11 @@ class Layer:
                                             path_radius=self.path_radius_larg,
                                         )
                                     )
-                                    # subisland_mst, subisland_sequence = (
-                                    #     path_tools.regions_mst(subisland_graph)
-                                    # )
                                     subisland_graphs.append(subisland_graph)
-                                    # sub_islands_sequence.append(subisland_sequence)
                             G2 = nx.compose_all(subisland_graphs)
                             multiplier = 5
-                            for u, v in G2.edges():
-                                G2[u][v]["weight"] = (
-                                    G2[u][v].get("weight", 1) * multiplier
-                                )
+                            for u, v, key, data in G2.edges(keys=True, data=True):
+                                data["weight"] = data.get("weight", 1) * multiplier
                         print(
                             f"LARGE AREAS bridges: Nodes: {G1.number_of_nodes()}, Edges: {G1.number_of_edges()}\n"
                         )
@@ -1239,59 +1293,4 @@ class Layer:
                         folders.save_graph(
                             G3, f"{self.name}_{isl.name}_INT_neighborhood.graphml"
                         )
-        return
-
-        #         aaa = path_tools.sequence_from_botleneck_to_leaves(G3)
-
-        #         folders.load_thin_walls_hdf5(self.name, isl)
-        #         if hasattr(isl, "thin_walls"):
-        #             if (
-        #                 hasattr(isl.thin_walls, "regions")
-        #                 and len(isl.thin_walls.regions) > 0
-        #             ):
-        #                 regions_imgs.append(
-        #                     sum_imgs(
-        #                         [reg.img for reg in isl.thin_walls.regions]
-        #                     ).astype(np.uint16)
-        #                     * 5
-        #                 )
-        #         folders.load_offsets_hdf5(self.name, isl)
-        #         if hasattr(isl, "offsets"):
-        #             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
-        #                 regions_imgs.append(
-        #                     sum_imgs([reg.img for reg in isl.offsets.regions]).astype(
-        #                         np.uint16
-        #                     )
-        #                     * 6
-        #                 )
-        #         folders.load_bridges_hdf5(self.name, isl)
-        #         if hasattr(isl, "bridges"):
-        #             if hasattr(isl.bridges, "zigzag_bridges"):
-        #                 if len(isl.bridges.zigzag_bridges) > 0:
-        #                     regions_imgs.append(
-        #                         sum_imgs(
-        #                             [reg.img for reg in isl.bridges.zigzag_bridges]
-        #                         ).astype(np.uint16)
-        #                         * 7
-        #                     )
-        #             if hasattr(isl.bridges, "offset_bridges"):
-        #                 if len(isl.bridges.offset_bridges) > 0:
-        #                     regions_imgs.append(
-        #                         sum_imgs(
-        #                             [reg.img for reg in isl.bridges.offset_bridges]
-        #                         ).astype(np.uint16)
-        #                         * 8
-        #                     )
-        #             if hasattr(isl.bridges, "cross_over_bridges"):
-        #                 if len(isl.bridges.cross_over_bridges) > 0:
-        #                     regions_imgs.append(
-        #                         sum_imgs(
-        #                             [reg.img for reg in isl.bridges.cross_over_bridges]
-        #                         ).astype(np.uint16)
-        #                         * 9
-        #                     )
-        #         isl_final_map = sum_imgs(regions_imgs)
-        # with Timer("  Saving images of zigzag routes"):
-        #     folders.save_regs_zigzags_hdf5(self.name, self.islands)
-        #     folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return

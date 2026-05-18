@@ -1,3 +1,4 @@
+from hmac import new
 import itertools
 import copy
 import concurrent.futures
@@ -340,7 +341,7 @@ class BridgeRegions:
                 reg_a = [x for x in offsets_regs if x.name == line[0]][0]
                 reg_b = [x for x in offsets_regs if x.name == line[1]][0]
                 new_img = np.logical_and(reg_a.img, reg_b.img)
-                origin = mt.thin(new_img)
+                origin = mt.thinning(new_img)
                 self.offset_bridges.append(
                     Bridge(f"OB_{counter:03d}", new_img, origin, [], 2, [], [], [])
                 )
@@ -482,7 +483,7 @@ class BridgeRegions:
 
             return repeated_names, names_with_previous
 
-        def connect_bridges_simple():
+        def connect_bridges_simple(path_radius_bridg):
             filtered_zigzag_bridges = copy.deepcopy(self.zigzag_bridges)
             united_zigzag_bridges = []
             for i, j in itertools.combinations(self.zigzag_bridges, 2):
@@ -508,6 +509,10 @@ class BridgeRegions:
                 ]
                 new_img = np.logical_or(bridge_a.img, bridge_b.img)
                 new_origin = np.logical_or(bridge_a.origin, bridge_b.origin)
+                _, _, num = it.divide_by_connected(new_origin)
+                if num > 1:
+                    new_origin = mt.dilation(new_origin, kernel_size=path_radius_bridg)
+                    new_origin = sk.medial_axis(new_origin, 1)
                 new_trunk = np.logical_or(bridge_a.trunk, bridge_b.trunk)
                 new_origin_mark = bridge_a.origin_mark
                 bridge_a.name = f"remove"
@@ -590,7 +595,7 @@ class BridgeRegions:
             bridge.get_linked_offsets(offset_regions)
         aaaa = self.all_bridges
 
-        self.zigzag_bridges = connect_bridges_simple()
+        self.zigzag_bridges = connect_bridges_simple(path_radius_bridg)
         return
 
     def make_cross_over_bridges(self, prohibited_areas, offsets_mst):

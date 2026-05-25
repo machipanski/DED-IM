@@ -320,7 +320,9 @@ def middle_of_the_line(line_img):
     return pt.invert_x_y([seq[int(len(seq) / 2)]])[0]
 
 
-def include_half_loops(start_path, not_yet_included_looping_routes, limmit_points):
+def include_half_loops(
+    start_path, not_yet_included_looping_routes, limmit_points, folders: System_Paths
+) -> Path:
     """
     Builds a new sequence by following the start_path.sequence point by point.
     When a point is found that exists in limmit_points AND in one of the not_yet_included_looping_routes sequences,
@@ -373,7 +375,7 @@ def include_half_loops(start_path, not_yet_included_looping_routes, limmit_point
             new_sequence.append(start_path.sequence[i])
             i += 1
 
-    it.create_drawing_gif(
+    folders.save_path_as_gif(
         new_sequence, 100, start_path.img.shape, output_path="looping_inclusion.gif"
     )
 
@@ -383,7 +385,7 @@ def include_half_loops(start_path, not_yet_included_looping_routes, limmit_point
     return new_start_path
 
 
-def connect_cross_over_bridges(island: Island) -> Path:
+def connect_cross_over_bridges(island: Island, folders: System_Paths) -> Path:
     def add_cross_over_bridges_in_seq(
         island,
         rota_antiga,
@@ -568,7 +570,7 @@ def connect_cross_over_bridges(island: Island) -> Path:
                 and any(reg_name in regions for regions in path.regions.values())
             ]
             start_path = include_half_loops(
-                start_path, not_yet_included_looping_routes, limmit_points
+                start_path, not_yet_included_looping_routes, limmit_points, folders
             )
             start_path.get_img(base_frame=island.img.shape)
             # reg = list(filter(lambda x: x.name == reg_name, island.offsets.regions))[0]
@@ -840,7 +842,7 @@ def connect_offset_bridges(
             )
         else:
             firstpoint = island.ext_start
-            if isinstance(firstpoint[0], (list, tuple)):
+            if isinstance(firstpoint[0], (list, tuple, np.ndarray)):
                 firstpoint = island.ext_start[0]
             lista_de_rotas[-1].sequence = set_first_pt_in_seq(
                 lista_de_rotas[-1].sequence,
@@ -2299,6 +2301,7 @@ def layers_to_Gcode(
     # layer_heights,
     base_coords,
     coords_corte,
+    flag_drawing=False,
 ):
     """Originaly used in an Okerlion machine using 2T mode to operate the soldering (FCT-NOVA in Portugal)"""
 
@@ -2403,16 +2406,23 @@ def layers_to_Gcode(
         bfr = base_coords
         layer_height = layer.layer_height
         output = initial_position(output, base_coords, layer_height, vel_vazio, n_layer)
-        folders.load_islands_hdf5(layer)
+        if layer.islands == []:
+            folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             counter = 0
             last_flag = 0
             flag_on = 0
-            pts_bridg, pts_tw, pts_cont, pts_larg = region_points(
-                layer, island, folders
-            )
-            folders.load_island_paths_hdf5(layer.name, island)
-            chain = [list(x) for x in island.island_route.sequence]
+            if flag_drawing == True:
+                pts_cont = island.contours.pts_cont
+                pts_bridg, pts_tw, pts_larg = [], [], []
+                chain = island.island_route
+            else:
+                pts_bridg, pts_tw, pts_cont, pts_larg = region_points(
+                    layer, island, folders
+                )
+                folders.load_island_paths_hdf5(layer.name, island)
+                chain = [list(x) for x in island.island_route.sequence]
+
             for i, p in enumerate(chain):
                 if i <= 2:
                     flag_salto = 1
@@ -2526,10 +2536,14 @@ def points_from_region(
         if hasattr(island, "thin_walls"):
             region_list = island.thin_walls.regions
     for reg in region_list:
-        image_routes = reg.route
+        image_routes = np.zeros_like(reg.img, dtype=bool)
+        if hasattr(reg, "route"):
+            image_routes = reg.route
         if hasattr(reg, "route_b"):
             if np.sum(reg.route_b) > 0:
                 image_routes = np.logical_or(image_routes, reg.route_b)
+        if np.sum(image_routes) == 0:
+            return []
         image_routes = mt.dilation(image_routes, kernel_size=6)
         points_poutes = pt.img_to_points(image_routes)
         # A2 = pt.img_to_points(mt.dilation(reg.route_b, kernel_size=6))
@@ -3063,7 +3077,7 @@ def sequence_from_botleneck_to_leaves(graph: nx.MultiGraph, folders: System_Path
     return new_graph
 
 
-def combine_routes_and_draw_links(new_graph, island, base_frame, path_radius):
+def combine_routes_and_draw_links(new_graph, island, base_frame, path_radius, folders):
     """
     Combina as imagens de route/route_b dos nós do new_graph em uma única matriz.
     Depois, para cada aresta, desenha linhas na imagem combinada com base na propriedade "link".
@@ -3198,7 +3212,7 @@ def combine_routes_and_draw_links(new_graph, island, base_frame, path_radius):
             if len(j) == 2 and len(j[0]) == 2 and len(j[1]) == 2:
                 newjumps.append(j[0])
         newroutes.append(Path("INT_route_" + f"{i:03d}", trimmed_path, jumps=newjumps))
-        it.create_drawing_gif(
+        folders.save_path_as_gif(
             trimmed_path,
             100,
             combined_img.shape,

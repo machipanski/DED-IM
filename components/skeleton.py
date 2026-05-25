@@ -66,7 +66,7 @@ def medial_axis(
     if hi_sensibility:
         ma, dist = skmorph.medial_axis(original_img.astype(bool), return_distance=True)
     else:
-        ma = skmorph.skeletonize(original_img.astype(bool), method="zhang")
+        ma = skmorph.skeletonize(original_img.astype(bool), method=method)
         ma = ma.astype(np.uint16)
         orig_ma = ma.copy()
     segment_objects = None
@@ -282,7 +282,7 @@ def reduce_origin(
 
 def prune(
     skel_img: np.ndarray,
-    segment_objects: List,
+    segment_objects: List = [],
     min_seg_length=0,
     min_seg_distance=0,
     dist_map=None,
@@ -315,6 +315,8 @@ def prune(
     cleaned_img = pruned_img
     kept_segments = []
     removed_segments = []
+    if segment_objects == []:
+        segmented_img, segment_objects = segment_skeleton(cleaned_img)
     if min_seg_length > 0:
         # If size>0 then check for segments that are smaller than size pixels long
         # Sort through segments since we don't want to remove primary segments

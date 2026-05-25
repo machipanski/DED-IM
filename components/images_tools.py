@@ -498,9 +498,7 @@ def individual_routes(layer: Layer, folders: System_Paths):
             isl.zigzags.internal_islands[0].w_regions[3].route_b,
         ]
     )
-    import matplotlib.pyplot as plt
-
-    plt.imsave("sequence.png", aaaaaa, vmin=0, vmax=1000)
+    folders.save_img(aaaaaa, "sequence.png", layer.name, isl.name)
     return isl_ind_routes
 
 
@@ -1061,40 +1059,3 @@ def rectangle_middle_and_corner_points_expanded(shape):
     ]
     middles = [top_middle, bottom_middle, left_middle, right_middle]
     return middles + corners
-
-
-def create_drawing_gif(points, steps, frame_size, output_path="drawing_animation.gif"):
-    """
-    Creates a GIF animation showing the progressive drawing of a sequence of points.
-
-    :param points: List of (y, x) tuples representing the sequence of points to draw.
-    :param steps: Number of points (segments) to add per frame.
-    :param frame_size: Tuple (height, width) for the image size.
-    :param output_path: Path to save the GIF file.
-    """
-    try:
-        from PIL import Image, ImageDraw
-    except ImportError:
-        raise ImportError(
-            "Pillow is required for creating GIFs. Install with: pip install pillow"
-        )
-
-    frames = []
-    img = Image.new(
-        "L", (frame_size[1], frame_size[0]), 0
-    )  # Grayscale image, (width, height)
-    draw = ImageDraw.Draw(img)
-
-    for i in range(0, len(points) - 1, steps):
-        end = min(i + steps, len(points) - 1)
-        for j in range(i, end):
-            y1, x1 = points[j]
-            y2, x2 = points[j + 1]
-            draw.line([x1, y1, x2, y2], fill=255, width=1)
-        frames.append(img.copy())
-
-    if frames:
-        print(f"Saving GIF with {len(frames)} frames to {output_path}...")
-        frames[0].save(
-            output_path, save_all=True, append_images=frames[1:], duration=500, loop=0
-        )

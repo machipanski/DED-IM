@@ -1,11 +1,5 @@
 from __future__ import annotations
-from ast import In
-from email.headerregistry import Group
 from typing import TYPE_CHECKING
-from venv import create
-
-from more_itertools import last
-from components import large_areas
 from components.bottleneck import Bridge, BridgeRegions
 from components.offset import Loop, OffsetRegions, Offset
 from components.thin_walls import ThinWallRegions, ThinWall
@@ -14,13 +8,14 @@ from components.layer import Layer, Island
 from components.path_tools import Path
 from cv2 import imread
 from dataclasses import dataclass
-
-# from typing import List
-import os
-import subprocess
-import matplotlib.pyplot as plt
+from PIL import Image, ImageDraw
 import numpy as np
 import networkx as nx
+import matplotlib.pyplot as plt
+import os
+import shutil
+import subprocess
+import datetime
 import h5py
 import yaml
 
@@ -35,19 +30,50 @@ class System_Paths:
         """Initializes the System_Paths object with the home directory."""
         self.home = home
         self.input = self.home + "/input"
-        self.output = self.home + "/output"
+        self.output_root = self.home + "/output"
+        self.output = self.output_root
         self.slicer = self.home + "/slicing-with-images"
         self.sliced = self.home + "/input/sliced"
         self.layers: List[Layer] = []
         self.selected = ""
         self.save_file_name = ""
+        self.project_output = self.output_root
+
+    def _normalize_source_name(self, source_file_path: str) -> str:
+        source_name = os.path.basename(source_file_path)
+        source_name = os.path.splitext(source_name)[0]
+        return source_name.replace(" ", "_")
+
+    def create_project(self, source_file_path: str) -> str:
+        """Create a new project output folder using source file name + timestamp."""
+        source_name = self._normalize_source_name(source_file_path)
+        timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        project_name = f"{source_name}_{timestamp}"
+        project_path = os.path.join(self.output_root, project_name)
+        os.makedirs(project_path, exist_ok=True)
+        self.project_output = project_path
+        self.output = project_path
+        return project_path
+
+    def _copy_hdf5_to_project(self, save_file_name: str) -> str | None:
+        project_path = os.path.join(self.output, save_file_name)
+        root_path = os.path.join(self.output_root, save_file_name)
+        if os.path.exists(root_path) and root_path != project_path:
+            shutil.copy2(root_path, project_path)
+            return project_path
+        if os.path.exists(project_path):
+            return project_path
+        return None
 
     def create_hdf5_file(self, name: str) -> str:
-        """Creates a new HDF5 file with the given name in the output directory."""
-        os.chdir(self.output)
-        save_file = h5py.File(f"{name}.hdf5", "a")
+        """Creates a new HDF5 file with the given name in the current project output directory."""
+        if self.output == self.output_root:
+            self.create_project(name)
+        save_path = os.path.join(self.output, f"{name}.hdf5")
+        os.makedirs(self.output, exist_ok=True)
+        save_file = h5py.File(save_path, "a")
         save_file_name = save_file.name
-        os.chdir(self.home)
+        save_file.close()
         self.save_file_name = f"{name}.hdf5"
         return save_file_name
 
@@ -65,10 +91,14 @@ class System_Paths:
         return group_name
 
     def load_hdf5_file(self, save_file_name: str) -> h5py.File:
-        """Loads the HDF5 file with the given name."""
-        os.chdir(self.output)
-        save_file = h5py.File(save_file_name, "a")
-        os.chdir(self.home)
+        """Loads the HDF5 file with the given name and updates the project output folder."""
+        project_file_path = os.path.join(self.output, save_file_name)
+        if not os.path.exists(project_file_path):
+            root_file_path = os.path.join(self.output_root, save_file_name)
+            if os.path.exists(root_file_path):
+                shutil.copy2(root_file_path, project_file_path)
+        save_file = h5py.File(project_file_path, "a")
+        self.save_file_name = save_file_name
         return save_file
 
     def list(self, origins=0, layers=0, isles=0):
@@ -121,6 +151,12 @@ class System_Paths:
         os.chdir(self.home)
         return
 
+    def save_img(self, img, name, cmap=None, **kwargs):
+        os.chdir(self.output)
+        plt.imsave(name, img, cmap=cmap, **kwargs)
+        os.chdir(self.home)
+        pass
+
     def load_graph_hdf5(self, path: str, name: str) -> np.array:
         """Loads a graph from the HDF5 file."""
         os.chdir(self.output)
@@ -139,6 +175,21 @@ class System_Paths:
     def load_img_hdf5(self, path: str, name: str) -> np.array:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
+        try:
+            local = f.get(path)
+            if local is None or name not in local:
+                img = np.array([])
+            else:
+                img = np.array(local[name])
+        except Exception:
+            img = np.array([])
+        finally:
+            f.close()
+            os.chdir(self.home)
+        return img
+
+    def load_img(self, path: str) -> np.array:
+        f = h5py.File(path, "r")
         try:
             local = f.get(path)
             if local is None or name not in local:
@@ -199,7 +250,6 @@ class System_Paths:
                     f"/{layer_name}/{island.name}/external_tree_route", "img"
                 ),
             )
-            # island.external_tree_route.img = list(etr_group.get("img"))
         if itr_group:
             island.internal_tree_route = []
             internal_routes = {}
@@ -244,7 +294,6 @@ class System_Paths:
                     f"/{layer_name}/{island.name}/island_route", "img"
                 ),
             )
-            # island.island_route.img = list(isltr_group.get("img"))
         f.close()
         os.chdir(self.home)
         return
@@ -368,7 +417,9 @@ class System_Paths:
                                                 )
                                             ],
                                         )
-                                        for k_key, k_item in l_region_group.get(l_key).items():
+                                        for k_key, k_item in l_region_group.get(
+                                            l_key
+                                        ).items():
                                             setattr(
                                                 int_isl[-1].l_regions[-1],
                                                 k_key,
@@ -389,7 +440,9 @@ class System_Paths:
                                                 )
                                             ],
                                         )
-                                        for k_key, k_item in w_region_group.get(w_key).items():
+                                        for k_key, k_item in w_region_group.get(
+                                            w_key
+                                        ).items():
                                             setattr(
                                                 int_isl[-1].w_regions[-1],
                                                 k_key,
@@ -464,16 +517,6 @@ class System_Paths:
                         pass
         else:
             for key, value in dict.items():
-                # if isinstance(value, object):
-                #     if not hasattr(value, "dtype"):
-                #         if isinstance(value, int):
-                #             local.attrs[key] = int(value)
-                #         elif isinstance(value, str):
-                #             local.attrs[key] = str(value)
-                #         elif isinstance(value, float):
-                #             local.attrs[key] = float(value)
-                #         else:
-                #             pass
                 try:
                     if len(np.array(value).tobytes()) <= 64 * 1024:
                         local.attrs[key] = value
@@ -807,9 +850,6 @@ class System_Paths:
             self.delete_item_hdf5(element_path + "/img")
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
             self.save_img_hdf5(element_path, "img", isl.island_route.img)
-            # self.delete_item_hdf5(element_path + "/sequence")
-            # print("   " + str(isl.island_route.sequence))
-        # self.delete_item_hdf5(f"/{layer_name}/layer_final_path")
         self.create_new_hdf5_group(f"/{layer_name}/layer_final_path")
         self.save_seq_hdf5(
             f"/{layer_name}/layer_final_path",
@@ -827,21 +867,16 @@ class System_Paths:
         )
         return
 
-    # save_final_routes_hdf5
-
     def save_internal_routes_hdf5(self, layer_name, islands: List[Island]):
         for isl in islands:
             element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
             self.delete_item_hdf5(element_path)
             self.create_new_hdf5_group(element_path)
-            # self.save_props_hdf5(element_path, isl.internal_tree_route.__dict__)
-            # self.delete_item_hdf5(f"{element_path}/sequence")
             for seq in isl.internal_tree_route:
                 print("   " + str(seq))
                 self.save_seq_hdf5(element_path, seq.name + "_sequence", seq.sequence)
                 self.save_seq_hdf5(element_path, seq.name + "_jumps", seq.jumps)
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
-            # self.save_img_hdf5(element_path, "img", isl.internal_tree_route.img)
         return
 
     def save_thinwall_final_routes_hdf5(self, layer_name, islands: List[Island]):
@@ -863,7 +898,6 @@ class System_Paths:
         try:
             local = f.get(path)
             if local.get(name):
-                # self.delete_img_hdf5(path+"/"+name)
                 local[name][...] = img.astype(local.get(name).dtype)
             else:
                 local.create_dataset(name, compression="gzip", data=img)
@@ -879,7 +913,6 @@ class System_Paths:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "a")
         if not f.get(path):
-            # print("Nothing to delete")
             f.close()
             os.chdir(self.home)
             return
@@ -926,6 +959,7 @@ class System_Paths:
 
     def save_graph(self, graph: nx.Graph, filename: str):
         """Wrapper to save a graph in multiple formats."""
+        os.chdir(self.output)
         try:
             path = self.output + "/" + filename
 
@@ -940,6 +974,7 @@ class System_Paths:
             print(f"Saved gexf: {path}")
         except Exception as e:
             print(f"Failed saving G1 graph exports: {e}")
+        os.chdir(self.home)
         return
 
     def load_graph(self, filename: str):
@@ -1027,6 +1062,7 @@ class Config:
         on_pause,
         off_pause,
     ):
+        os.chdir(self.home)
         self.lista_programas.append(
             (
                 WeldingProgram(
@@ -1045,3 +1081,40 @@ class Config:
             ).__dict__
         )
         self.updateConfigs()
+
+    def save_path_as_gif(
+        self, points, steps, frame_size, output_path="last_drawing_animation.gif"
+    ):
+        """
+        Creates a GIF animation showing the progressive drawing of a sequence of points.
+
+        :param points: List of (y, x) tuples representing the sequence of points to draw.
+        :param steps: Number of points (segments) to add per frame.
+        :param frame_size: Tuple (height, width) for the image size.
+        :param output_path: Path to save the GIF file.
+        """
+        os.chdir(self.output)
+        frames = []
+        img = Image.new(
+            "L", (frame_size[1], frame_size[0]), 0
+        )  # Grayscale image, (width, height)
+        draw = ImageDraw.Draw(img)
+
+        for i in range(0, len(points) - 1, steps):
+            end = min(i + steps, len(points) - 1)
+            for j in range(i, end):
+                y1, x1 = points[j]
+                y2, x2 = points[j + 1]
+                draw.line([x1, y1, x2, y2], fill=255, width=1)
+            frames.append(img.copy())
+
+        if frames:
+            print(f"Saving GIF with {len(frames)} frames to {output_path}...")
+            frames[0].save(
+                output_path,
+                save_all=True,
+                append_images=frames[1:],
+                duration=500,
+                loop=0,
+            )
+        os.chdir(self.home)

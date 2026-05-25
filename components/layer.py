@@ -18,6 +18,7 @@ from components.timer import Timer
 from components.path_tools import Path
 from components import points_tools as pt
 import components.skeleton as sk
+import networkx as nx
 
 if TYPE_CHECKING:
     from components.files import System_Paths
@@ -117,15 +118,6 @@ class Layer:
                     print("   No external route found")
                     pass
                 else:
-                    # if len(itr.sequence) == 0:
-                    #     itr.sequence = [list(x) for x in itr.sequence]
-                    # if len(etr.sequence) == 0:
-                    #     etr.sequence = [list(x) for x in etr.sequence]
-                    # if len(twtr.sequence) == 0:
-                    #     twtr.sequence = [list(x) for x in twtr.sequence]
-                    # island_route_path_for_img = (
-                    #     etr.sequence + itr.sequence + twtr.sequence
-                    # )
                     island_island_route_img = it.sum_imgs_colored(
                         [
                             it.sum_imgs(
@@ -180,7 +172,6 @@ class Layer:
                                 t.sequence, 0.002, t.jumps
                             )
                         )
-
                 island_route_path = [
                     point
                     for route in externals_simpl + internals_simpl + thinwalls_simpl
@@ -189,25 +180,7 @@ class Layer:
                 island_island_route_img = it.chain_to_lines(
                     island_route_path, np.zeros(self.base_frame)
                 )
-                # if self.odd_layer == 1:
-                #     print("   Layer Rotated 90 degrees")
-                #     etr.sequence = path_tools.rotate_path_odd_layer(
-                #         external_simpl, self.base_frame
-                #     )
-                #     itr.sequence = path_tools.rotate_path_odd_layer(
-                #         internal_simpl, self.base_frame
-                #     )
-                #     twtr.sequence = path_tools.rotate_path_odd_layer(
-                #         thinwalls_simpl, self.base_frame
-                #     )
-                #     island_route_path = path_tools.rotate_path_odd_layer(
-                #         island_route_path, self.base_frame
-                #     )
-                #     island_island_route_img = it.chain_to_lines(
-                #         island_route_path,
-                #         np.zeros([self.base_frame[1], self.base_frame[0]]),
-                #     )
-                it.create_drawing_gif(
+                folders.save_path_as_gif(
                     island_route_path, 100, self.base_frame, output_path="finalpath.gif"
                 )
                 island.regions = []
@@ -263,7 +236,6 @@ class Layer:
         final_sequence_img = it.chain_to_lines(
             final_sequence, np.zeros(self.base_frame)
         )
-
         if self.odd_layer == 1:
             print("   Layer Rotated 90 degrees")
             final_sequence = path_tools.rotate_path_odd_layer(
@@ -277,7 +249,6 @@ class Layer:
                 final_jumps = path_tools.rotate_path_odd_layer(
                     final_jumps[0], self.base_frame
                 )
-
         self.layer_final_path = Path(
             "layer_final_route",
             final_sequence,
@@ -285,7 +256,6 @@ class Layer:
             img=final_sequence_img,
             jumps=final_jumps,
         )
-
         with Timer("  Saving route images"):
             folders.save_final_routes_hdf5(self)
         return
@@ -318,7 +288,8 @@ class Layer:
                         )
                     with Timer("  Conecting pontes de Crossover bridges"):
                         isl.external_tree_route = path_tools.connect_cross_over_bridges(
-                            isl
+                            isl,
+                            folders,
                         )
                         isl.ext_start = isl.external_tree_route.sequence[0]
                 isl.external_tree_route.get_img(self.base_frame)
@@ -363,7 +334,11 @@ class Layer:
                 )
             isl.internal_tree_route, islnd_internal_comb_img = (
                 path_tools.combine_routes_and_draw_links(
-                    G, isl, self.base_frame, self.path_radius_larg
+                    G,
+                    isl,
+                    self.base_frame,
+                    self.path_radius_larg,
+                    folders,
                 )
             )
         with Timer("  Saving internal routes"):
@@ -382,6 +357,16 @@ class Layer:
 
         with Timer("  Saving route images"):
             folders.save_thinwall_final_routes_hdf5(self.name, self.islands)
+
+    def divide_islands(self):
+        img = self.original_img
+        separated_imgs, labels, num = it.divide_by_connected(img)
+        self.islands_number = num
+        islands = []
+        for i, si in enumerate(separated_imgs):
+            islands.append(Island(f"I_{i:03d}", si))
+        self.islands = islands
+        return
 
     def create_layers(
         folders: System_Paths,
@@ -410,16 +395,6 @@ class Layer:
         The format of the saved file is HDF5, which allows for efficient storage and retrieval of large datasets.
         """
 
-        def divide_islands(layer: Layer):
-            img = layer.original_img
-            separated_imgs, labels, num = it.divide_by_connected(img)
-            layer.islands_number = num
-            islands = []
-            for i, si in enumerate(separated_imgs):
-                islands.append(Island(f"I_{i:03d}", si))
-            layer.islands = islands
-            return
-
         list_layers = []
         with Timer("  Creating layers"):
             if file_name.endswith(".stl") or file_name.endswith(".STL"):
@@ -440,10 +415,11 @@ class Layer:
                 list_layers = [layer]
             # Dividing islands
             for layer in list_layers:
-                divide_islands(layer)
+                layer.divide_islands()
 
         with Timer("  Saving layers"):
             ts = datetime.datetime.now()
+            folders.create_project(f"{hdf5_file_name}_{ts.date()}")
             folders.save_layers(f"{hdf5_file_name}_{ts.date()}", list_layers)
             folders.save_folders_structure(f"{hdf5_file_name}_{ts.date()}")
         return
@@ -1212,6 +1188,7 @@ class Layer:
                         sob_out,
                         sob_zig,
                         style,
+                        folders,
                     )
                     isl.zigzags.make_routes_wv(
                         self.base_frame,
@@ -1220,6 +1197,7 @@ class Layer:
                         sob_out,
                         sob_zig,
                         style,
+                        folders,
                     )
         with Timer("  Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
@@ -1228,8 +1206,6 @@ class Layer:
         return
 
     def internal_areas_interfaces(self, folders: System_Paths):
-        import networkx as nx
-
         for isl in self.islands:
             folders.load_zigzags_hdf5(self.name, isl)
             folders.load_bridges_hdf5(self.name, isl)

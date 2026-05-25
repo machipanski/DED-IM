@@ -82,7 +82,8 @@ class ThinWallRegions:
         max_width_split = 4  # MAX WIDTH TO SPLIT A TRUNK INTO PARTS
         self.medial_transform, norm_dist_map, trunks_obj, norm_trunks = (
             sk.medial_axis_transform(
-                island_img.astype(np.uint8), normalize_by=2 * path_radius
+                island_img.astype(np.uint8),
+                normalize_by=2 * path_radius,
             )
         )
         cutted_norm_trunks = sk.break_too_big_parts(

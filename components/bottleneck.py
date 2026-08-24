@@ -488,7 +488,20 @@ class BridgeRegions:
             united_zigzag_bridges = []
             for i, j in itertools.combinations(self.zigzag_bridges, 2):
                 if i != j:
-                    if np.sum(np.logical_and(i.img, j.img)) > 0:
+                    # if np.sum(np.logical_and(i.img, j.img)) > 0:
+                    contact_check = it.sum_imgs(
+                        [
+                            mt.dilation(
+                                j.origin.astype(bool),
+                                kernel_size=path_radius_bridg,
+                            ),
+                            mt.dilation(
+                                i.origin.astype(bool),
+                                kernel_size=path_radius_bridg,
+                            ),
+                        ]
+                    )
+                    if (contact_check == 2).any():
                         united_zigzag_bridges.append([i.name, j.name])
             repeated_names, names_with_previous = test_doubles_for_repetition(
                 united_zigzag_bridges

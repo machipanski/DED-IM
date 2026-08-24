@@ -741,12 +741,12 @@ def close_bridge_contour(
             )
         # Se houverem pontos demais por causa dos contours, faz uma poda
         if len(starts_and_ends1) > 2:
-            line1, _, _ = prune(skel_img=line1, min_seg_length=2)
+            line1, _, _ = prune(skel_img=line1, min_seg_length=2, iterative_prune=1)
             starts_and_ends1 = pt.x_y_para_pontos(
                 np.where(find_tips(line1.astype(np.uint8)))
             )
         if len(starts_and_ends2) > 2:
-            line2, _, _ = prune(skel_img=line2, min_seg_length=2)
+            line2, _, _ = prune(skel_img=line2, min_seg_length=2, iterative_prune=1)
             starts_and_ends2 = pt.x_y_para_pontos(
                 np.where(find_tips(line2.astype(np.uint8)))
             )

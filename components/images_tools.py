@@ -10,6 +10,11 @@ from skimage.measure import label
 from skimage.segmentation import flood_fill
 from components import points_tools as pt
 from typing import TYPE_CHECKING
+import subprocess
+import tempfile
+import shutil
+import os
+import logging
 
 if TYPE_CHECKING:
     from components.layer import Layer
@@ -17,9 +22,13 @@ if TYPE_CHECKING:
     from components.files import System_Paths
 
 
-def chain_to_lines(final_chain, canvas):
+def chain_to_lines(final_chain, canvas, color=999):
     """recieves a sequence of points (y,x) and draws it line by line on the canvas"""
-    color = 1
+    if color == 999:
+        color = 1
+        by_seg_color = True
+    else:
+        by_seg_color = False
     count = 0
     chain = final_chain.copy()
     chain = pt.invert_x_y(chain)
@@ -35,7 +44,8 @@ def chain_to_lines(final_chain, canvas):
             end_p = last
             cv2.line(canvas, tuple(np.int32(start_p)), tuple(np.int32(end_p)), color, 1)
         count += 1
-        color = count % 5 + 1
+        if by_seg_color:
+            color = count % 5 + 1
     return canvas
 
 
@@ -863,6 +873,40 @@ def neighborhood_routes(group1, group2=[], path_radius=10, apendix1="", apendix2
         neighbor_areas_g2 = check_neighbors(group2, [], [])
         neighbor_areas_g1xg2 = check_neighbors(group1, group2, [])
         return neighbor_areas_g1, neighbor_areas_g2, neighbor_areas_g1xg2
+
+
+def dwg_to_binary_image_external(input_dwg, output_png, dpi=300):
+    """
+    Use external tools like QCAD or LibreCAD for conversion.
+    Install QCAD: https://www.qcad.org/
+    """
+
+    qcad_path = r"/path/to/qcad"  # Adjust to your installation
+
+    # Convert DWG to PNG using QCAD command line
+    subprocess.run(
+        [
+            os.path.join(qcad_path, "qcad"),
+            "-r",
+            "-o",
+            output_png,
+            "-l",
+            "en",
+            "-t",
+            "png",
+            "-s",
+            f"{dpi}x{dpi}",  # Resolution
+            input_dwg,
+        ],
+        check=True,
+    )
+
+    # Convert to binary if needed
+    img = Image.open(output_png)
+    binary = img.convert("1")  # Convert to 1-bit
+    binary.save(output_png)
+
+    return output_png
 
 
 def neighborhood_imgs(areas):

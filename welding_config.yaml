@@ -55,3 +55,36 @@ lista_programas:
   used_region: bottleneck
   voltage: 16.6
   wire_speed: 1.8
+- bead_diameter: 6
+  bead_diameter_first_layer: 6
+  bead_superposition: 50
+  filling_strategy: offsets
+  name: CNT DEDArcUFSC
+  off_pause: 1000
+  on_pause: 2000
+  travel_speed: 400
+  used_region: contours
+  voltage: ???
+  wire_speed: ???
+- bead_diameter: 6
+  bead_diameter_first_layer: 6
+  bead_superposition: 50
+  filling_strategy: weaving
+  name: ESTR_REC DEDArcUFSC
+  off_pause: 100
+  on_pause: 1000
+  travel_speed: 920
+  used_region: bottleneck
+  voltage: ???
+  wire_speed: ???
+- bead_diameter: 6
+  bead_diameter_first_layer: 6
+  bead_superposition: 50
+  filling_strategy: weaving
+  name: ESTR_TRI DEDArcUFSC
+  off_pause: 100
+  on_pause: 1000
+  travel_speed: 747
+  used_region: bottleneck
+  voltage: ???
+  wire_speed: ???

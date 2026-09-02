@@ -19,7 +19,8 @@ def get_program_params(program, lista_programas):
     vel = A["travel_speed"]
     on_pause = A["on_pause"]
     off_pause = A["off_pause"]
-    return diam, sobrep, vel, on_pause, off_pause
+    wfs = A["wire_speed"]
+    return diam, sobrep, vel, wfs, on_pause, off_pause
 
 
 def turn_on(output, flag_on, on_pause):
@@ -149,9 +150,13 @@ def program_change_UFSC(
     next_program,
     flag_on_before,
     vel_cont,
+    wfs_cont,
     vel_bridg,
+    wfs_bridg,
     vel_larg,
+    wfs_larg,
     vel_tw,
+    wfs_tw,
     vel_vazio,
     p_entre_int_ext,
     p_trigger_curta,
@@ -171,30 +176,35 @@ def program_change_UFSC(
         output, _ = turn_off(output, flag_on_before, off_pause)
     if next_program == 1:
         vel = vel_cont
+        wfs = wfs_cont
         texto_mudanca = ";----Contour----\n;TYPE:WALL-OUTER\n"
         const_perf = 5
         off_pause = off_pause_cont
         on_pause = on_pause_cont
     elif next_program == 2:
         vel = vel_bridg
+        wfs = wfs_bridg
         texto_mudanca = ";----Bottleneck----\n;TYPE:SKIN\n"
         const_perf = 8
         off_pause = off_pause_bridg
         on_pause = on_pause_bridg
     elif next_program == 3:
         vel = vel_larg
+        wfs = wfs_larg
         texto_mudanca = ";----Wide area----\n;TYPE:WALL-INNER\n"
         const_perf = 0.5
         off_pause = off_pause_larg
         on_pause = on_pause_larg
     elif next_program == 4:
         vel = vel_tw
+        wfs = wfs_tw
         texto_mudanca = ";----ThinWalls----\n;TYPE:SUPPORT\n"
         const_perf = 0.5
         off_pause = off_pause_tw
         on_pause = on_pause_tw
     else:
         vel = vel_vazio
+        wfs = 0
         texto_mudanca = ";----Lost----\n"
         off_pause = 0
         on_pause = on_pause_cont
@@ -202,9 +212,10 @@ def program_change_UFSC(
     output += f";-------Changing program {now}->{next_program}------\n"
     print(f"Switched to {flag_path_type}")
     output += texto_mudanca
-    output += "M400\n"
+    # output += "M400\n"
     output += f"M202 P{next_program}\n"
     output += f"G1 F{vel}; speed g1\n"
+    output += f";wire feed speed {wfs}\n"
     output += ";-------------------------\n"
     if flag_on_before == 1:
         output, _ = turn_on(output, 0, on_pause)
@@ -216,9 +227,9 @@ def cleanning_position(output, coords, vel_vazio, p_entre_layers):
     # output += f";POS de Corte\n"
     output += f"G90\n"
     output += f"G0 Y{coords[0]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G0 x{coords[1]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G4 P{p_entre_layers}\n"
     output += f"G91\n"
     output += ";------------------------\n"
@@ -230,9 +241,9 @@ def cleanning_position_UFSC(output, coords, vel_vazio, p_entre_layers):
     # output += f";POS de Corte\n"
     output += f"G90\n"
     output += f"G0 Y{coords[0]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G0 x{coords[1]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G4 P{p_entre_layers}\n"
     output += f"G91\n"
     output += ";------------------------\n"
@@ -261,7 +272,7 @@ def initial_position_UFSC(output, coords, height, vel_vazio, n_layer):
     # output += f";LAYER:{i}\n"
     output += f"G1 Z{height} ; Layer + 10mm\n"
     output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G91\n"
     output += ";------------------------\n"
     return output
@@ -508,16 +519,16 @@ def layers_to_Gcode_UFSC(
         output += f"M200 P5.0 ; Comando personalizado - Configura solda\n"
         return output
 
-    diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+    diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont, wfs_cont = (
         get_program_params(layers[0].program_cont, configuracoes.lista_programas)
     )
-    diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
+    diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg, wfs_bridg = (
         get_program_params(layers[0].program_bridg, configuracoes.lista_programas)
     )
-    diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+    diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg, wfs_larg = (
         get_program_params(layers[0].program_larg, configuracoes.lista_programas)
     )
-    diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
+    diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw, wfs_tw = get_program_params(
         layers[0].program_tw, configuracoes.lista_programas
     )
     p_trigger_longa = 800
@@ -533,17 +544,22 @@ def layers_to_Gcode_UFSC(
     output = code_start(output, flag_on)
     mm_per_pixel = layers[0].mm_per_pxl
     for n_layer, layer in enumerate(layers):
-        diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+        diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont, wfs_cont = (
             get_program_params(layer.program_cont, configuracoes.lista_programas)
         )
-        diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
-            get_program_params(layer.program_bridg, configuracoes.lista_programas)
-        )
-        diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+        (
+            diam_bridg,
+            sobrep_bridg,
+            vel_bridg,
+            on_pause_bridg,
+            off_pause_bridg,
+            wfs_bridg,
+        ) = get_program_params(layer.program_bridg, configuracoes.lista_programas)
+        diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg, wfs_larg = (
             get_program_params(layer.program_larg, configuracoes.lista_programas)
         )
-        diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
-            layer.program_tw, configuracoes.lista_programas
+        diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw, wfs_tw = (
+            get_program_params(layer.program_tw, configuracoes.lista_programas)
         )
         layer_tot_lenght = 0
         bfr = base_coords
@@ -598,9 +614,13 @@ def layers_to_Gcode_UFSC(
                             flag_path_type,
                             flag_on,
                             vel_cont,
+                            wfs_cont,
                             vel_bridg,
+                            wfs_bridg,
                             vel_larg,
+                            wfs_larg,
                             vel_tw,
+                            wfs_tw,
                             vel_vazio,
                             p_entre_int_ext,
                             p_trigger_curta,
@@ -615,7 +635,7 @@ def layers_to_Gcode_UFSC(
                             on_pause_tw,
                             flag_path_type,
                         )
-                        output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
+                        # output += f"G117 {{Trocou o perfil para {flag_path_type}}}\n"
                         last_flag = flag_path_type
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
@@ -623,7 +643,7 @@ def layers_to_Gcode_UFSC(
                     output += (
                         f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
                     )
-                    output += "M400\n"
+                    # output += "M400\n"
                     bfr = coords
                     counter += 1
                     if flag_salto == 1:

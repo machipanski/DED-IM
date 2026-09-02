@@ -233,13 +233,17 @@ class Sub_island:
             )
             highlight_corners_img = mt.dilation(
                 it.points_to_img(highlight_corners, np.zeros_like(self.img)),
-                kernel_size=2,
+                kernel_size=1,
             )
             mat, norm_dist_map, _, norm_trunk_imgs = sk.medial_axis_transform(
                 np.logical_or(internal_area_opened, highlight_corners_img),
                 normalize_by=path_radius,
                 hi_sensibility=True,
             )
+            degenerations = mt.find_crosses(mat, np.zeros_like(mat))
+            if np.sum(degenerations) > 0:
+                mat = mt.dilation(mat, kernel_size=2)
+                mat = mt.thinning(mat)
             return mat, norm_dist_map, norm_trunk_imgs
 
         def segment_skeleton_by_distances():
@@ -401,8 +405,11 @@ class Sub_island:
             medial_axis_by_channel = np.multiply(channels_labels, sem_galhos_new)
             for i, channel in enumerate(channels):
                 this_guideline = medial_axis_by_channel == (i + 1)
-                pruned_img = copy.deepcopy(this_guideline)
                 segmented_img, segment_objects = sk.segment_skeleton(this_guideline)
+                pruned_img = copy.deepcopy(this_guideline)
+                pruned_img, segmented_img, segment_objects = sk.prune(
+                    pruned_img, segment_objects, 3 * path_radius, iterative_prune=2
+                )
                 secondary_objects, _, BBB = sk.segment_sort(
                     this_guideline, segment_objects
                 )
@@ -432,8 +439,11 @@ class Sub_island:
                     ]
                 )
                 guide_line = np.logical_or(seg_imgs, fillings)
-                channel = np.logical_and(channel, np.logical_not(all_bridges_img))
-                guide_line = np.logical_and(guide_line, np.logical_not(all_bridges_img))
+                if np.sum(all_bridges_img) > 0:
+                    channel = np.logical_and(channel, np.logical_not(all_bridges_img))
+                    guide_line = np.logical_and(
+                        guide_line, np.logical_not(all_bridges_img)
+                    )
                 if np.sum(channel) > 0:
                     self.w_regions.append(
                         ZigZag(valid_channel_count, channel, origin=guide_line)

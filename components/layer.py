@@ -636,6 +636,7 @@ class Layer:
                 island_img,
                 self.base_frame,
                 self.path_radius_tw,
+                sob_tw_per,
             )
             return island
 
@@ -1188,7 +1189,6 @@ class Layer:
                         sob_out,
                         sob_zig,
                         style,
-                        folders,
                     )
                     isl.zigzags.make_routes_wv(
                         self.base_frame,

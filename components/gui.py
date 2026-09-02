@@ -234,7 +234,7 @@ def select_or_input(
         )
         if field_values is not None:
             msgbox(f"New configuration", "Entered Values")
-            configuracoes.salvar_programaDeSolda(
+            configuracoes.save_program(
                 name=field_values[0],
                 used_region=called_region,
                 filling_strategy=field_values[1],

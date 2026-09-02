@@ -490,25 +490,24 @@ def individual_routes(layer: Layer, folders: System_Paths):
                             * 901
                         )
         isl_ind_routes = sum_imgs(regions_imgs)
-    aaaaaa = sum_imgs_colored(
-        [
-            isl.zigzags.internal_islands[1].w_regions[1].route,
-            isl.zigzags.internal_islands[1].w_regions[0].route,
-            isl.bridges.zigzag_bridges[1].route_b,
-            isl.zigzags.internal_islands[0].w_regions[1].route,
-            isl.zigzags.internal_islands[0].w_regions[0].route_b,
-            isl.zigzags.internal_islands[0].l_regions[0].route,
-            isl.zigzags.internal_islands[0].w_regions[5].route,
-            isl.zigzags.internal_islands[0].w_regions[4].route_b,
-            isl.bridges.zigzag_bridges[0].route,
-            isl.zigzags.internal_islands[2].w_regions[2].route,
-            isl.zigzags.internal_islands[2].w_regions[1].route,
-            isl.zigzags.internal_islands[2].w_regions[0].route_b,
-            isl.zigzags.internal_islands[0].w_regions[2].route,
-            isl.zigzags.internal_islands[0].w_regions[3].route_b,
-        ]
+
+    # Coletar todas as routes de w_regions e l_regions de forma genérica
+    routes_list = []
+    if hasattr(isl, "zigzags") and hasattr(isl.zigzags, "internal_islands"):
+        for internal_island in isl.zigzags.internal_islands:
+            if hasattr(internal_island, "w_regions"):
+                for w_reg in internal_island.w_regions:
+                    if hasattr(w_reg, "route") and np.any(w_reg.route):
+                        routes_list.append(w_reg.route)
+            if hasattr(internal_island, "l_regions"):
+                for l_reg in internal_island.l_regions:
+                    if hasattr(l_reg, "route") and np.any(l_reg.route):
+                        routes_list.append(l_reg.route)
+
+    aaaaaa = (
+        sum_imgs_colored(routes_list) if routes_list else np.zeros_like(isl_ind_routes)
     )
-    folders.save_img(aaaaaa, "sequence.png", layer.name, isl.name)
+    folders.save_img(aaaaaa, "sequence.png")
     return isl_ind_routes
 
 
@@ -520,8 +519,8 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
         if hasattr(isl, "thin_walls"):
             if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
                 if (
-                    hasattr(isl.thin_walls.regions[0], "route")
-                    and len(isl.thin_walls.regions[0].route) > 0
+                    hasattr(isl.thin_walls.regions[0], "route_b")
+                    and len(isl.thin_walls.regions[0].route_b) > 0
                 ):
                     regions_imgs.append(
                         sum_imgs(
@@ -550,11 +549,11 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
                 if (
-                    hasattr(isl.offsets.regions[0], "route")
-                    and len(isl.offsets.regions[0].route) > 0
+                    hasattr(isl.offsets.regions[0], "route_b")
+                    and len(isl.offsets.regions[0].route_b) > 0
                 ):
                     regions_imgs.append(
-                        sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
+                        sum_imgs([reg.route_b for reg in isl.offsets.regions]).astype(
                             np.uint16
                         )
                         * 601

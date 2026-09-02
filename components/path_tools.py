@@ -978,9 +978,12 @@ def draw_tangent_from_seq(points, length, img):
     #     slope = -9999
     # Extend the tangent line
     tangent_line = it.extend_tangent(last_point, second_last_point, slope, length)
-    # Draw the tangent line on the binary image
     tng_img = it.draw_line(img, np.uint64(tangent_line[0]), np.uint64(tangent_line[1]))
-    return tng_img
+    tangent_line_b = it.extend_tangent(second_last_point, last_point, slope, length)
+    tng_img_b = it.draw_line(
+        img, np.uint64(tangent_line_b[0]), np.uint64(tangent_line_b[1])
+    )
+    return tng_img, tng_img_b
 
 
 def draw_the_links(

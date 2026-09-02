@@ -77,13 +77,14 @@ class ThinWallRegions:
         island_img: np.ndarray,
         base_frame: np.ndarray,
         path_radius: int,
+        sobrep: float,
     ):
-        max_width = 2  # MAX WIDTH TO BE CONSIDERED A THIN WALL
+        max_width = 1  # MAX distance from border TO BE CONSIDERED A THIN WALL
         max_width_split = 4  # MAX WIDTH TO SPLIT A TRUNK INTO PARTS
         self.medial_transform, norm_dist_map, trunks_obj, norm_trunks = (
             sk.medial_axis_transform(
                 island_img.astype(np.uint8),
-                normalize_by=2 * path_radius,
+                normalize_by=(sobrep / 100) * (2 * path_radius),
             )
         )
         cutted_norm_trunks = sk.break_too_big_parts(

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from email.mime import base
 from hmac import new
 import itertools
 import math
@@ -937,16 +938,16 @@ def cut_repetition(seq):
     return new_seq
 
 
-def draw_interface(composed_img, base_frame, jump):
-    interface_img = np.zeros(base_frame)
+def draw_interface(composed_img, jump):
+    interface_img = np.zeros_like(composed_img)
     for y, line in enumerate(composed_img):
         for x, pixel in enumerate(line):
             if (
                 pixel == 1
                 and x != 0
-                and x != base_frame[1] - 1
+                and x != composed_img.shape[1] - 1
                 and y != 0
-                and y != base_frame[0] - 1
+                and y != composed_img.shape[0] - 1
             ):
                 a2 = composed_img[y - jump][x]
                 b1 = composed_img[y][x - jump]
@@ -978,12 +979,20 @@ def draw_tangent_from_seq(points, length, img):
     #     slope = -9999
     # Extend the tangent line
     tangent_line = it.extend_tangent(last_point, second_last_point, slope, length)
-    tng_img = it.draw_line(img, np.uint64(tangent_line[0]), np.uint64(tangent_line[1]))
+    base_frame = np.zeros_like(img)
+    tng_img = it.draw_line(
+        base_frame, np.uint64(tangent_line[0]), np.uint64(tangent_line[1])
+    )
     tangent_line_b = it.extend_tangent(second_last_point, last_point, slope, length)
     tng_img_b = it.draw_line(
-        img, np.uint64(tangent_line_b[0]), np.uint64(tangent_line_b[1])
+        base_frame, np.uint64(tangent_line_b[0]), np.uint64(tangent_line_b[1])
     )
-    return tng_img, tng_img_b
+    closest_tangent, dist_end, dist_end_b = it.choose_closest_to_border(
+        tng_img,
+        tng_img_b,
+        img,
+    )
+    return closest_tangent
 
 
 def draw_the_links(
@@ -2123,11 +2132,9 @@ def decompose_pol_cont_by_corners(lines_do_limite, trunk, path_radius_bridg):
     trunk_seq = cut_repetition(trunk_seq)
     # TODO: ver se aqui tem como arrumar esses tamanhos
     tng_end = draw_tangent_from_seq(
-        list(reversed(trunk_seq)), path_radius_bridg * 4, np.zeros_like(lines_do_limite)
+        list(reversed(trunk_seq)), path_radius_bridg * 4, lines_do_limite
     )
-    tng_start = draw_tangent_from_seq(
-        trunk_seq, path_radius_bridg * 4, np.zeros_like(lines_do_limite)
-    )
+    tng_start = draw_tangent_from_seq(trunk_seq, path_radius_bridg * 4, lines_do_limite)
     possible_c1_c2 = np.zeros_like(lines_do_limite)
     counter_accepted = 0
     for labl in np.add(list(range(segments_n)), 1):

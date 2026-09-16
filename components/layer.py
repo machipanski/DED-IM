@@ -3,6 +3,8 @@ import copy
 import datetime
 from os import path
 from re import sub
+
+from click import style
 import numpy as np
 import concurrent.futures
 from cv2 import imread
@@ -265,7 +267,7 @@ class Layer:
             folders.load_islands_hdf5(self)
             for isl in self.islands:
                 folders.load_offsets_hdf5(self.name, isl)
-                folders.load_zigzags_hdf5(self.name, isl)
+                folders.load_bulky_hdf5(self.name, isl)
                 folders.load_bridges_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
                 if isl.offsets.regions == []:
@@ -301,7 +303,7 @@ class Layer:
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
-            folders.load_zigzags_hdf5(self.name, isl)
+            folders.load_bulky_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
             with Timer("  Connecting neighboring zigzags"):
@@ -323,7 +325,7 @@ class Layer:
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
-            folders.load_zigzags_hdf5(self.name, isl)
+            folders.load_bulky_hdf5(self.name, isl)
             island_internal_graph = folders.load_graph(
                 f"{self.name}_{isl.name}_INT_neighborhood.gexf"
             )
@@ -506,7 +508,7 @@ class Layer:
             for isl in self.islands:
                 folders.load_offsets_hdf5(self.name, isl)
                 folders.load_bridges_hdf5(self.name, isl)
-                folders.load_zigzags_hdf5(self.name, isl)
+                folders.load_bulky_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     original_macro_areas_weaved = []
@@ -562,7 +564,7 @@ class Layer:
         folders.load_islands_hdf5(self)
         for island in self.islands:
             folders.load_offsets_hdf5(self.name, island)
-            folders.load_zigzags_hdf5(self.name, island)
+            folders.load_bulky_hdf5(self.name, island)
             folders.load_bridges_hdf5(self.name, island)
             folders.load_island_paths_hdf5(self.name, island)
             with Timer("  Finding the ext-int union point"):
@@ -1050,12 +1052,15 @@ class Layer:
             )
         return last_prohibited_areas
 
-    def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per):
+    def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per, sob_int_per):
         folders.load_islands_hdf5(self)
         self.sob_int_ext_per = sob_int_ext_per
-        mask_distancer = mt.make_distancer(self, "int_ext", percentage=sob_int_ext_per)
-        internal_mask_dist = mt.make_distancer(
-            self, "bridg", percentage=self.sob_bridg_per
+        self.sob_int_per = sob_int_per
+        mask_distancer_int_ext = mt.make_distancer(
+            self, "int_ext", percentage=sob_int_ext_per
+        )
+        mask_distancer_int = mt.make_distancer(
+            self, "bridg", percentage=self.sob_int_per
         )
         for isl in self.islands:
             folders.load_bridges_hdf5(self.name, isl)
@@ -1065,8 +1070,8 @@ class Layer:
                     isl.offsets.regions,
                     self.path_radius_cont,
                     self.path_radius_bridg,
-                    mask_distancer,
-                    internal_mask_dist,
+                    mask_distancer_int_ext,
+                    sob_int_per,
                     self.base_frame,
                     isl.rest_of_picture_f2,
                 )
@@ -1074,13 +1079,14 @@ class Layer:
                 folders.save_routes_bridges_hdf5(self.name, self.islands)
                 folders.save_props_hdf5(f"/{self.name}", self.__dict__)
 
-    def make_zigzags(
+    def make_bulky(
         self,
         folders: System_Paths,
         d_larg: float,
         sob_larg_per: float,
         name_prog: str,
         large_weaving_limmit: int,
+        style: int,
     ):
 
         def parallelizando(func):
@@ -1146,7 +1152,6 @@ class Layer:
                     if np.sum(int_isl.large_areas) > 0:
                         int_isl.scan_monotonic(
                             path_radius,
-                            island.bridges.zigzag_bridges,
                             large_weaving_limmit,
                         )
             return island
@@ -1162,10 +1167,14 @@ class Layer:
             folders.load_bridges_hdf5(self.name, island)
             island.zigzags = ZigZagRegions()
             island.zigzags.divide_internal_islands(island.rest_of_picture_f3)
-        with Timer("  Separating weaveble large areas from bigger ones"):
-            find_weaveble(large_weaving_limmit, self.path_radius_larg)
-        with Timer("  Further dividing weaveble areas into channels"):
-            make_weaveble_channels(large_weaving_limmit, self.path_radius_larg)
+        if style == 3:
+            with Timer("  Separating weaveble large areas from bigger ones"):
+                find_weaveble(large_weaving_limmit, self.path_radius_larg)
+            with Timer("  Further dividing weaveble areas into channels"):
+                make_weaveble_channels(large_weaving_limmit, self.path_radius_larg)
+        else:
+            for int_isl in island.zigzags.internal_islands:
+                int_isl.large_areas = int_isl.img
         with Timer("  Dividing largest areas into monotonic regions"):
             find_monotonic(large_weaving_limmit, self.path_radius_larg)
         with Timer("  Saving monotonic regions images"):
@@ -1173,14 +1182,20 @@ class Layer:
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def make_zigzag_routes(
-        self, folders: System_Paths, style, sob_in: int, sob_out: int, sob_zig: int
+    def make_bulky_routes(
+        self,
+        folders: System_Paths,
+        style,
+        sob_in: int,
+        sob_out: int,
+        sob_zig: int,
+        sob_weaving: int,
     ):
         folders.load_islands_hdf5(self)
         # mask_distancer_internal = mt.make_distancer(self, "int_ext", percentage=sob_int)
         for isl in self.islands:
-            with Timer(f"  Generating zigzag routes, Layer:{self.name}"):
-                folders.load_zigzags_hdf5(self.name, isl)
+            with Timer(f"  Generating bulky areas routes, Layer:{self.name}"):
+                folders.load_bulky_hdf5(self.name, isl)
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
                         self.base_frame,
@@ -1195,7 +1210,7 @@ class Layer:
                         self.path_radius_larg,
                         sob_in,
                         sob_out,
-                        sob_zig,
+                        sob_weaving,
                         style,
                         folders,
                     )
@@ -1207,13 +1222,13 @@ class Layer:
 
     def internal_areas_interfaces(self, folders: System_Paths):
         for isl in self.islands:
-            folders.load_zigzags_hdf5(self.name, isl)
+            folders.load_bulky_hdf5(self.name, isl)
             folders.load_bridges_hdf5(self.name, isl)
             folders.load_offsets_hdf5(self.name, isl)
             folders.load_thin_walls_hdf5(self.name, isl)
             for isl in self.islands:
                 G1 = nx.MultiGraph()
-                folders.load_zigzags_hdf5(self.name, isl)
+                folders.load_bulky_hdf5(self.name, isl)
                 subisland_graphs = []
                 sub_islands_sequence = []
                 if hasattr(isl, "zigzags"):

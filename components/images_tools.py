@@ -15,6 +15,7 @@ import tempfile
 import shutil
 import os
 import logging
+from scipy.ndimage import distance_transform_edt
 
 if TYPE_CHECKING:
     from components.layer import Layer
@@ -47,6 +48,45 @@ def chain_to_lines(final_chain, canvas, color=999):
         if by_seg_color:
             color = count % 5 + 1
     return canvas
+
+
+def get_min_distance_to_border(line_img: np.ndarray, ref_img: np.ndarray) -> float:
+    """Calcula a menor distância entre os pixels de uma linha e o contorno da referência."""
+    if not np.any(line_img):
+        return float("inf")
+
+    points = pt.img_to_points(line_img)
+    if len(points) == 0:
+        return float("inf")
+
+    contours, _ = cv2.findContours(
+        ref_img.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE
+    )
+    if len(contours) == 0:
+        return float("inf")
+
+    border = np.zeros(ref_img.shape[:2], dtype=np.uint8)
+    cv2.drawContours(border, contours, -1, 1, 1)
+    distance_map = distance_transform_edt(np.logical_not(border))
+    return float(min(distance_map[y, x] for y, x in points))
+
+
+def choose_closest_to_border(
+    tng_end: np.ndarray, tng_end_b: np.ndarray, img: np.ndarray
+) -> tuple:
+    """Compara qual tangente tem menor distância até a borda e retorna ela
+    Args:
+        tng_end: Primeira tangente (numpy array binário)
+        tng_end_b: Segunda tangente (numpy array binário)
+        img: Imagem de referência
+
+    Returns:
+        tuple: (tangente_selecionada, dist_end, dist_end_b)
+    """
+    dist_end = get_min_distance_to_border(tng_end, img)
+    dist_end_b = get_min_distance_to_border(tng_end_b, img)
+    selected = tng_end if dist_end <= dist_end_b else tng_end_b
+    return selected, dist_end, dist_end_b
 
 
 def closest_points_btwn_imgs(img1, img2):
@@ -280,7 +320,7 @@ def final_mapping(layer: Layer, folders: System_Paths):
     isl_final_map = np.zeros(layer.base_frame)
     regions_imgs = []
     for isl in layer.islands:
-        folders.load_zigzags_hdf5(layer.name, isl)
+        folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
                 hasattr(isl.zigzags, "internal_islands")
@@ -365,7 +405,7 @@ def areas_interfaces(layer: Layer, folders: System_Paths):
                     )
                     * 1
                 )
-        folders.load_zigzags_hdf5(layer.name, isl)
+        folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if hasattr(isl.zigzags, "regions") and len(isl.zigzags.regions) > 0:
                 regions_imgs.append(
@@ -426,9 +466,9 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         sum_imgs([reg.route for reg in isl.thin_walls.regions]).astype(
                             np.uint16
                         )
-                        * 501
+                        * 5
                     )
-        folders.load_zigzags_hdf5(layer.name, isl)
+        folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
                 hasattr(isl.zigzags, "internal_islands")
@@ -439,12 +479,12 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         for l_reg in intisl.l_regions:
                             if hasattr(l_reg, "route"):
                                 aaaa = l_reg.route
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
                     if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
                         for w_reg in intisl.w_regions:
                             if hasattr(w_reg, "route"):
                                 aaaa = w_reg.route
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
@@ -456,7 +496,7 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
                             np.uint16
                         )
-                        * 601
+                        * 6
                     )
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl, "bridges"):
@@ -470,13 +510,13 @@ def individual_routes(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.route for reg in isl.bridges.zigzag_bridges]
                             ).astype(np.uint16)
-                            * 701
+                            * 7
                         )
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
                     for bridg in isl.bridges.offset_bridges:
                         if np.sum(bridg.route) > 0:
-                            regions_imgs.append(bridg.route.astype(np.uint16) * 801)
+                            regions_imgs.append(bridg.route.astype(np.uint16) * 8)
             if hasattr(isl.bridges, "cross_over_bridges"):
                 if (
                     hasattr(isl.bridges.cross_over_bridges[0], "route")
@@ -487,27 +527,27 @@ def individual_routes(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.route for reg in isl.bridges.cross_over_bridges]
                             ).astype(np.uint16)
-                            * 901
+                            * 9
                         )
         isl_ind_routes = sum_imgs(regions_imgs)
 
-    # Coletar todas as routes de w_regions e l_regions de forma genérica
-    routes_list = []
-    if hasattr(isl, "zigzags") and hasattr(isl.zigzags, "internal_islands"):
-        for internal_island in isl.zigzags.internal_islands:
-            if hasattr(internal_island, "w_regions"):
-                for w_reg in internal_island.w_regions:
-                    if hasattr(w_reg, "route") and np.any(w_reg.route):
-                        routes_list.append(w_reg.route)
-            if hasattr(internal_island, "l_regions"):
-                for l_reg in internal_island.l_regions:
-                    if hasattr(l_reg, "route") and np.any(l_reg.route):
-                        routes_list.append(l_reg.route)
+    # # Coletar todas as routes de w_regions e l_regions de forma genérica
+    # routes_list = []
+    # if hasattr(isl, "zigzags") and hasattr(isl.zigzags, "internal_islands"):
+    #     for internal_island in isl.zigzags.internal_islands:
+    #         if hasattr(internal_island, "w_regions"):
+    #             for w_reg in internal_island.w_regions:
+    #                 if hasattr(w_reg, "route") and np.any(w_reg.route):
+    #                     routes_list.append(w_reg.route)
+    #         if hasattr(internal_island, "l_regions"):
+    #             for l_reg in internal_island.l_regions:
+    #                 if hasattr(l_reg, "route") and np.any(l_reg.route):
+    #                     routes_list.append(l_reg.route)
 
-    aaaaaa = (
-        sum_imgs_colored(routes_list) if routes_list else np.zeros_like(isl_ind_routes)
-    )
-    folders.save_img(aaaaaa, "sequence.png")
+    # aaaaaa = (
+    #     sum_imgs_colored(routes_list) if routes_list else np.zeros_like(isl_ind_routes)
+    # )
+    folders.save_img(isl_ind_routes, "sequence.png")
     return isl_ind_routes
 
 
@@ -526,9 +566,9 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
                         sum_imgs(
                             [reg.route_b for reg in isl.thin_walls.regions]
                         ).astype(np.uint16)
-                        * 501
+                        * 5
                     )
-        folders.load_zigzags_hdf5(layer.name, isl)
+        folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
                 hasattr(isl.zigzags, "internal_islands")
@@ -539,24 +579,24 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
                         for l_reg in intisl.l_regions:
                             if hasattr(l_reg, "route_b"):
                                 aaaa = l_reg.route_b
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
                     if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
                         for w_reg in intisl.w_regions:
                             if hasattr(w_reg, "route_b"):
                                 aaaa = w_reg.route_b
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
                 if (
-                    hasattr(isl.offsets.regions[0], "route_b")
-                    and len(isl.offsets.regions[0].route_b) > 0
+                    hasattr(isl.offsets.regions[0], "route")
+                    and len(isl.offsets.regions[0].route) > 0
                 ):
                     regions_imgs.append(
-                        sum_imgs([reg.route_b for reg in isl.offsets.regions]).astype(
+                        sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
                             np.uint16
                         )
-                        * 601
+                        * 6
                     )
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl, "bridges"):
@@ -570,13 +610,13 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.route_b for reg in isl.bridges.zigzag_bridges]
                             ).astype(np.uint16)
-                            * 701
+                            * 7
                         )
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
                     for bridg in isl.bridges.offset_bridges:
                         if np.sum(bridg.route) > 0:
-                            regions_imgs.append(bridg.route.astype(np.uint16) * 801)
+                            regions_imgs.append(bridg.route.astype(np.uint16) * 8)
             if hasattr(isl.bridges, "cross_over_bridges"):
                 if (
                     hasattr(isl.bridges.cross_over_bridges[0], "route_b")
@@ -587,7 +627,7 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.route_b for reg in isl.bridges.cross_over_bridges]
                             ).astype(np.uint16)
-                            * 901
+                            * 9
                         )
         isl_ind_routes_b = sum_imgs(regions_imgs)
     return isl_ind_routes_b
@@ -608,9 +648,9 @@ def individual_trails(layer: Layer, folders: System_Paths):
                         sum_imgs([reg.trail for reg in isl.thin_walls.regions]).astype(
                             np.uint16
                         )
-                        * 501
+                        * 5
                     )
-        folders.load_zigzags_hdf5(layer.name, isl)
+        folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
                 hasattr(isl.zigzags, "internal_islands")
@@ -621,12 +661,12 @@ def individual_trails(layer: Layer, folders: System_Paths):
                         for l_reg in intisl.l_regions:
                             if hasattr(l_reg, "trail"):
                                 aaaa = l_reg.trail
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
                     if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
                         for w_reg in intisl.w_regions:
                             if hasattr(w_reg, "trail"):
                                 aaaa = w_reg.trail
-                                regions_imgs.append(aaaa * 101)
+                                regions_imgs.append(aaaa)
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
@@ -638,7 +678,7 @@ def individual_trails(layer: Layer, folders: System_Paths):
                         sum_imgs([reg.trail for reg in isl.offsets.regions]).astype(
                             np.uint16
                         )
-                        * 601
+                        * 6
                     )
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl, "bridges"):
@@ -652,13 +692,13 @@ def individual_trails(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.trail for reg in isl.bridges.zigzag_bridges]
                             ).astype(np.uint16)
-                            * 701
+                            * 7
                         )
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
                     for bridg in isl.bridges.offset_bridges:
                         if np.sum(bridg.trail) > 0:
-                            regions_imgs.append(bridg.trail.astype(np.uint16) * 801)
+                            regions_imgs.append(bridg.trail.astype(np.uint16) * 8)
             if hasattr(isl.bridges, "cross_over_bridges"):
                 if (
                     hasattr(isl.bridges.cross_over_bridges[0], "trail")
@@ -669,7 +709,7 @@ def individual_trails(layer: Layer, folders: System_Paths):
                             sum_imgs(
                                 [reg.trail for reg in isl.bridges.cross_over_bridges]
                             ).astype(np.uint16)
-                            * 901
+                            * 9
                         )
         isl_ind_trails = sum_imgs(regions_imgs)
     return isl_ind_trails

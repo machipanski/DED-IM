@@ -701,7 +701,7 @@ class BridgeRegions:
         path_radius_cont,
         path_radius_bridg,
         mask_distancer,
-        internal_mask_dist,
+        sob_int,
         base_frame,
         rest_of_picture,
     ):
@@ -733,7 +733,7 @@ class BridgeRegions:
                         region,
                         path_radius_bridg,
                         mask_distancer,
-                        internal_mask_dist,
+                        sob_int,
                         rest_of_picture,
                     )
                     for region in self.zigzag_bridges
@@ -751,7 +751,7 @@ class BridgeRegions:
                         region,
                         path_radius_bridg,
                         mask_distancer,
-                        internal_mask_dist,
+                        sob_int,
                         rest_of_picture,
                     )
                     for region in self.cross_over_bridges
@@ -1246,7 +1246,7 @@ def organize_extreme_zb_points(line, bridge_img, path_radius):
 
 
 # TODO: continuar daqui a arrumar as distancias de maneira mais padrão, hoje não tem ajuste
-def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
+def equidistant_in_seq(line, path_radius, sobrep_int_perc, origin_pt=[]):
     line_img = copy.deepcopy(line)
     n_origens = 0
     adjust = 0
@@ -1286,7 +1286,9 @@ def equidistant_in_seq(line, path_radius, internal_mask_dist, origin_pt=[]):
     pontos_org = path_tools.line_img_to_freeman_chain(line_img, first)
     while n_origens % 2 != 1:
         origens_pontos = [pontos_org[0]]
-        division_distance = (path_radius * 2) - adjust
+        division_distance = int(
+            np.round(((path_radius * 2) * (sobrep_int_perc / 100)) - adjust)
+        )
         copied_origin = copy.deepcopy(line_img)
         while np.sum(copied_origin.astype(np.uint8)) > 0:
             canvas = np.zeros_like(line_img, np.uint8)
@@ -1408,7 +1410,7 @@ def make_offset_bridge_route(
 
 
 def make_zz_or_co_bridge_route(
-    region: Bridge, path_radius, mask_distancer, internal_mask_dist, rest_of_picture
+    region: Bridge, path_radius, mask_distancer, sob_int, rest_of_picture
 ):
 
     total_sobreposition = mt.dilation(region.img, kernel_size=path_radius)
@@ -1427,11 +1429,9 @@ def make_zz_or_co_bridge_route(
         )
         origin_seq = path_tools.cut_repetition(origin_seq)
         tng_end = path_tools.draw_tangent_from_seq(
-            list(reversed(origin_seq)), path_radius * 4, np.zeros_like(eroded)
-        )
+            list(reversed(origin_seq)), path_radius * 4, eroded)
         tng_start = path_tools.draw_tangent_from_seq(
-            origin_seq, path_radius * 4, np.zeros_like(eroded)
-        )
+            origin_seq, path_radius * 4, eroded)
         origin = np.logical_or(tng_start, np.logical_or(region.origin, tng_end))
     else:
         origin = region.origin
@@ -1448,9 +1448,7 @@ def make_zz_or_co_bridge_route(
             new_zigzag = region.origin
             new_zigzag_b = region.route
         else:
-            pts_trns_origin = equidistant_in_seq(
-                origin_axis, path_radius, internal_mask_dist
-            )
+            pts_trns_origin = equidistant_in_seq(origin_axis, path_radius, sob_int)
             pts_trns_ci1 = equidistant_by_proximity(
                 line_ci1, pts_trns_origin, path_radius, total_sobreposition
             )

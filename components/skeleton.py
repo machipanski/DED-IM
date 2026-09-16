@@ -184,45 +184,6 @@ def break_too_big_parts(
     return minus_bigger_than_limmit
 
 
-def get_min_distance_to_border(line_img: np.ndarray, ref_img: np.ndarray) -> float:
-    """Calcula a menor distância entre os pixels de uma linha e o contorno da referência."""
-    if not np.any(line_img):
-        return float("inf")
-
-    points = pt.img_to_points(line_img)
-    if len(points) == 0:
-        return float("inf")
-
-    contours, _ = cv2.findContours(
-        ref_img.astype(np.uint8), cv2.RETR_TREE, cv2.CHAIN_APPROX_NONE
-    )
-    if len(contours) == 0:
-        return float("inf")
-
-    border = np.zeros(ref_img.shape[:2], dtype=np.uint8)
-    cv2.drawContours(border, contours, -1, 1, 1)
-    distance_map = distance_transform_edt(np.logical_not(border))
-    return float(min(distance_map[y, x] for y, x in points))
-
-
-def choose_closest_to_border(
-    tng_end: np.ndarray, tng_end_b: np.ndarray, img: np.ndarray
-) -> tuple:
-    """Compara qual tangente tem menor distância até a borda e retorna ela
-    Args:
-        tng_end: Primeira tangente (numpy array binário)
-        tng_end_b: Segunda tangente (numpy array binário)
-        img: Imagem de referência
-
-    Returns:
-        tuple: (tangente_selecionada, dist_end, dist_end_b)
-    """
-    dist_end = get_min_distance_to_border(tng_end, img)
-    dist_end_b = get_min_distance_to_border(tng_end_b, img)
-    selected = tng_end if dist_end <= dist_end_b else tng_end_b
-    return selected, dist_end, dist_end_b
-
-
 def extend_origins_perpendicular_to_border(
     img, divisor, path_radius, debug: bool = False
 ):
@@ -237,17 +198,10 @@ def extend_origins_perpendicular_to_border(
         origin_seq = path_tools.set_first_pt_in_seq(origin_seq, point)
         # origin_seq = path_tools.cut_repetition(origin_seq)
         # origin_seq = path_tools.set_first_pt_in_seq(origin_seq, point)
-        tng_end, tng_end_b = path_tools.draw_tangent_from_seq(
-            list(reversed(origin_seq)), path_radius * 4, np.zeros_like(img)
+        tng_end = path_tools.draw_tangent_from_seq(
+            list(reversed(origin_seq)), path_radius * 4, img
         )
-
-        # Escolhe a tangente que está mais próxima da borda
-        closest_tangent, dist_end, dist_end_b = choose_closest_to_border(
-            tng_end,
-            tng_end_b,
-            img,
-        )
-        new_divisor = np.logical_or(new_divisor, closest_tangent)
+        new_divisor = np.logical_or(new_divisor, tng_end)
     sub_division = it.image_subtract(img, new_divisor)
     # wa.sub_division = sub_division
     return new_divisor

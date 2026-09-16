@@ -113,22 +113,25 @@ def ask_parameters_bridges(configurations):
     return n_max, d_bridg, frst_d_bridg, sob_bridg_per, name_prog, connect_offsets
 
 
-def ask_parameters_zigzags(configurations):
+def ask_parameters_bulky(configurations):
     """Asks for zigzag mapping parameters, allowing changes to what is already standardized"""
     d_larg, frst_d_larg, sob_tw_larg, name_prog = select_or_input(
         configurations, wide=True
     )
     msg = "Wide parameters"
     title = "Wide parameters"
-    fieldNames = ["Max number of tracks to consider for weaving"]
-    fieldDefs = [4]
-    large_weaving_limmit = ask_parameters_constructor(
+    fieldNames = [
+        "Style (1= monotonic, 2=weaving, 3=channels)",
+        "Max number of tracks to consider for weaving",
+    ]
+    fieldDefs = [3, 4]
+    style, large_weaving_limmit = ask_parameters_constructor(
         msg, title, fieldNames, fieldDefs
-    )[0]
-    return d_larg, frst_d_larg, sob_tw_larg, name_prog, large_weaving_limmit
+    )
+    return d_larg, frst_d_larg, sob_tw_larg, name_prog, large_weaving_limmit, style
 
 
-def ask_parameters_zigzags_routes(configurations):
+def ask_parameters_bulky_routes(configurations):
     """Asks for zigzag mapping parameters, allowing changes to what is already standardized"""
     msg = "Wide parameters"
     title = "Wide parameters"
@@ -136,13 +139,14 @@ def ask_parameters_zigzags_routes(configurations):
         "Style (0=Fermat zigzag, 1=Simple zigzag)",
         "sobreposição(%) interna",
         "sobreposição(%) externa",
-        "sobreposição(%) zigzag",
+        "sobreposição(%) passo do zigzag",
+        "sobreposição(%) passo do weaving",
     ]
-    fieldDefs = [1, 20, 20, 20]
-    style, sob_int, sob_out, sob_zig = ask_parameters_constructor(
+    fieldDefs = [1, 50, 50, 50, 50]
+    style, sob_int, sob_out, sob_zig, sob_weaving = ask_parameters_constructor(
         msg, title, fieldNames, fieldDefs
     )
-    return style, sob_int, sob_out, sob_zig
+    return style, sob_int, sob_out, sob_zig, sob_weaving
 
 
 def ask_parameters_offset_routes(configurations):
@@ -164,8 +168,8 @@ def ask_parameters_internal_routes():
     """Asks for internal routes parameters"""
     msg = "Internal routes parameters"
     title = "Internal routes parameters"
-    fieldNames = ["Internal-external overlap(%)"]
-    fieldDefs = [20]
+    fieldNames = ["Internal-external overlap(%)", "Internal overlap(%)"]
+    fieldDefs = [50, 50]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 

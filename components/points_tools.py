@@ -157,6 +157,92 @@ def max_e_min_coords_img(img, axis):
     return max, min
 
 
+def merge_close_points(
+    points,
+    minimum_distance,
+    sequential=True,
+    max_iterations=2,
+    keep_count=True,
+):
+    merged_points = list(points)
+    if not sequential:
+        if len(merged_points) < 2:
+            return merged_points, []
+
+        new_points = merged_points.copy()
+        repeated_points = []
+        iteration = 0
+        while len(new_points) >= 2 and (
+            max_iterations is None or iteration < max_iterations
+        ):
+            closest_pair = None
+            closest_distance = minimum_distance
+            for first_index in range(len(new_points) - 1):
+                for second_index in range(first_index + 1, len(new_points)):
+                    point_distance = distance_pts(
+                        new_points[first_index], new_points[second_index]
+                    )
+                    if point_distance < closest_distance:
+                        closest_distance = point_distance
+                        closest_pair = (first_index, second_index)
+
+            if closest_pair is None:
+                break
+
+            first_index, second_index = closest_pair
+            midpoint = (
+                np.rint(
+                    np.mean([new_points[first_index], new_points[second_index]], axis=0)
+                )
+                .astype(int)
+                .tolist()
+            )
+            new_points[first_index] = midpoint
+            if keep_count:
+                new_points[second_index] = midpoint
+            else:
+                del new_points[second_index]
+            repeated_points.append(midpoint)
+            iteration += 1
+
+        return new_points, repeated_points
+
+    if len(merged_points) <= 2:
+        return merged_points, []
+
+    new_points = merged_points.copy()
+    repeated_points = []
+    iteration = 0
+    point_index = 1
+    while point_index < len(new_points) - 1 and (
+        max_iterations is None or iteration < max_iterations
+    ):
+        if (
+            distance_pts(new_points[point_index], new_points[point_index + 1])
+            < minimum_distance
+        ):
+            midpoint = np.mean(
+                [
+                    new_points[point_index],
+                    new_points[point_index + 1],
+                ],
+                axis=0,
+            )
+            midpoint = np.rint(midpoint).astype(int).tolist()
+            if keep_count:
+                new_points[point_index] = midpoint
+                new_points[point_index + 1] = midpoint
+                point_index += 1
+            else:
+                new_points[point_index] = midpoint
+                del new_points[point_index + 1]
+            repeated_points.append(midpoint)
+            iteration += 1
+        else:
+            point_index += 1
+    return new_points, repeated_points
+
+
 def most_distant(pts_list):
     """Returns the pair of the most distant points in a list as ([y,x],[y,x])"""
     pairs = []

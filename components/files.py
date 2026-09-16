@@ -372,7 +372,7 @@ class System_Paths:
         os.chdir(self.home)
         return
 
-    def load_zigzags_hdf5(self, layer_name: str, island: Island) -> None:
+    def load_bulky_hdf5(self, layer_name: str, island: Island) -> None:
         os.chdir(self.output)
         f = h5py.File(self.save_file_name, "r")
         island_group = f.get(f"/{layer_name}/{island.name}")

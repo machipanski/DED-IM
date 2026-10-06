@@ -502,7 +502,7 @@ class Layer:
                             )
         return
 
-    def internal_weaving(self, internal_weaving, folders: System_Paths):
+    def internal_weaving(self, internal_weaving, sob_i_weav, folders: System_Paths):
         with Timer("  Generating internal weavings"):
             folders.load_islands_hdf5(self)
             for isl in self.islands:
@@ -510,28 +510,64 @@ class Layer:
                 folders.load_bridges_hdf5(self.name, isl)
                 folders.load_bulky_hdf5(self.name, isl)
                 folders.load_thin_walls_hdf5(self.name, isl)
+                sob_out = self.sob_out_large
+                sob_in = self.sob_in_large
+                sob_zig = self.sob_zig
+                sob_weav = self.sob_weav
+                if hasattr(isl, "bridges"):
+                    bridge_regions = isl.bridges.offset_bridges
+                else:
+                    bridge_regions = []
                 if hasattr(isl, "zigzags"):
                     original_macro_areas_weaved = []
                     original_all_zigzags = copy.deepcopy(isl.zigzags.all_zigzags)
-                    isl.zigzags.macro_areas_weaved, isl.zigzags.all_zigzags = (
-                        isl.zigzags.create_oscilatory_inner(
-                            isl.zigzags.internal_islands,
-                            self.original_img,
-                            self.base_frame,
-                            self.path_radius_larg,
-                            mt.make_mask(self, "full_larg"),
-                            isl.zigzags.regions,
-                            isl.bridges,
-                            isl.offsets.regions,
-                            isl.thin_walls.regions,
-                            internal_weaving,
-                        )
+                    bbbb = isl.zigzags.create_oscilatory_inner(
+                        self.base_frame,
+                        self.path_radius_larg,
+                        mt.make_mask(self, "full_larg"),
+                        sob_in,
+                        sob_out,
+                        sob_zig,
+                        sob_i_weav,
+                        internal_weaving,
+                        isl.rest_of_picture_f2,
+                    )
+                    isl.zigzags.macro_areas_weaved, isl.zigzags.macro_areas_weaved_b = (
+                        bbbb
+                    )
+                    isl.zigzags.all_zigzags = bbbb
+                    cccc = isl.zigzags.create_oscilatory_outer(
+                        isl.zigzags.macro_areas_weaved,
+                        self.base_frame,
+                        self.path_radius_larg,
+                        sob_in,
+                        sob_out,
+                        sob_zig,
+                        sob_i_weav,
+                        internal_weaving,
+                        isl.rest_of_picture_f2,
+                        bridge_regions,
+                    )
+                    ccccb = isl.zigzags.create_oscilatory_outer(
+                        isl.zigzags.macro_areas_weaved_b,
+                        self.base_frame,
+                        self.path_radius_larg,
+                        sob_in,
+                        sob_out,
+                        sob_zig,
+                        sob_i_weav,
+                        internal_weaving,
+                        isl.rest_of_picture_f2,
+                        bridge_regions,
+                        route_b_flag=True,
                     )
                     if np.sum(isl.zigzags.all_zigzags) == 0:
-                        isl.zigzags.all_zigzags = original_all_zigzags
+                        bbbb = isl.zigzags.all_zigzags = original_all_zigzags
                         print("   Something whent wrong, restoring all zigzags")
                     if np.sum(isl.zigzags.macro_areas_weaved) == 0:
-                        isl.zigzags.macro_areas_weaved = original_macro_areas_weaved
+                        bbbbb = isl.zigzags.macro_areas_weaved = (
+                            original_macro_areas_weaved
+                        )
                         print("   Something whent wrong, restoring macro areas weaved")
 
         with Timer("  Saving routes"):
@@ -542,6 +578,30 @@ class Layer:
                         f"all_zigzags",
                         isl.zigzags.all_zigzags,
                     )
+                    for int_isl in isl.zigzags.internal_islands:
+                        for l_area in int_isl.l_regions:
+                            if isinstance(l_area.name, int):
+                                l_area.name = f"LRG_REG_{l_area.name:03d}"
+                            folders.save_img_hdf5(
+                                f"/{self.name}/{isl.name}/zigzags/internal_islands/"
+                                f"{int_isl.name}/l_regions/{l_area.name}",
+                                "route",
+                                l_area.route,
+                            )
+                            folders.save_img_hdf5(
+                                f"/{self.name}/{isl.name}/zigzags/internal_islands/"
+                                f"{int_isl.name}/l_regions/{l_area.name}",
+                                "route_b",
+                                l_area.route_b,
+                            )
+                        for w_area in int_isl.w_regions:
+                            if isinstance(w_area.name, int):
+                                w_area.name = f"WEAV_REG_{w_area.name:03d}"
+                            w_area_path = (
+                                f"/{self.name}/{isl.name}/zigzags/internal_islands/"
+                                f"{int_isl.name}/w_regions/{w_area.name}"
+                            )
+                            folders.save_img_hdf5(w_area_path, "route", w_area.route)
                     folders.delete_item_hdf5(
                         f"/{self.name}/{isl.name}/zigzags/macro_areas"
                     )
@@ -965,6 +1025,7 @@ class Layer:
                         self.path_radius_cont,
                         rest_of_picture_f2,
                         sum_prohibited_areas,
+                        self.sob_cont_per,
                     )
                 )
             except:
@@ -1004,7 +1065,6 @@ class Layer:
         self.sob_bridg_per = sob_bridg_per
         d_bridg_pxl = d_bridg * self.pxl_per_mm
         self.path_radius_bridg = round(d_bridg_pxl * 0.5)
-        distancer = mt.make_distancer(self, "bridg", sob_bridg_per)
         folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         folders.load_islands_hdf5(self)
         for isl in self.islands:
@@ -1052,13 +1112,18 @@ class Layer:
             )
         return last_prohibited_areas
 
-    def make_bridges_routes(self, folders: System_Paths, sob_int_ext_per, sob_int_per):
+    def make_bridges_routes(
+        self,
+        folders: System_Paths,
+        sob_in,
+        sob_out,
+        sob_weaving,
+    ):
         folders.load_islands_hdf5(self)
-        self.sob_int_ext_per = sob_int_ext_per
-        self.sob_int_per = sob_int_per
-        mask_distancer_int_ext = mt.make_distancer(
-            self, "int_ext", percentage=sob_int_ext_per
-        )
+        self.sob_int_ext_per = sob_out
+        self.sob_int_per = sob_in
+        self.sob_pace = sob_weaving
+        mask_distancer_int_ext = mt.make_distancer(self, "int_ext", percentage=sob_out)
         mask_distancer_int = mt.make_distancer(
             self, "bridg", percentage=self.sob_int_per
         )
@@ -1071,9 +1136,12 @@ class Layer:
                     self.path_radius_cont,
                     self.path_radius_bridg,
                     mask_distancer_int_ext,
-                    sob_int_per,
+                    sob_in,
+                    sob_out,
+                    sob_weaving,
                     self.base_frame,
                     isl.rest_of_picture_f2,
+                    self.sob_cont_per,
                 )
             with Timer("  Saving routes images"):
                 folders.save_routes_bridges_hdf5(self.name, self.islands)
@@ -1156,6 +1224,18 @@ class Layer:
                         )
             return island
 
+        @parallelizando
+        def make_weaveble_monotonic(
+            island: Island, large_weaving_limmit, path_radius
+        ) -> Island:
+            if np.sum(island.rest_of_picture_f3) > 0:
+                for int_isl in island.zigzags.internal_islands:
+                    int_isl.weaveble_monotonic(
+                        path_radius,
+                        large_weaving_limmit,
+                    )
+            return island
+
         self.program_larg = name_prog
         self.diam_larg_real = d_larg
         self.sob_larg_per = sob_larg_per
@@ -1177,6 +1257,9 @@ class Layer:
                 int_isl.large_areas = int_isl.img
         with Timer("  Dividing largest areas into monotonic regions"):
             find_monotonic(large_weaving_limmit, self.path_radius_larg)
+        if style == 2:
+            with Timer("  Further dividing monotonic regions into channels"):
+                make_weaveble_monotonic(self.path_radius_larg, large_weaving_limmit)
         with Timer("  Saving monotonic regions images"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
@@ -1189,7 +1272,7 @@ class Layer:
         sob_in: int,
         sob_out: int,
         sob_zig: int,
-        sob_weaving: int,
+        sob_weav: int,
     ):
         folders.load_islands_hdf5(self)
         # mask_distancer_internal = mt.make_distancer(self, "int_ext", percentage=sob_int)
@@ -1204,19 +1287,24 @@ class Layer:
                         sob_out,
                         sob_zig,
                         style,
+                        isl.rest_of_picture_f2,
                     )
                     isl.zigzags.make_routes_wv(
                         self.base_frame,
                         self.path_radius_larg,
                         sob_in,
                         sob_out,
-                        sob_weaving,
+                        sob_weav,
                         style,
                         folders,
                     )
         with Timer("  Saving images of zigzag routes"):
             folders.save_regs_zigzags_hdf5(self.name, self.islands)
             self.intern_zz_style = style
+            self.sob_out_large = sob_out
+            self.sob_in_large = sob_in
+            self.sob_zig = sob_zig
+            self.sob_weav = sob_weav
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 

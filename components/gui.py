@@ -168,8 +168,12 @@ def ask_parameters_internal_routes():
     """Asks for internal routes parameters"""
     msg = "Internal routes parameters"
     title = "Internal routes parameters"
-    fieldNames = ["Internal-external overlap(%)", "Internal overlap(%)"]
-    fieldDefs = [50, 50]
+    fieldNames = [
+        "External regions overlap(%)",
+        "Internal regions overlap(%)",
+        "Weaving overlap(%)",
+    ]
+    fieldDefs = [50, 50, 50]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 
@@ -177,8 +181,8 @@ def ask_parameters_weaving():
     """Asks if internal weaving will be applied"""
     msg = "Internal Weaving parameters"
     title = "Internal Weaving parameters"
-    fieldNames = ["Internal Weaving? (1yes/0no)"]
-    fieldDefs = [1]
+    fieldNames = ["Internal Weaving? (1yes/0no)", "new weavings sobrep"]
+    fieldDefs = [1, 50]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 

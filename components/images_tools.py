@@ -40,10 +40,22 @@ def chain_to_lines(final_chain, canvas, color=999):
         start_p = end_p
         if chain:
             end_p = chain.pop()
-            cv2.line(canvas, tuple(np.int32(start_p)), tuple(np.int32(end_p)), color, 1)
+            cv2.line(
+                canvas.astype(np.uint8),
+                tuple(np.int32(start_p)),
+                tuple(np.int32(end_p)),
+                color,
+                1,
+            )
         else:
             end_p = last
-            cv2.line(canvas, tuple(np.int32(start_p)), tuple(np.int32(end_p)), color, 1)
+            cv2.line(
+                canvas.astype(np.uint8),
+                tuple(np.int32(start_p)),
+                tuple(np.int32(end_p)),
+                color,
+                1,
+            )
         count += 1
         if by_seg_color:
             color = count % 5 + 1
@@ -133,6 +145,47 @@ def divide_by_connected(img, connectivity=2) -> List[List[np.ndarray], np.ndarra
     for i in np.arange(0, num):
         separated_imgs.append(labels == i + 1)  # cria a imagem da area
     return separated_imgs, labels, num
+
+
+def reassign_disconnected_labels(labeled_img: np.ndarray) -> np.ndarray:
+    """Reassign smaller disconnected components to their neighboring labels."""
+    corrected = np.array(labeled_img, copy=True)
+    if corrected.size == 0:
+        return corrected
+
+    changed = True
+    while changed:
+        previous = corrected.copy()
+        for value in np.unique(previous):
+            if value == 0:
+                continue
+
+            components, _, _ = divide_by_connected(previous == value)
+            if len(components) <= 1:
+                continue
+
+            components.sort(key=np.count_nonzero, reverse=True)
+            for component in components[1:]:
+                rows, cols = np.nonzero(component)
+                neighbors = []
+                for row, col in zip(rows, cols):
+                    row_start = max(0, row - 1)
+                    row_end = min(previous.shape[0], row + 2)
+                    col_start = max(0, col - 1)
+                    col_end = min(previous.shape[1], col + 2)
+                    adjacent = previous[row_start:row_end, col_start:col_end]
+                    neighbors.extend(adjacent[adjacent != value].tolist())
+
+                neighboring_labels = [
+                    neighbor for neighbor in neighbors if neighbor != 0
+                ]
+                if neighboring_labels:
+                    labels, counts = np.unique(neighboring_labels, return_counts=True)
+                    corrected[component] = labels[np.argmax(counts)]
+
+        changed = not np.array_equal(corrected, previous)
+
+    return corrected
 
 
 def filter_connected_by_points(binary_img: np.ndarray, points: list) -> np.ndarray:
@@ -1142,3 +1195,18 @@ def rectangle_middle_and_corner_points_expanded(shape):
     ]
     middles = [top_middle, bottom_middle, left_middle, right_middle]
     return middles + corners
+
+
+def cut_outside_the_box(image, reference_image):
+    y_coords, x_coords = np.nonzero(reference_image)
+    if len(y_coords) == 0:
+        return np.zeros_like(image)
+
+    min_y, max_y = np.min(y_coords), np.max(y_coords)
+    min_x, max_x = np.min(x_coords), np.max(x_coords)
+    result = image.copy()
+    result[:min_y, :] = 0
+    result[max_y + 1 :, :] = 0
+    result[:, :min_x] = 0
+    result[:, max_x + 1 :] = 0
+    return result

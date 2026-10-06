@@ -756,12 +756,17 @@ class Offset:
         self.center_coords = pt.points_center(pt.contour_to_list(self.area_contour))
         return
 
-    def make_limmit_coords(self, path_radius):
+    def make_limmit_coords(self, path_radius, sob_cont):
         limmit_coords = pt.extreme_points(self.area_contour_img, force_top=True)
-        limmit_coords[0][0] = limmit_coords[0][0] + path_radius * 2
-        limmit_coords[1][0] = limmit_coords[1][0] + path_radius * -2
-        limmit_coords[2][0] = limmit_coords[2][0] + path_radius * -2
-        limmit_coords[3][0] = limmit_coords[3][0] + path_radius * 2
+        # limmit_coords[0][0] = limmit_coords[0][0] + path_radius * 2
+        # limmit_coords[1][0] = limmit_coords[1][0] + path_radius * -2
+        # limmit_coords[2][0] = limmit_coords[2][0] + path_radius * -2
+        # limmit_coords[3][0] = limmit_coords[3][0] + path_radius * 2
+        distancer = int(np.round(path_radius * (1 + (sob_cont / 100))))
+        limmit_coords[0][0] = limmit_coords[0][0] + distancer
+        limmit_coords[1][0] = limmit_coords[1][0] - distancer
+        limmit_coords[2][0] = limmit_coords[2][0] - distancer
+        limmit_coords[3][0] = limmit_coords[3][0] + distancer
         self.limmit_coords = limmit_coords
         return
 

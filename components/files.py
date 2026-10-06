@@ -703,8 +703,18 @@ class System_Paths:
                                     )
                                     self.save_img_hdf5(
                                         l_reg_path,
+                                        "no_w_route",
+                                        l_reg.no_w_route,
+                                    )
+                                    self.save_img_hdf5(
+                                        l_reg_path,
                                         "route_b",
                                         l_reg.route_b,
+                                    )
+                                    self.save_img_hdf5(
+                                        l_reg_path,
+                                        "no_w_route_b",
+                                        l_reg.no_w_route_b,
                                     )
                                     self.save_img_hdf5(
                                         l_reg_path,
@@ -718,7 +728,9 @@ class System_Paths:
                                     )
                                 else:
                                     self.delete_item_hdf5(f"{l_reg_path}/route")
+                                    self.delete_item_hdf5(f"{l_reg_path}/no_w_route")
                                     self.delete_item_hdf5(f"{l_reg_path}/route_b")
+                                    self.delete_item_hdf5(f"{l_reg_path}/no_w_route_b")
                                     self.delete_item_hdf5(f"{l_reg_path}/trail")
                                     self.delete_item_hdf5(f"{l_reg_path}/trail_b")
                         else:
@@ -746,8 +758,18 @@ class System_Paths:
                                     )
                                     self.save_img_hdf5(
                                         w_reg_path,
+                                        "no_w_route",
+                                        w_reg.no_w_route,
+                                    )
+                                    self.save_img_hdf5(
+                                        w_reg_path,
                                         "route_b",
                                         w_reg.route_b,
+                                    )
+                                    self.save_img_hdf5(
+                                        w_reg_path,
+                                        "no_w_route_b",
+                                        w_reg.no_w_route_b,
                                     )
                                     self.save_img_hdf5(
                                         w_reg_path,
@@ -761,6 +783,7 @@ class System_Paths:
                                     )
                                 else:
                                     self.delete_item_hdf5(f"{w_reg_path}/route")
+                                    self.delete_item_hdf5(f"{w_reg_path}/no_w_route")
                                     self.delete_item_hdf5(f"{w_reg_path}/route_b")
                                     self.delete_item_hdf5(f"{w_reg_path}/trail")
                                     self.delete_item_hdf5(f"{w_reg_path}/trail_b")

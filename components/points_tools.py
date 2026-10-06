@@ -164,6 +164,19 @@ def merge_close_points(
     max_iterations=2,
     keep_count=True,
 ):
+    def append_point_and_neighbors(points, point):
+        points.append(point)
+        points.extend(
+            [
+                [point[0] + row_offset, point[1] + col_offset]
+                for row_offset in (-1, 0, 1)
+                for col_offset in (-1, 0, 1)
+                if (row_offset, col_offset) != (0, 0)
+                and point[0] + row_offset >= 0
+                and point[1] + col_offset >= 0
+            ]
+        )
+
     merged_points = list(points)
     if not sequential:
         if len(merged_points) < 2:
@@ -202,7 +215,7 @@ def merge_close_points(
                 new_points[second_index] = midpoint
             else:
                 del new_points[second_index]
-            repeated_points.append(midpoint)
+            append_point_and_neighbors(repeated_points, midpoint)
             iteration += 1
 
         return new_points, repeated_points
@@ -236,7 +249,7 @@ def merge_close_points(
             else:
                 new_points[point_index] = midpoint
                 del new_points[point_index + 1]
-            repeated_points.append(midpoint)
+            append_point_and_neighbors(repeated_points, midpoint)
             iteration += 1
         else:
             point_index += 1

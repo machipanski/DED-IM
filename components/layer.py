@@ -520,8 +520,30 @@ class Layer:
                     bridge_regions = []
                 if hasattr(isl, "zigzags"):
                     original_macro_areas_weaved = []
-                    original_all_zigzags = copy.deepcopy(isl.zigzags.all_zigzags)
-                    bbbb = isl.zigzags.create_oscilatory_inner(
+                    original_all_zigzags = it.sum_imgs(
+                        [
+                            zz.no_w_route
+                            for sub_island in isl.zigzags.internal_islands
+                            for zz in sub_island.l_regions
+                        ]
+                    )
+                    original_all_zigzags_b = it.sum_imgs(
+                        [
+                            zz.no_w_route_b
+                            for sub_island in isl.zigzags.internal_islands
+                            for zz in sub_island.l_regions
+                        ]
+                    )
+                    internal_areas = it.sum_imgs(
+                        [isl.rest_of_picture_f3]
+                        + [zb.img for zb in isl.bridges.zigzag_bridges]
+                    )
+                    (
+                        all_new_zigzags,
+                        all_new_zigzags_b,
+                        connected_fails,
+                        connected_fails_b,
+                    ) = isl.zigzags.create_oscilatory_inner(
                         self.base_frame,
                         self.path_radius_larg,
                         mt.make_mask(self, "full_larg"),
@@ -530,14 +552,13 @@ class Layer:
                         sob_zig,
                         sob_i_weav,
                         internal_weaving,
-                        isl.rest_of_picture_f2,
+                        internal_areas,
                     )
-                    isl.zigzags.macro_areas_weaved, isl.zigzags.macro_areas_weaved_b = (
-                        bbbb
-                    )
-                    isl.zigzags.all_zigzags = bbbb
-                    cccc = isl.zigzags.create_oscilatory_outer(
-                        isl.zigzags.macro_areas_weaved,
+                    # isl.zigzags.macro_areas_weaved = all_new_zigzags
+                    # isl.zigzags.macro_areas_weaved_b = all_new_zigzags_b
+                    # isl.zigzags.all_zigzags = bbbb
+                    all_new_zigzags = isl.zigzags.create_oscilatory_outer(
+                        all_new_zigzags,
                         self.base_frame,
                         self.path_radius_larg,
                         sob_in,
@@ -545,11 +566,13 @@ class Layer:
                         sob_zig,
                         sob_i_weav,
                         internal_weaving,
-                        isl.rest_of_picture_f2,
+                        internal_areas,
                         bridge_regions,
+                        connected_fails,
+                        old_zigzag=original_all_zigzags,
                     )
-                    ccccb = isl.zigzags.create_oscilatory_outer(
-                        isl.zigzags.macro_areas_weaved_b,
+                    all_new_zigzags_b = isl.zigzags.create_oscilatory_outer(
+                        all_new_zigzags_b,
                         self.base_frame,
                         self.path_radius_larg,
                         sob_in,
@@ -557,18 +580,20 @@ class Layer:
                         sob_zig,
                         sob_i_weav,
                         internal_weaving,
-                        isl.rest_of_picture_f2,
+                        internal_areas,
                         bridge_regions,
+                        connected_fails_b,
                         route_b_flag=True,
+                        old_zigzag=original_all_zigzags_b,
                     )
-                    if np.sum(isl.zigzags.all_zigzags) == 0:
-                        bbbb = isl.zigzags.all_zigzags = original_all_zigzags
-                        print("   Something whent wrong, restoring all zigzags")
-                    if np.sum(isl.zigzags.macro_areas_weaved) == 0:
-                        bbbbb = isl.zigzags.macro_areas_weaved = (
-                            original_macro_areas_weaved
-                        )
-                        print("   Something whent wrong, restoring macro areas weaved")
+                    # if np.sum(isl.zigzags.all_zigzags) == 0:
+                    #     bbbb = isl.zigzags.all_zigzags = original_all_zigzags
+                    #     print("   Something whent wrong, restoring all zigzags")
+                    # if np.sum(isl.zigzags.macro_areas_weaved) == 0:
+                    #     bbbbb = isl.zigzags.macro_areas_weaved = (
+                    #         original_macro_areas_weaved
+                    #     )
+                    #     print("   Something whent wrong, restoring macro areas weaved")
 
         with Timer("  Saving routes"):
             for isl in self.islands:
@@ -613,11 +638,11 @@ class Layer:
                     folders.delete_item_hdf5(
                         f"/{self.name}/{isl.name}/zigzags/macro_areas_weaved"
                     )
-                    folders.save_img_hdf5(
-                        f"/{self.name}/{isl.name}/zigzags",
-                        f"macro_areas_weaved",
-                        isl.zigzags.macro_areas_weaved,
-                    )
+                    # folders.save_img_hdf5(
+                    #     f"/{self.name}/{isl.name}/zigzags",
+                    #     f"macro_areas_weaved",
+                    #     isl.zigzags.macro_areas_weaved,
+                    # )
         return
 
     def islands_path_starts(self, folders: System_Paths):
@@ -948,7 +973,13 @@ class Layer:
             folders.save_props_hdf5(f"/{self.name}", self.__dict__)
         return
 
-    def make_offset_routes(self, amendment_size, folders: System_Paths, outer_spiral):
+    def make_offset_routes(
+        self,
+        amendment_size: float,
+        folders: System_Paths,
+        outer_spiral: bool,
+        inner_spiral: bool,
+    ):
         folders.load_islands_hdf5(self)
         for isl in self.islands:
             folders.load_offsets_hdf5(self.name, isl)
@@ -958,6 +989,7 @@ class Layer:
                 self.path_radius_cont,
                 amendment_size,
                 outer_spiral,
+                inner_spiral,
             )
         with Timer("  Saving routes images"):
             for isl in self.islands:
@@ -1279,6 +1311,11 @@ class Layer:
         for isl in self.islands:
             with Timer(f"  Generating bulky areas routes, Layer:{self.name}"):
                 folders.load_bulky_hdf5(self.name, isl)
+                folders.load_bridges_hdf5(self.name, isl)
+                internal_areas = it.sum_imgs(
+                    [isl.rest_of_picture_f3]
+                    + [zb.img for zb in isl.bridges.zigzag_bridges]
+                )
                 if hasattr(isl, "zigzags"):
                     isl.zigzags.make_routes_z(
                         self.base_frame,
@@ -1287,7 +1324,7 @@ class Layer:
                         sob_out,
                         sob_zig,
                         style,
-                        isl.rest_of_picture_f2,
+                        internal_areas,
                     )
                     isl.zigzags.make_routes_wv(
                         self.base_frame,

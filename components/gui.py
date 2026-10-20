@@ -155,13 +155,14 @@ def ask_parameters_offset_routes(configurations):
     title = "Contour routes parameters"
     fieldNames = [
         "Spiralize outer Contour",
+        "Spiralize inner Contour",
         "Ammendment percentage",
     ]
-    fieldDefs = [1, 0.7]
-    [outer_spiral, amendment_size] = ask_parameters_constructor(
+    fieldDefs = [1, 1, 0.7]
+    [outer_spiral, inner_spiral, amendment_size] = ask_parameters_constructor(
         msg, title, fieldNames, fieldDefs
     )
-    return outer_spiral, amendment_size
+    return outer_spiral, inner_spiral, amendment_size
 
 
 def ask_parameters_internal_routes():

@@ -509,18 +509,18 @@ def individual_routes(layer: Layer, folders: System_Paths):
     regions_imgs = []
     for isl in layer.islands:
         folders.load_thin_walls_hdf5(layer.name, isl)
-        if hasattr(isl, "thin_walls"):
-            if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
-                if (
-                    hasattr(isl.thin_walls.regions[0], "route")
-                    and len(isl.thin_walls.regions[0].route) > 0
-                ):
-                    regions_imgs.append(
-                        sum_imgs([reg.route for reg in isl.thin_walls.regions]).astype(
-                            np.uint16
-                        )
-                        * 5
-                    )
+        # if hasattr(isl, "thin_walls"):
+        #     if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
+        #         if (
+        #             hasattr(isl.thin_walls.regions[0], "route")
+        #             and len(isl.thin_walls.regions[0].route) > 0
+        #         ):
+        #             regions_imgs.append(
+        #                 sum_imgs([reg.route for reg in isl.thin_walls.regions]).astype(
+        #                     np.uint16
+        #                 )
+        #                 * 5
+        #             )
         folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
@@ -687,22 +687,27 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
 
 
 def individual_trails(layer: Layer, folders: System_Paths):
-    isl_ind_trails = np.zeros(layer.base_frame)
-    regions_imgs = []
+    def collect_trails(regions, attribute):
+        trails = np.zeros(layer.base_frame, dtype=np.uint16)
+        for region in regions:
+            trail = getattr(region, attribute, None)
+            if trail is not None and np.any(trail):
+                trails = np.logical_or(trails, trail)
+        return trails
+
+    regions_a = np.zeros(layer.base_frame, dtype=np.uint16)
+    regions_b = np.zeros(layer.base_frame, dtype=np.uint16)
     for isl in layer.islands:
         folders.load_thin_walls_hdf5(layer.name, isl)
         if hasattr(isl, "thin_walls"):
             if hasattr(isl.thin_walls, "regions") and len(isl.thin_walls.regions) > 0:
-                if (
-                    hasattr(isl.thin_walls.regions[0], "trail")
-                    and len(isl.thin_walls.regions[0].trail) > 0
-                ):
-                    regions_imgs.append(
-                        sum_imgs([reg.trail for reg in isl.thin_walls.regions]).astype(
-                            np.uint16
-                        )
-                        * 5
-                    )
+                trail_a = collect_trails(isl.thin_walls.regions, "trail")
+                trail_b = collect_trails(isl.thin_walls.regions, "trail_b")
+                if np.any(trail_a):
+                    regions_a = sum_imgs([regions_a, trail_a.astype(np.uint16) * 5])
+                if np.any(trail_b):
+                    regions_b = sum_imgs([regions_b, trail_b.astype(np.uint16) * 5])
+
         folders.load_bulky_hdf5(layer.name, isl)
         if hasattr(isl, "zigzags"):
             if (
@@ -712,60 +717,77 @@ def individual_trails(layer: Layer, folders: System_Paths):
                 for intisl in isl.zigzags.internal_islands:
                     if hasattr(intisl, "l_regions") and len(intisl.l_regions) > 0:
                         for l_reg in intisl.l_regions:
-                            if hasattr(l_reg, "trail"):
-                                aaaa = l_reg.trail
-                                regions_imgs.append(aaaa)
+                            trail_a = collect_trails([l_reg], "trail")
+                            trail_b = collect_trails([l_reg], "trail_b")
+                            if np.any(trail_a):
+                                regions_a = sum_imgs(
+                                    [regions_a, trail_a.astype(np.uint16) * 5]
+                                )
+                            if np.any(trail_b):
+                                regions_b = sum_imgs(
+                                    [regions_b, trail_b.astype(np.uint16) * 5]
+                                )
                     if hasattr(intisl, "w_regions") and len(intisl.w_regions) > 0:
                         for w_reg in intisl.w_regions:
-                            if hasattr(w_reg, "trail"):
-                                aaaa = w_reg.trail
-                                regions_imgs.append(aaaa)
+                            trail_a = collect_trails([w_reg], "trail")
+                            trail_b = collect_trails([w_reg], "trail_b")
+                            if np.any(trail_a):
+                                regions_a = sum_imgs(
+                                    [regions_a, trail_a.astype(np.uint16) * 5]
+                                )
+                            if np.any(trail_b):
+                                regions_b = sum_imgs(
+                                    [regions_b, trail_b.astype(np.uint16) * 5]
+                                )
+
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
-                if (
-                    hasattr(isl.offsets.regions[0], "trail")
-                    and len(isl.offsets.regions[0].trail) > 0
-                ):
-                    regions_imgs.append(
-                        sum_imgs([reg.trail for reg in isl.offsets.regions]).astype(
-                            np.uint16
-                        )
-                        * 6
-                    )
+                trail_a = collect_trails(isl.offsets.regions, "trail")
+                trail_b = collect_trails(isl.offsets.regions, "trail_b")
+                if np.any(trail_a):
+                    regions_a = sum_imgs([regions_a, trail_a.astype(np.uint16) * 6])
+                    # if np.any(trail_b):
+                    # regions_b = sum_imgs([regions_b, trail_b.astype(np.uint16) * 6])
+                    regions_b = sum_imgs([regions_b, trail_a.astype(np.uint16) * 6])
+
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl, "bridges"):
             if hasattr(isl.bridges, "zigzag_bridges"):
                 if len(isl.bridges.zigzag_bridges) > 0:
-                    if (
-                        hasattr(isl.bridges.zigzag_bridges[0], "trail")
-                        and len(isl.bridges.zigzag_bridges[0].trail) > 0
-                    ):
-                        regions_imgs.append(
-                            sum_imgs(
-                                [reg.trail for reg in isl.bridges.zigzag_bridges]
-                            ).astype(np.uint16)
-                            * 7
-                        )
+                    trail_a = collect_trails(isl.bridges.zigzag_bridges, "trail")
+                    trail_b = collect_trails(isl.bridges.zigzag_bridges, "trail_b")
+                    if np.any(trail_a):
+                        regions_a = sum_imgs([regions_a, trail_a.astype(np.uint16) * 7])
+                    if np.any(trail_b):
+                        regions_b = sum_imgs([regions_b, trail_b.astype(np.uint16) * 7])
             if hasattr(isl.bridges, "offset_bridges"):
                 if len(isl.bridges.offset_bridges) > 0:
                     for bridg in isl.bridges.offset_bridges:
-                        if np.sum(bridg.trail) > 0:
-                            regions_imgs.append(bridg.trail.astype(np.uint16) * 8)
+                        trail_a = collect_trails([bridg], "trail")
+                        trail_b = collect_trails([bridg], "trail_b")
+                        if np.any(trail_a):
+                            regions_a = sum_imgs(
+                                [regions_a, trail_a.astype(np.uint16) * 8]
+                            )
+                            # if np.any(trail_b):
+                            # regions_b.append(trail_b.astype(np.uint16) * 8)
+                            regions_b = sum_imgs(
+                                [regions_b, trail_a.astype(np.uint16) * 8]
+                            )
             if hasattr(isl.bridges, "cross_over_bridges"):
-                if (
-                    hasattr(isl.bridges.cross_over_bridges[0], "trail")
-                    and len(isl.bridges.cross_over_bridges[0].trail) > 0
-                ):
-                    if len(isl.bridges.cross_over_bridges) > 0:
-                        regions_imgs.append(
-                            sum_imgs(
-                                [reg.trail for reg in isl.bridges.cross_over_bridges]
-                            ).astype(np.uint16)
-                            * 9
-                        )
-        isl_ind_trails = sum_imgs(regions_imgs)
-    return isl_ind_trails
+                if len(isl.bridges.cross_over_bridges) > 0:
+                    trail_a = collect_trails(isl.bridges.cross_over_bridges, "trail")
+                    trail_b = collect_trails(isl.bridges.cross_over_bridges, "trail_b")
+                    if np.any(trail_a):
+                        regions_a = sum_imgs([regions_a, trail_a.astype(np.uint16) * 9])
+                    if np.any(trail_b):
+                        regions_b = sum_imgs([regions_b, trail_b.astype(np.uint16) * 9])
+
+    # isl_ind_trails = sum_imgs(regions_a)
+    # isl_ind_trails_b = sum_imgs(regions_b)
+    # return isl_ind_trails, isl_ind_trails_b
+    return regions_a, regions_b
 
 
 def has_contact(fail, new_zigzag):
@@ -1101,6 +1123,22 @@ def take_the_bigger_area(img: np.ndarray):
         separated_areas.append(area)
     area_sums = list(map(lambda x: np.sum(x), separated_areas))
     return separated_areas[np.argmax(area_sums)]
+
+
+def connected_element(
+    img: np.ndarray, separated_elements: List[np.ndarray]
+) -> np.ndarray:
+    """Return the union with the element having the largest common-pixel count."""
+    biggest_common_pixels = 0
+    biggest_element = np.zeros_like(img, dtype=bool)
+
+    for separated_element in separated_elements:
+        common_pixels = int(np.logical_and(img, separated_element).sum())
+        if common_pixels > biggest_common_pixels:
+            biggest_common_pixels = common_pixels
+            biggest_element = separated_element
+
+    return np.logical_or(img, biggest_element)
 
 
 def extend_line_random_to_touch(

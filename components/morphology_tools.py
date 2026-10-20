@@ -337,4 +337,9 @@ def simulate_hight(route_img, path_radius, top_height, axis_ratio=1.0):
         normalize=True,
     )
     dilated_colored = colored_dilation(route_img, kernel)
-    return dilated_colored
+    non_zero_values = dilated_colored[dilated_colored != 0]
+    maximum_value = float(non_zero_values.max()) if non_zero_values.size else 0.0
+    standard_deviation = (
+        float(np.std(non_zero_values)) if non_zero_values.size else 0.0
+    )
+    return dilated_colored, maximum_value, standard_deviation

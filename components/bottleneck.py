@@ -1336,24 +1336,42 @@ def equidistant_in_seq(line, path_radius, sobrep_int_perc, origin_pt=[]):
 
 def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
     # n_origens = 0
+    most_proximal = []
     endpoints_img = mt.hitmiss_ends_v2(line_img.astype(bool))
     endpoints = pt.img_to_points(endpoints_img)
     # line_lst = pt.img_to_points(line_img)
+    copied_origin = copy.deepcopy(line_img)
     first, _ = pt.closest_point(origin_lst[0], endpoints)
+    most_proximal.append(first)
+    canvas = np.zeros_like(line_img, np.uint8)
+    area_distance = it.draw_circle(canvas, first, path_radius)
+    copied_origin = np.logical_and(copied_origin, np.logical_not(area_distance))
     last = list(filter(lambda x: x != first, endpoints))[0]
-    origens_pontos = []
-    for origin_pt in origin_lst:
-        copied_origin = copy.deepcopy(line_img)
+    area_distance = it.draw_circle(canvas, last, path_radius)
+    copied_origin = np.logical_and(copied_origin, np.logical_not(area_distance))
+    for i, origin_pt in enumerate(origin_lst):
+        if i == 0 or i == len(origin_lst) - 1:
+            continue
         canvas = np.zeros_like(line_img, np.uint8)
         centro = origin_pt
-        area_distance = it.draw_circle(canvas, centro, path_radius)
-        candidate, _ = pt.closest_point(centro, pt.img_to_points(copied_origin))
-        origens_pontos.append(candidate)
+        # area_distance = it.draw_circle(canvas, centro, path_radius)
+        area_distance = it.draw_circle(
+            canvas, most_proximal[-1], int(np.round((path_radius) / 3))
+        )
         copied_origin = np.logical_and(copied_origin, np.logical_not(area_distance))
+        candidate, _ = pt.closest_point(centro, pt.img_to_points(copied_origin))
+        most_proximal.append(candidate)
         # n_origens = len(origens_pontos)
-    origens_pontos[0] = first
-    origens_pontos[-1] = last
-    return origens_pontos
+    # origens_pontos[0] = first
+    most_proximal.append(last)
+    aaaaa = it.sum_imgs(
+        [
+            it.points_to_img(most_proximal, np.zeros_like(line_img)),
+            line_img,
+            it.points_to_img(origin_lst, np.zeros_like(line_img)),
+        ]
+    )
+    return most_proximal
 
 
 def internal_adapted_polygon(line_ci1, line_ci2, lines_transversais, extreme_points):
@@ -1462,7 +1480,7 @@ def make_zz_or_co_bridge_route(
             total_sobreposition,
             eroded,
         ) = chamfer_corners_channels(
-            region,
+            region.img,
             path_radius,
             sob_in,
             sob_out,
@@ -1488,6 +1506,21 @@ def make_zz_or_co_bridge_route(
         )
         ci2_merged, ci2_repeated = pt.merge_close_points(
             pts_trns_ci2, minimum_distance, sequential=True
+        )
+        pts_ci1_img = it.points_to_img(pts_trns_ci1, np.zeros_like(rest_of_picture))
+        pts_ci2_img = it.points_to_img(pts_trns_ci2, np.zeros_like(rest_of_picture))
+        pts_trns_origin_img = it.points_to_img(
+            pts_trns_origin, np.zeros_like(rest_of_picture)
+        )
+        aaaa = it.sum_imgs(
+            [
+                internal_pol,
+                line_ci1,
+                line_ci2,
+                pts_ci1_img,
+                pts_ci2_img,
+                pts_trns_origin_img,
+            ]
         )
         lines_transversais = np.zeros_like(region.img)
         lines_limitrofes = np.zeros_like(region.img)
@@ -1624,6 +1657,7 @@ def make_zz_or_co_bridge_route(
         region.trail = mt.dilation(region.route, kernel_size=path_radius)
         region.trail_b = mt.dilation(region.route_b, kernel_size=path_radius)
     except:
+        print("zz or co bridge route failed, using origin as route")
         new_zigzag = origin.copy()
         new_zigzag_b = origin.copy()
         region.route = new_zigzag

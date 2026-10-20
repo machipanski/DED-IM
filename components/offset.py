@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from more_itertools import first
 from components import morphology_tools as mt
 from components import images_tools as it
 from components import points_tools as pt
@@ -479,10 +481,11 @@ class OffsetRegions:
         path_radius,
         amendment_size,
         outer_spiral,
+        inner_spiral,
     ):
         prohibited_areas = np.zeros(base_frame)
 
-        def make_offset_route(region: Offset, outer_spiral: bool):
+        def make_offset_route(region: Offset, outer_spiral: bool, inner_spiral: bool):
             route = np.zeros(base_frame)
             next_prohibited_area = np.zeros(base_frame)
             for loop in region.loops:
@@ -497,6 +500,10 @@ class OffsetRegions:
                     region, base_frame, prohibited_areas
                 )
                 if outer_spiral and region.name == "Reg_000":
+                    route, next_prohibited_area = link_spirals_spiral(
+                        route, amendment, guide_line
+                    )
+                if inner_spiral and region.name != "Reg_000":
                     route, next_prohibited_area = link_spirals_spiral(
                         route, amendment, guide_line
                     )
@@ -515,7 +522,7 @@ class OffsetRegions:
         processed_regions = []
         with concurrent.futures.ThreadPoolExecutor() as executor:
             results = [
-                executor.submit(make_offset_route, region, outer_spiral)
+                executor.submit(make_offset_route, region, outer_spiral, inner_spiral)
                 for region in self.regions
             ]
             for l in concurrent.futures.as_completed(results):
@@ -912,24 +919,55 @@ def link_spirals_go_back(route, n_loops, mask, guide_line, base_frame, idx):
 
 
 def link_spirals_spiral(route, mask, guide_line):
+    from cv2 import findContours, RETR_TREE, RETR_CCOMP, CHAIN_APPROX_NONE
+
+    contours, hierarchy = findContours(
+        route.astype(np.uint8), RETR_TREE, CHAIN_APPROX_NONE
+    )
+    contours = [cnt for i, cnt in enumerate(contours) if i % 2 == 0]
     work_area = mt.dilation(guide_line, kernel_img=mask)
-    _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
-    contours_imgs, _, _ = it.divide_by_connected(route)
-    contours_imgs_cut = [
-        np.logical_and(x, np.logical_not(work_area)) for x in contours_imgs
-    ]
-    points_contours = [
-        pt.img_to_points(mt.hitmiss_ends_v2(x)) for x in contours_imgs_cut
-    ]
-    connector_lines_points = [item for sublist in points_contours for item in sublist]
-    connector_lines_points = connector_lines_points[1:-1]
-    connector_lines_points = list(itertools.pairwise(connector_lines_points))
-
-    new_route = it.image_subtract(route, work_area)
-
-    for i, line in enumerate(connector_lines_points):
-        if not i % 2:
-            new_route = it.draw_line(new_route, line[0], line[1])
+    if len(contours) > 1:
+        hierarchy = [cnt for i, cnt in enumerate(hierarchy[0]) if i % 2 == 0]
+        hierarchy = hierarchy[::-1]
+        contours = contours[::-1]
+        contours_imgs = [
+            drawContours(np.zeros_like(route).astype(np.uint8), cnt, -1, 1)
+            for cnt in contours
+        ]
+        aaaaa = it.sum_imgs_colored(contours_imgs)
+        arcs_imgs = [
+            np.logical_and(x, np.logical_not(work_area)) for x in contours_imgs
+        ]
+        arcs_points = [pt.img_to_points(mt.hitmiss_ends_v2(x)) for x in arcs_imgs]
+        aaaaaa = it.sum_imgs_colored(arcs_imgs)
+        connector_lines_points = []
+        for i, points in enumerate(arcs_points):
+            first = points[0]
+            next_index = int(hierarchy[i][3])
+            if next_index == -1:
+                pass
+            else:
+                next = arcs_points[int(next_index)]
+                next = pt.most_distant_from(first, next)
+                connector_lines_points.append([first, next])
+        # _, work_area_contour_img = mt.detect_contours(work_area, return_img=True)
+        # contours_imgs, _, _ = it.divide_by_connected(route)
+        # contours_imgs_cut = [
+        #     np.logical_and(x, np.logical_not(work_area)) for x in contours_imgs
+        # ]
+        # points_contours = [
+        #     pt.img_to_points(mt.hitmiss_ends_v2(x)) for x in contours_imgs_cut
+        # ]
+        # connector_lines_points = [item for sublist in points_contours for item in sublist]
+        # connector_lines_points = connector_lines_points[1:-1]
+        # connector_lines_points = list(itertools.pairwise(connector_lines_points))
+        # new_route = it.image_subtract(route, work_area)
+        new_route = it.sum_imgs(arcs_imgs)
+        for i, line in enumerate(connector_lines_points):
+            if not i % 2:
+                new_route = it.draw_line(new_route, line[0], line[1])
+    else:
+        new_route = route
     next_prohibited_areas = work_area
     return new_route, next_prohibited_areas
 

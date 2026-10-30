@@ -246,10 +246,11 @@ def merge_close_points(
                 new_points[point_index] = midpoint
                 new_points[point_index + 1] = midpoint
                 point_index += 1
+                repeated_points.append(midpoint)
             else:
                 new_points[point_index] = midpoint
                 del new_points[point_index + 1]
-            append_point_and_neighbors(repeated_points, midpoint)
+            # append_point_and_neighbors(repeated_points, midpoint)
             iteration += 1
         else:
             point_index += 1

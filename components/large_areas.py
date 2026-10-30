@@ -1694,12 +1694,13 @@ def make_weaving_wide_route(
         )
         nova_origin = np.logical_and(origin, internal_pol)
         limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
-        ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
-        ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
+
         pts_trns_origin = equidistant_in_seq(nova_origin, path_radius, sob_weaving)
+        ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
         pts_trns_ci1 = equidistant_by_proximity(
             line_ci1, pts_trns_origin, path_radius, sob_weaving
         )
+        ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
         pts_trns_ci2 = equidistant_by_proximity(
             line_ci2, pts_trns_origin, path_radius, sob_weaving
         )
@@ -1710,25 +1711,6 @@ def make_weaving_wide_route(
         ci2_merged, ci2_repeated = pt.merge_close_points(
             pts_trns_ci2, minimum_distance, sequential=True
         )
-        aaaaa = it.sum_imgs_colored(
-            [
-                it.points_to_img(pts_trns_ci1, np.zeros_like(nova_origin)),
-                it.points_to_img(pts_trns_ci2, np.zeros_like(nova_origin)),
-            ]
-        )
-
-        aaaa = it.sum_imgs_colored(
-            [
-                it.points_to_img(ci1_merged, np.zeros_like(nova_origin)),
-                it.points_to_img(ci2_merged, np.zeros_like(nova_origin)),
-            ]
-        )
-
-        # pts_trns_c1_real = equidistant_in_seq(line_ci1, path_radius, sob_inwards)
-        # pts_trns_c2_real = equidistant_in_seq(line_ci2, path_radius, sob_inwards)
-
-        # closes1 = pt.closest_points_in_a_list(pts_trns_origin, pts_trns_c1_real)
-        # closes2 = pt.closest_points_in_a_list(pts_trns_origin, pts_trns_c2_real)
 
         lines_transversais = np.zeros_like(region.img)
         lines_limitrofes = np.zeros_like(region.img)
@@ -1789,6 +1771,7 @@ def make_weaving_wide_route(
                     False,
                 )
                 lines_transversais_v2 = np.logical_or(lines_transversais_v2, thisline)
+
         new_contourV2, new_contour_imgV2 = mt.detect_contours(
             it.sum_imgs(
                 [lines_limitrofes_v2, limitadores_de_ponta, line_ci1, line_ci2]
@@ -1876,6 +1859,23 @@ def make_weaving_wide_route(
     _, labels, _ = it.divide_by_connected(lines_transversais)
     labels = mt.dilation(labels, kernel_size=path_radius)
     return new_zigzag, new_zigzag_b
+
+    # aaaaa = it.sum_imgs_colored(
+    #     [
+    #         it.points_to_img(pts_trns_ci1, np.zeros_like(nova_origin)),
+    #         it.points_to_img(pts_trns_ci2, np.zeros_like(nova_origin)),
+    #     ]
+    # )
+    # aaaa = it.sum_imgs_colored(
+    #     [
+    #         it.points_to_img(ci1_merged, np.zeros_like(nova_origin)),
+    #         it.points_to_img(ci2_merged, np.zeros_like(nova_origin)),
+    #     ]
+    # )
+    # pts_trns_c1_real = equidistant_in_seq(line_ci1, path_radius, sob_inwards)
+    # pts_trns_c2_real = equidistant_in_seq(line_ci2, path_radius, sob_inwards)
+    # closes1 = pt.closest_points_in_a_list(pts_trns_origin, pts_trns_c1_real)
+    # closes2 = pt.closest_points_in_a_list(pts_trns_origin, pts_trns_c2_real)
 
     # AQUI É IMPORTANTE, NAO JOGA FORAAAA
     # aaaaaaaa = it.sum_imgs(
@@ -2812,7 +2812,18 @@ def equidistant_by_proximity(line_img, origin_lst, path_radius, sob_inwards):
     return origens_pontos
 
 
-def internal_cut(new_contour, lines, extreme_internal_points, repeated_points=[]):
+def internal_cut(
+    new_contour,
+    new_contour_img,
+    tranv_points_ci1,
+    tranv_points_ci2,
+    extreme_internal_points,
+    repeated=[],
+    init_counter=0,
+):
+    repeated_points = repeated.copy()
+    transversal_options_ci1 = np.zeros(len(tranv_points_ci1), int)
+    transversal_options_ci2 = np.zeros(len(tranv_points_ci2), int)
     eip = copy.deepcopy(extreme_internal_points)
     fila = new_contour.copy()
     fila = path_tools.set_first_pt_in_seq(fila, eip[0])
@@ -2824,17 +2835,19 @@ def internal_cut(new_contour, lines, extreme_internal_points, repeated_points=[]
     if ordem_na_fila_pontos_idx[1] == 3:
         fila.reverse()
         fila = path_tools.set_first_pt_in_seq(fila, eip[0])
-    borda_cortada = np.zeros_like(lines)
-    borda_normal = np.zeros_like(lines)
-    lines_transversais = lines.copy()
-    counter = 0
+    borda_cortada = np.zeros_like(new_contour_img)
+    borda_normal = np.zeros_like(new_contour_img)
+    # lines_transversais = new_contour_img.copy()
+    counter = init_counter
     counter_pixels = 0
     last_change = 0
-    B = it.points_to_img(new_contour, np.zeros_like(lines_transversais))
-    D = np.logical_and(lines_transversais, B)
-    repeated_points_img = it.points_to_img(repeated_points, np.zeros_like(lines))
-    D = it.image_subtract(D, repeated_points_img)
-    cruzamentos = pt.x_y_para_pontos(np.nonzero(D))
+    # B = it.points_to_img(new_contour, np.zeros_like(new_contour_img))
+    # D = np.logical_and(lines_transversais, B)
+    # repeated_points_img = it.points_to_img(repeated_points, np.zeros_like(new_contour_img))
+    # D = it.image_subtract(D, repeated_points_img)
+    # cruzamentos = pt.x_y_para_pontos(np.nonzero(D))
+    crossings = [opt[0] for opt in tranv_points_ci1 + tranv_points_ci2]
+    crossings = list(filter(lambda x: x not in eip, crossings))
     for i in np.arange(0, len(fila)):
         borda_normal[fila[i][0]][fila[i][1]] = 1
         counter_pixels += 1
@@ -2844,33 +2857,86 @@ def internal_cut(new_contour, lines, extreme_internal_points, repeated_points=[]
         cb = [y, x] == eip[1]
         cc = [y, x] == eip[2]
         cd = [y, x] == eip[3]
-        ce = [y, x] in cruzamentos
+        ce = [y, x] in crossings
+        cf = [y, x] in repeated_points
+        cg = [y, x] in [x[0] for x in tranv_points_ci1]
+        ci = False
+        cj = False
+        if cg:
+            intex_thispoint_in_ci1 = [x[0] for x in tranv_points_ci1].index([y, x])
+            if intex_thispoint_in_ci1 + 1 <= len([x[0] for x in tranv_points_ci1]) - 1:
+                ci = tranv_points_ci1[intex_thispoint_in_ci1 + 1][0] in repeated_points
+        ch = [y, x] in [x[0] for x in tranv_points_ci2]
+        if ch:
+            intex_thispoint_in_ci2 = [x[0] for x in tranv_points_ci2].index([y, x])
+            if intex_thispoint_in_ci2 + 1 <= len([x[0] for x in tranv_points_ci2]) - 1:
+                cj = tranv_points_ci2[intex_thispoint_in_ci2 + 1][0] in repeated_points
         cn = False
         if i > 0:
-            cn = last_change == fila[i - 1]
+            cn = (
+                last_change == fila[i - 1]
+            )  # does not let the counter increment if the last change was the same point as the previous one
         if ce or cc or ca:  # cq
+            if cf and counter % 2 == 1:
+                # print("passei")
+                continue
+            elif not cn and (ci or cj) and cg and counter % 2 == 1:
+                indexpoint = [x[0] for x in tranv_points_ci1].index([y, x])
+                transversal_options_ci1[indexpoint + 1] = 1
+                repeated_points.remove(tranv_points_ci2[intex_thispoint_in_ci1 + 1][0])
+                counter += 1
+                ck = True
+            elif not cn and (ci or cj) and ch and counter % 2 == 1:
+                indexpoint = [x[0] for x in tranv_points_ci2].index([y, x])
+                transversal_options_ci2[indexpoint + 1] = 1
+                repeated_points.remove(tranv_points_ci2[intex_thispoint_in_ci2 + 1][0])
+                counter += 1
+                ck = True
             if not cn:
                 counter += 1
             last_change = fila[i]
         if counter % 2 == 0:
             borda_cortada[fila[i][0]][fila[i][1]] = 1
-    return borda_cortada
+    # aaaaaa = it.sum_imgs_colored([lines_transversais, borda_cortada])
+    return borda_cortada, transversal_options_ci1, transversal_options_ci2
 
 
 def weaving_zigzag(
     new_contour,
     new_contour_img,
-    lines_transversais,
-    lines_limitrofes,
+    # lines_transversais,
+    # lines_limitrofes,
+    pts_trns_origin,
+    pts_ci1_superimposed,
+    pts_ci2_superimposed,
     extr_int_pts,
     repeated_points=[],
 ):
-    cutted_border = internal_cut(
-        new_contour, lines_transversais, extr_int_pts, repeated_points
+    inverted_pts_ci1_superimposed = pts_ci1_superimposed[::-1]
+    inverted_pts_ci2_superimposed = pts_ci2_superimposed[::-1]
+    inverted_origin_pts = pts_trns_origin[::-1]
+    cutted_border, trns_opt_c1, trns_opt_c2 = internal_cut(
+        new_contour,
+        new_contour_img,
+        inverted_pts_ci1_superimposed,
+        pts_ci2_superimposed,
+        extr_int_pts,
+        repeated_points,
     )
+
+    lines_transversais, lines_limitrofes = bottleneck.draw_transversal_lines(
+        new_contour_img,
+        inverted_origin_pts,
+        inverted_pts_ci1_superimposed,
+        pts_ci2_superimposed,
+        trns_opt_c1,
+        trns_opt_c2,
+    )
+
     new_zigzag = np.logical_or(lines_transversais, cutted_border)
+
     _, _, n = it.divide_by_connected(new_zigzag)
-    reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
+    # reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
     if n > 1:
         extr_int_pts = [
             extr_int_pts[0],
@@ -2879,16 +2945,84 @@ def weaving_zigzag(
             extr_int_pts[3],
         ]
         print("   Corrected sequence: b and c inverted")
-        cutted_border = internal_cut(
+        cutted_border, trns_opt_c1, trns_opt_c2 = internal_cut(
             new_contour,
-            lines_transversais,
+            new_contour_img,
+            pts_ci1_superimposed,
+            inverted_pts_ci2_superimposed,
             extr_int_pts,
             repeated_points,
         )
-        new_zigzag = np.logical_or(cutted_border, lines_transversais)
-    new_zigzag_b = np.logical_or(
-        it.image_subtract(new_contour_img, cutted_border), lines_transversais
+
+        lines_transversais, lines_limitrofes = bottleneck.draw_transversal_lines(
+            new_contour_img,
+            pts_trns_origin,
+            pts_ci1_superimposed,
+            inverted_pts_ci2_superimposed,
+            trns_opt_c1,
+            trns_opt_c2,
+        )
+
+        new_zigzag = np.logical_or(lines_transversais, cutted_border)
+
+    cutted_border_b, trns_opt_c1_b, trns_opt_c2_b = internal_cut(
+        new_contour,
+        new_contour_img,
+        pts_ci1_superimposed,
+        inverted_pts_ci2_superimposed,
+        extr_int_pts,
+        repeated_points,
+        init_counter=1,
     )
+    lines_transversais_b, lines_limitrofes_b = bottleneck.draw_transversal_lines(
+        new_contour_img,
+        pts_trns_origin,
+        pts_ci1_superimposed,
+        inverted_pts_ci2_superimposed,
+        trns_opt_c1_b,
+        trns_opt_c2_b,
+    )
+    new_zigzag_b = np.logical_or(lines_transversais_b, cutted_border_b)
+    _, _, n = it.divide_by_connected(new_zigzag_b)
+    # reference_points_b = pt.x_y_para_pontos(np.nonzero(mt.hitmiss_ends_v2(new_zigzag)))
+    if n > 1:
+        extr_int_pts = [
+            extr_int_pts[0],
+            extr_int_pts[2],
+            extr_int_pts[1],
+            extr_int_pts[3],
+        ]
+        print("   Corrected sequence: b and c inverted")
+        cutted_border_b, trns_opt_c1_b, trns_opt_c2_b = internal_cut(
+            new_contour,
+            new_contour_img,
+            pts_ci1_superimposed,
+            inverted_pts_ci2_superimposed,
+            extr_int_pts,
+            repeated_points,
+            init_counter=1,
+        )
+
+        lines_transversais_b, lines_limitrofes_b = bottleneck.draw_transversal_lines(
+            new_contour_img,
+            pts_trns_origin,
+            pts_ci1_superimposed,
+            inverted_pts_ci2_superimposed,
+            trns_opt_c1_b,
+            trns_opt_c2_b,
+        )
+
+        new_zigzag_b = np.logical_or(lines_transversais_b, cutted_border_b)
+
+    lines_limitrofes_separadas, _, _ = it.divide_by_connected(lines_limitrofes)
+    for line in lines_limitrofes_separadas:
+        superposition = np.sum(np.logical_and(line, new_zigzag))
+        if superposition < 4:
+            new_zigzag = np.logical_or(new_zigzag, line)
+    for line in lines_limitrofes_separadas:
+        superposition = np.sum(np.logical_and(line, new_zigzag_b))
+        if superposition < 4:
+            new_zigzag_b = np.logical_or(new_zigzag_b, line)
     aaaa = it.sum_imgs(
         [new_zigzag, it.points_to_img(repeated_points, np.zeros_like(new_zigzag))]
     )

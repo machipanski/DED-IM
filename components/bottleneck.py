@@ -769,7 +769,7 @@ class BridgeRegions:
                         region,
                         path_radius_bridg,
                         mask_distancer,
-                        sob_in,
+                        1,
                         sob_out,
                         sob_weaving,
                         rest_of_picture,
@@ -1331,7 +1331,8 @@ def equidistant_in_seq(line, path_radius, sobrep_int_perc, origin_pt=[]):
         n_origens = len(origens_pontos)
         adjust += 1
     origens_pontos[-1] = last
-    return origens_pontos
+    pts_trns_origin_img = it.points_to_img(origens_pontos, np.zeros_like(line))
+    return origens_pontos, pts_trns_origin_img
 
 
 def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
@@ -1371,7 +1372,8 @@ def equidistant_by_proximity(line_img, origin_lst, path_radius, img):
             it.points_to_img(origin_lst, np.zeros_like(line_img)),
         ]
     )
-    return most_proximal
+    pts_img = it.points_to_img(most_proximal, np.zeros_like(line_img))
+    return most_proximal, pts_img
 
 
 def internal_adapted_polygon(line_ci1, line_ci2, lines_transversais, extreme_points):
@@ -1451,6 +1453,29 @@ def make_offset_bridge_route(
     return bridge_region
 
 
+def draw_transversal_lines(img, pts_origin, pts_ci1, pts_ci2, trns_opt_c1, trns_opt_c2):
+    lines_transversais = np.zeros_like(img)
+    lines_limitrofes = np.zeros_like(img)
+    for i, point in enumerate(pts_origin):
+        option_ci1 = trns_opt_c1[i]
+        option_ci2 = trns_opt_c2[i]
+        thisline = it.draw_polyline(
+            np.zeros_like(img),
+            [
+                pts_ci1[i][option_ci1],
+                pts_origin[i],
+                pts_ci2[i][option_ci2],
+            ],
+            False,
+        )
+        if i == 0 or i == len(pts_origin) - 1:
+            # if not (np.logical_and(thisline, limitadores_de_ponta).any()):
+            lines_limitrofes = np.logical_or(lines_limitrofes, thisline)
+        else:
+            lines_transversais = np.logical_or(lines_transversais, thisline)
+    return lines_transversais, lines_limitrofes
+
+
 def make_zz_or_co_bridge_route(
     region: Bridge,
     path_radius,
@@ -1489,60 +1514,58 @@ def make_zz_or_co_bridge_route(
             rest_of_picture,
             rest_of_picture,
         )
-        nova_origin = np.logical_and(origin, internal_pol)
         limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
+        nova_origin = np.logical_and(origin, internal_pol)
+        pts_trns_origin, pts_trns_origin_img = equidistant_in_seq(
+            nova_origin, path_radius, sob_weaving
+        )
+
+        minimum_distance = path_radius * ((sob_weaving) / 100)
         ends_line_ci1 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci1))
         ends_line_ci2 = pt.img_to_points(mt.hitmiss_ends_v2(line_ci2))
-        pts_trns_origin = equidistant_in_seq(nova_origin, path_radius, sob_weaving)
-        pts_trns_ci1 = equidistant_by_proximity(
+        pts_trns_ci1, pts_ci1_img = equidistant_by_proximity(
             line_ci1, pts_trns_origin, path_radius, sob_weaving
         )
-        pts_trns_ci2 = equidistant_by_proximity(
-            line_ci2, pts_trns_origin, path_radius, sob_weaving
+        pts_trns_ci2, pts_ci2_img = equidistant_by_proximity(
+            line_ci2, pts_trns_origin[::-1], path_radius, sob_weaving
         )
-        minimum_distance = path_radius * ((sob_weaving) / 100)
         ci1_merged, ci1_repeated = pt.merge_close_points(
-            pts_trns_ci1, minimum_distance, sequential=True
+            pts_trns_ci1, minimum_distance, keep_count=True, sequential=True
         )
         ci2_merged, ci2_repeated = pt.merge_close_points(
-            pts_trns_ci2, minimum_distance, sequential=True
+            pts_trns_ci2, minimum_distance, keep_count=True, sequential=True
         )
-        pts_ci1_img = it.points_to_img(pts_trns_ci1, np.zeros_like(rest_of_picture))
-        pts_ci2_img = it.points_to_img(pts_trns_ci2, np.zeros_like(rest_of_picture))
-        pts_trns_origin_img = it.points_to_img(
-            pts_trns_origin, np.zeros_like(rest_of_picture)
-        )
-        aaaa = it.sum_imgs(
-            [
-                internal_pol,
-                line_ci1,
-                line_ci2,
-                pts_ci1_img,
-                pts_ci2_img,
-                pts_trns_origin_img,
-            ]
-        )
-        lines_transversais = np.zeros_like(region.img)
-        lines_limitrofes = np.zeros_like(region.img)
-        for i, point in enumerate(pts_trns_origin):
-            if i == 0 or i == len(pts_trns_origin) - 1:
-                thisline = it.draw_polyline(
-                    lines_limitrofes,
-                    [pts_trns_ci1[i], pts_trns_origin[i], pts_trns_ci2[i]],
-                    False,
-                )
-                # if not (np.logical_and(thisline, limitadores_de_ponta).any()):
-                lines_limitrofes = np.logical_or(lines_limitrofes, thisline)
+
+        seen_ci1_points = set()
+        ci1_merged_v2 = []
+        ci2_merged_v2 = []
+        for i, point in enumerate(ci1_merged):
+            point_key = tuple(point)
+            if point_key in seen_ci1_points and i + 1 < len(ci1_merged):
+                ci1_merged_v2.append(ci1_merged[i + 1].copy())
             else:
-                thisline = it.draw_polyline(
-                    lines_transversais,
-                    [pts_trns_ci1[i], pts_trns_origin[i], pts_trns_ci2[i]],
-                    False,
-                )
-                lines_transversais = np.logical_or(lines_transversais, thisline)
-        lines_limitrofes_separadas, _, _ = it.divide_by_connected(lines_limitrofes)
+                ci1_merged_v2.append(point.copy())
+            seen_ci1_points.add(point_key)
+        ci2_merged_v2 = []
+        seen_ci2_points = set()
+        for i, point in enumerate(ci2_merged):
+            point_key = tuple(point)
+            if point_key in seen_ci2_points and i + 1 < len(ci2_merged):
+                ci2_merged_v2.append(ci2_merged[i + 1].copy())
+            else:
+                ci2_merged_v2.append(point.copy())
+            seen_ci2_points.add(point_key)
+
+        superimposed_transversals_ci1 = []
+        for i, point in enumerate(ci1_merged):
+            superimposed_transversals_ci1.append([point, ci1_merged_v2[i]])
+        superimposed_transversals_ci2 = []
+        for i, point in enumerate(ci2_merged):
+            superimposed_transversals_ci2.append([point, ci2_merged_v2[i]])
+
         new_contour, new_contour_img = mt.detect_contours(
-            it.sum_imgs([lines_limitrofes, limitadores_de_ponta, line_ci1, line_ci2]),
+            # it.sum_imgs([lines_limitrofes, limitadores_de_ponta, line_ci1, line_ci2]),
+            it.sum_imgs([limitadores_de_ponta, line_ci1, line_ci2]),
             return_img=True,
             only_external=True,
         )
@@ -1555,36 +1578,11 @@ def make_zz_or_co_bridge_route(
         extr_int_pts = [ia, ib, ic, id]
         new_contour = path_tools.set_first_pt_in_seq(new_contour, extr_int_pts[0])
 
-        lines_transversais_v2 = np.zeros_like(region.img)
-        lines_limitrofes_v2 = np.zeros_like(region.img)
-        for i, point in enumerate(pts_trns_origin):
-            if i == 0 or i == len(pts_trns_origin) - 1:
-                thisline = it.draw_polyline(
-                    lines_transversais_v2,
-                    [
-                        ci1_merged[i],
-                        pts_trns_origin[i],
-                        ci2_merged[i],
-                    ],
-                    False,
-                )
-                if not (np.logical_and(thisline, limitadores_de_ponta).any()):
-                    lines_limitrofes_v2 = np.logical_or(lines_limitrofes_v2, thisline)
-            else:
-                thisline = it.draw_polyline(
-                    lines_transversais_v2,
-                    [
-                        ci1_merged[i],
-                        pts_trns_origin[i],
-                        ci2_merged[i],
-                    ],
-                    False,
-                )
-                lines_transversais_v2 = np.logical_or(lines_transversais_v2, thisline)
         new_contourV2, new_contour_imgV2 = mt.detect_contours(
-            it.sum_imgs(
-                [lines_limitrofes_v2, limitadores_de_ponta, line_ci1, line_ci2]
-            ),
+            # it.sum_imgs(
+            #     [lines_limitrofes_v2, limitadores_de_ponta, line_ci1, line_ci2]
+            # ),
+            it.sum_imgs([limitadores_de_ponta, line_ci1, line_ci2]),
             return_img=True,
             only_external=True,
         )
@@ -1602,15 +1600,14 @@ def make_zz_or_co_bridge_route(
         new_zigzag, new_zigzag_b = weaving_zigzag(
             new_contourV2,
             new_contour_imgV2,
-            lines_transversais_v2,
-            lines_limitrofes_v2,
+            pts_trns_origin,
+            superimposed_transversals_ci1,
+            superimposed_transversals_ci2,
+            # lines_limitrofes_v2,
             extr_int_ptsV2,
             repeated_points=ci1_repeated + ci2_repeated,
         )
-        for line in lines_limitrofes_separadas:
-            superposition = np.sum(np.logical_and(line, new_zigzag))
-            if superposition < 4:
-                new_zigzag = np.logical_or(new_zigzag, line)
+
         if np.sum(cutted_corners) > 0:
             separated, _, n = it.divide_by_connected(cutted_corners)
             ends = pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag))
@@ -1632,10 +1629,7 @@ def make_zz_or_co_bridge_route(
                 new_zigzag = np.logical_or(new_zigzag, link)
             new_zigzag = np.logical_or(new_zigzag, cutted_corners)
         new_zigzag = sk.medial_axis(new_zigzag, 2)
-        for line in lines_limitrofes_separadas:
-            superposition = np.sum(np.logical_and(line, new_zigzag_b))
-            if superposition < 4:
-                new_zigzag_b = np.logical_or(new_zigzag_b, line)
+
         if np.sum(cutted_corners) > 0:
             separated, _, n = it.divide_by_connected(cutted_corners)
             ends = pt.img_to_points(mt.hitmiss_ends_v2(new_zigzag_b))

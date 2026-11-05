@@ -991,6 +991,14 @@ def hybrid_offset_thinwalls(
         )
         eroded_ext_no_int = mt.erosion(ext_no_int_img, kernel_img=trail_mask)
         eroded_ext_no_int_w_tw = np.logical_or(eroded_ext_no_int, skell_original)
+        skell_original_ends = pt.img_to_points(mt.hitmiss_ends_v2(skell_original))
+        eroded_ext_no_int_ends = pt.img_to_points(
+            mt.hitmiss_ends_v2(eroded_ext_no_int_w_tw)
+        )
+        # TODO separar por galho e cortar galhos que ficam soltos
+        loose_ends = [x in eroded_ext_no_int_ends for x in skell_original_ends]
+        if any(loose_ends):
+            eroded_ext_no_int_w_tw = eroded_ext_no_int
         eroded_ext_no_int_w_tw_filled = it.fill_internal_area(
             eroded_ext_no_int_w_tw, np.ones_like(original_img), True
         )

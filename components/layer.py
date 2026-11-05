@@ -101,7 +101,7 @@ class Layer:
         self.mm_per_pxl: float = 0
         self.islands: List[Island]
         self.selected = []
-        self.layer_final_path = []
+        self.layer_final_path = Path("layer_final_route", [], jumps=[])
         self.intern_zz_style = 0
         if kwargs:
             for key, value in kwargs.items():
@@ -200,18 +200,20 @@ class Layer:
                             island.regions.append(reg)
 
                 island.jumps = []
-                for route in itr:
-                    for j in route.jumps:
-                        if len(j) > 0:
-                            island.jumps.append(j)
-                for route in etr:
-                    for j in route.jumps:
-                        if len(j) > 0:
-                            island.jumps.append(j)
-                for route in twtr:
-                    for j in route.jumps:
-                        if len(j) > 0:
-                            island.jumps.append(j)
+
+                def append_jump_markers(routes):
+                    for route in routes:
+                        for jump in route.jumps:
+                            if len(jump) > 0:
+                                jump_array = np.asarray(jump)
+                                if jump_array.shape == (2, 2):
+                                    island.jumps.append(jump_array[1].tolist())
+                                else:
+                                    island.jumps.append(jump)
+
+                append_jump_markers(itr)
+                append_jump_markers(etr)
+                append_jump_markers(twtr)
 
                 island.island_route = Path(
                     "island_route",
@@ -247,9 +249,9 @@ class Layer:
                 final_sequence,
                 np.zeros([self.base_frame[1], self.base_frame[0]]),
             )
-            if len(final_jumps[0]) > 0:
+            if final_jumps:
                 final_jumps = path_tools.rotate_path_odd_layer(
-                    final_jumps[0], self.base_frame
+                    final_jumps, self.base_frame
                 )
         self.layer_final_path = Path(
             "layer_final_route",
@@ -297,6 +299,175 @@ class Layer:
                 isl.external_tree_route.get_img(self.base_frame)
         with Timer("  Saving route images"):
             folders.save_external_routes_hdf5(self.name, self.islands)
+        return
+
+    def no_treat_routes_external(self, folders: System_Paths):
+        with Timer("  External routes to chains"):
+            folders.load_islands_hdf5(self)
+            for isl in self.islands:
+                regions_imgs = []
+                for isl in self.islands:
+                    # folders.load_bulky_hdf5(self.name, isl)
+                    # if hasattr(isl, "zigzags"):
+                    #     if (
+                    #         hasattr(isl.zigzags, "internal_islands")
+                    #         and len(isl.zigzags.internal_islands) > 0
+                    #     ):
+                    #         for intisl in isl.zigzags.internal_islands:
+                    #             if (
+                    #                 hasattr(intisl, "l_regions")
+                    #                 and len(intisl.l_regions) > 0
+                    #             ):
+                    #                 for l_reg in intisl.l_regions:
+                    #                     if hasattr(l_reg, "route"):
+                    #                         aaaa = l_reg.route
+                    #                         regions_imgs.append(aaaa)
+                    #             if (
+                    #                 hasattr(intisl, "w_regions")
+                    #                 and len(intisl.w_regions) > 0
+                    #             ):
+                    #                 for w_reg in intisl.w_regions:
+                    #                     if hasattr(w_reg, "route"):
+                    #                         aaaa = w_reg.route
+                    #                         regions_imgs.append(aaaa)
+                    folders.load_offsets_hdf5(self.name, isl)
+                    if hasattr(isl, "offsets"):
+                        if (
+                            hasattr(isl.offsets, "regions")
+                            and len(isl.offsets.regions) > 0
+                        ):
+                            if (
+                                hasattr(isl.offsets.regions[0], "route")
+                                and len(isl.offsets.regions[0].route) > 0
+                            ):
+                                for reg in isl.offsets.regions:
+                                    regions_imgs.append(reg.route.astype(np.uint16))
+                    folders.load_bridges_hdf5(self.name, isl)
+                    if hasattr(isl, "bridges"):
+                        # if hasattr(isl.bridges, "zigzag_bridges"):
+                        #     if len(isl.bridges.zigzag_bridges) > 0:
+                        # if (
+                        #     hasattr(isl.bridges.zigzag_bridges[0], "route")
+                        #     and len(isl.bridges.zigzag_bridges[0].route) > 0
+                        # ):
+                        # for reg in isl.bridges.zigzag_bridges:
+                        #     regions_imgs.append(reg.route.astype(np.uint16))
+                        if hasattr(isl.bridges, "offset_bridges"):
+                            if len(isl.bridges.offset_bridges) > 0:
+                                for bridg in isl.bridges.offset_bridges:
+                                    if np.sum(bridg.route) > 0:
+                                        regions_imgs.append(reg.route.astype(np.uint16))
+                        if hasattr(isl.bridges, "cross_over_bridges"):
+                            if len(isl.bridges.cross_over_bridges) > 0:
+                                if hasattr(isl.bridges.cross_over_bridges[0], "route"):
+                                    for reg in isl.bridges.cross_over_bridges:
+                                        regions_imgs.append(reg.route.astype(np.uint16))
+                    isl_ind_routes = it.sum_imgs(regions_imgs)
+                external_chains = path_tools.img_to_chain(isl_ind_routes)
+                external_chain = []
+                jumps = []
+                for chain in external_chains:
+                    if not pt.is_point_sequence(chain):
+                        continue
+                    if external_chain:
+                        jumps.append([external_chain[-1], chain[0]])
+                    external_chain.extend(chain)
+                isl.external_tree_route = Path(
+                    "colection external",
+                    external_chain,
+                    jumps=jumps,
+                )
+                # isl.external_tree_route.get_regions(isl)
+                isl.external_tree_route.get_img(self.base_frame)
+        with Timer("  Saving route images"):
+            folders.save_external_routes_hdf5(self.name, self.islands)
+        return
+
+    def no_treat_routes_internal(self, folders: System_Paths):
+        with Timer("  External routes to chains"):
+            folders.load_islands_hdf5(self)
+            for isl in self.islands:
+                regions_imgs = []
+                for isl in self.islands:
+                    folders.load_bulky_hdf5(self.name, isl)
+                    if hasattr(isl, "zigzags"):
+                        if (
+                            hasattr(isl.zigzags, "internal_islands")
+                            and len(isl.zigzags.internal_islands) > 0
+                        ):
+                            for intisl in isl.zigzags.internal_islands:
+                                if (
+                                    hasattr(intisl, "l_regions")
+                                    and len(intisl.l_regions) > 0
+                                ):
+                                    for l_reg in intisl.l_regions:
+                                        if hasattr(l_reg, "route"):
+                                            aaaa = l_reg.route
+                                            regions_imgs.append(aaaa)
+                                if (
+                                    hasattr(intisl, "w_regions")
+                                    and len(intisl.w_regions) > 0
+                                ):
+                                    for w_reg in intisl.w_regions:
+                                        if hasattr(w_reg, "route"):
+                                            aaaa = w_reg.route
+                                            regions_imgs.append(aaaa)
+                    # folders.load_offsets_hdf5(self.name, isl)
+                    # if hasattr(isl, "offsets"):
+                    #     if (
+                    #         hasattr(isl.offsets, "regions")
+                    #         and len(isl.offsets.regions) > 0
+                    #     ):
+                    #         if (
+                    #             hasattr(isl.offsets.regions[0], "route")
+                    #             and len(isl.offsets.regions[0].route) > 0
+                    #         ):
+                    #             for reg in isl.offsets.regions:
+                    #                 regions_imgs.append(reg.route.astype(np.uint16))
+                    folders.load_bridges_hdf5(self.name, isl)
+                    if hasattr(isl, "bridges"):
+                        if hasattr(isl.bridges, "zigzag_bridges"):
+                            if len(isl.bridges.zigzag_bridges) > 0:
+                                #     regions_imgs.append(reg.route.astype(np.uint16))
+                                if (
+                                    hasattr(isl.bridges.zigzag_bridges[0], "route")
+                                    and len(isl.bridges.zigzag_bridges[0].route) > 0
+                                ):
+                                    for reg in isl.bridges.zigzag_bridges:
+                                        regions_imgs.append(reg.route.astype(np.uint16))
+                        # if hasattr(isl.bridges, "offset_bridges"):
+                        #     if len(isl.bridges.offset_bridges) > 0:
+                        #         for bridg in isl.bridges.offset_bridges:
+                        #             if np.sum(bridg.route) > 0:
+                        #                 regions_imgs.append(reg.route.astype(np.uint16))
+                        # if hasattr(isl.bridges, "cross_over_bridges"):
+                        #     if (
+                        #         hasattr(isl.bridges.cross_over_bridges[0], "route")
+                        #         and len(isl.bridges.cross_over_bridges[0].route) > 0
+                        #     ):
+                        #         if len(isl.bridges.cross_over_bridges) > 0:
+                        #             for reg in isl.bridges.cross_over_bridges:
+                        #                 regions_imgs.append(reg.route.astype(np.uint16))
+                    isl_ind_routes = it.sum_imgs(regions_imgs)
+
+                internal_chains = path_tools.img_to_chain(isl_ind_routes)
+                internal_chain = []
+                jumps = []
+                for chain in internal_chains:
+                    if not pt.is_point_sequence(chain):
+                        continue
+                    if internal_chain:
+                        jumps.append([internal_chain[-1], chain[0]])
+                    internal_chain.extend(chain)
+                isl.internal_tree_route = Path(
+                    "colection internal",
+                    internal_chain,
+                    jumps=jumps,
+                )
+                # isl.external_tree_route.get_regions(isl)
+                # isl.external_tree_route.get_img(self.base_frame)
+        with Timer("  Saving route images"):
+            folders.save_internal_routes_hdf5(self.name, self.islands)
         return
 
     def close_routes_internal(self, folders: System_Paths):

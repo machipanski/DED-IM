@@ -10,4 +10,5 @@ python-dateutil=2.8.2=pyhd3eb1b0_0
 tk=8.6.12=h1ccaba5_0
 ipykernel=6.19.2=py311h6410fe4_0
 easygui=0.98.3
+ezdxf>=1.0
 keyring=23.13.1=py311h06a4308_0

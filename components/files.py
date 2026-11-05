@@ -39,6 +39,43 @@ class System_Paths:
         self.save_file_name = ""
         self.project_output = self.output_root
 
+    def save_path_as_gif(
+        self, points, steps, frame_size, output_path="last_drawing_animation.gif"
+    ):
+        """
+        Creates a GIF animation showing the progressive drawing of a sequence of points.
+
+        :param points: List of (y, x) tuples representing the sequence of points to draw.
+        :param steps: Number of points (segments) to add per frame.
+        :param frame_size: Tuple (height, width) for the image size.
+        :param output_path: Path to save the GIF file.
+        """
+        os.chdir(self.output)
+        frames = []
+        img = Image.new(
+            "L", (frame_size[1], frame_size[0]), 0
+        )  # Grayscale image, (width, height)
+        draw = ImageDraw.Draw(img)
+
+        for i in range(0, len(points) - 1, steps):
+            end = min(i + steps, len(points) - 1)
+            for j in range(i, end):
+                y1, x1 = points[j]
+                y2, x2 = points[j + 1]
+                draw.line([x1, y1, x2, y2], fill=255, width=1)
+            frames.append(img.copy())
+
+        if frames:
+            print(f"Saving GIF with {len(frames)} frames to {output_path}...")
+            frames[0].save(
+                output_path,
+                save_all=True,
+                append_images=frames[1:],
+                duration=500,
+                loop=0,
+            )
+        os.chdir(self.home)
+
     def _normalize_source_name(self, source_file_path: str) -> str:
         source_name = os.path.basename(source_file_path)
         source_name = os.path.splitext(source_name)[0]
@@ -212,10 +249,8 @@ class System_Paths:
             for l_key, l_item in layer_group.items():
                 if isinstance(l_item, h5py.Group):
                     if l_key == "layer_final_path":
-                        if (
-                            not hasattr(layer, "layer_final_path")
-                            or len(layer.layer_final_path) == 0
-                        ):
+                        # if not hasattr(layer, "layer_final_path"):
+                        if not hasattr(layer.layer_final_path, "sequence"):
                             layer.layer_final_path = Path("layer_final_path", [])
                         for name_atributo, valor_atributo in layer_group[
                             l_key
@@ -252,29 +287,47 @@ class System_Paths:
             )
         if itr_group:
             island.internal_tree_route = []
-            internal_routes = {}
-            for dataset_name in itr_group:
-                if dataset_name.endswith("_sequence"):
-                    route_name = dataset_name[: -len("_sequence")]
-                    values = itr_group.get(dataset_name)[()]
-                    internal_routes.setdefault(route_name, {})["sequence"] = (
-                        values.tolist() if hasattr(values, "tolist") else list(values)
-                    )
-                elif dataset_name.endswith("_jumps"):
-                    route_name = dataset_name[: -len("_jumps")]
-                    values = itr_group.get(dataset_name)[()]
-                    internal_routes.setdefault(route_name, {})["jumps"] = (
-                        values.tolist() if hasattr(values, "tolist") else list(values)
-                    )
-            for route_name in sorted(internal_routes):
-                route_data = internal_routes[route_name]
+            if "sequence" in itr_group:
+                sequence = itr_group["sequence"][()].tolist()
+                jumps = itr_group["jumps"][()].tolist() if "jumps" in itr_group else []
                 island.internal_tree_route.append(
                     Path(
-                        route_name,
-                        route_data.get("sequence", []),
-                        jumps=route_data.get("jumps", []),
+                        itr_group.attrs.get("name", "internal_tree_route"),
+                        sequence,
+                        jumps=jumps,
+                        img=self.load_img_hdf5(
+                            f"/{layer_name}/{island.name}/internal_tree_route", "img"
+                        ),
                     )
                 )
+            else:
+                internal_routes = {}
+                for dataset_name in itr_group:
+                    if dataset_name.endswith("_sequence"):
+                        route_name = dataset_name[: -len("_sequence")]
+                        values = itr_group.get(dataset_name)[()]
+                        internal_routes.setdefault(route_name, {})["sequence"] = (
+                            values.tolist()
+                            if hasattr(values, "tolist")
+                            else list(values)
+                        )
+                    elif dataset_name.endswith("_jumps"):
+                        route_name = dataset_name[: -len("_jumps")]
+                        values = itr_group.get(dataset_name)[()]
+                        internal_routes.setdefault(route_name, {})["jumps"] = (
+                            values.tolist()
+                            if hasattr(values, "tolist")
+                            else list(values)
+                        )
+                for route_name in sorted(internal_routes):
+                    route_data = internal_routes[route_name]
+                    island.internal_tree_route.append(
+                        Path(
+                            route_name,
+                            route_data.get("sequence", []),
+                            jumps=route_data.get("jumps", []),
+                        )
+                    )
         if twtr_group:
             island.thinwalls_tree_route = Path(
                 "thinwalls_tree_route",
@@ -895,10 +948,20 @@ class System_Paths:
             element_path = f"/{layer_name}/{isl.name}/internal_tree_route"
             self.delete_item_hdf5(element_path)
             self.create_new_hdf5_group(element_path)
-            for seq in isl.internal_tree_route:
-                print("   " + str(seq))
-                self.save_seq_hdf5(element_path, seq.name + "_sequence", seq.sequence)
-                self.save_seq_hdf5(element_path, seq.name + "_jumps", seq.jumps)
+            routes = isl.internal_tree_route
+            if isinstance(routes, Path):
+                self.save_props_hdf5(element_path, routes.__dict__)
+                self.save_seq_hdf5(element_path, "sequence", routes.sequence)
+                self.save_seq_hdf5(element_path, "jumps", routes.jumps)
+                if len(routes.img) > 0:
+                    self.save_img_hdf5(element_path, "img", routes.img)
+            else:
+                for route in routes:
+                    print("   " + str(route))
+                    self.save_seq_hdf5(
+                        element_path, route.name + "_sequence", route.sequence
+                    )
+                    self.save_seq_hdf5(element_path, route.name + "_jumps", route.jumps)
             self.save_props_hdf5(f"/{layer_name}/{isl.name}", isl.__dict__)
         return
 
@@ -1104,40 +1167,3 @@ class Config:
             ).__dict__
         )
         self.updateConfigs()
-
-    def save_path_as_gif(
-        self, points, steps, frame_size, output_path="last_drawing_animation.gif"
-    ):
-        """
-        Creates a GIF animation showing the progressive drawing of a sequence of points.
-
-        :param points: List of (y, x) tuples representing the sequence of points to draw.
-        :param steps: Number of points (segments) to add per frame.
-        :param frame_size: Tuple (height, width) for the image size.
-        :param output_path: Path to save the GIF file.
-        """
-        os.chdir(self.output)
-        frames = []
-        img = Image.new(
-            "L", (frame_size[1], frame_size[0]), 0
-        )  # Grayscale image, (width, height)
-        draw = ImageDraw.Draw(img)
-
-        for i in range(0, len(points) - 1, steps):
-            end = min(i + steps, len(points) - 1)
-            for j in range(i, end):
-                y1, x1 = points[j]
-                y2, x2 = points[j + 1]
-                draw.line([x1, y1, x2, y2], fill=255, width=1)
-            frames.append(img.copy())
-
-        if frames:
-            print(f"Saving GIF with {len(frames)} frames to {output_path}...")
-            frames[0].save(
-                output_path,
-                save_all=True,
-                append_images=frames[1:],
-                duration=500,
-                loop=0,
-            )
-        os.chdir(self.home)

@@ -1911,8 +1911,15 @@ def simplifica_retas_master(seq_pts, factor_epilson, saltos):
     if len(sequence) > 0:
         saltos = [list(x) for x in saltos]
         if len(saltos) > 0:
+            jump_points = []
+            for jump in saltos:
+                jump_array = np.asarray(jump)
+                if jump_array.shape == (2, 2):
+                    jump_points.append(jump_array[1].tolist())
+                else:
+                    jump_points.append(jump_array.tolist())
             segmentos = np.array_split(
-                sequence, np.where([(x in saltos) for x in sequence])[0]
+                sequence, np.where([(x in jump_points) for x in sequence])[0]
             )
         else:
             segmentos = [sequence]
@@ -1990,8 +1997,15 @@ def simplifica_retas_masterV2(seq_pts, factor_epilson, saltos):
     if len(sequence) > 0:
         saltos = [list(x) for x in saltos]
         if len(saltos) > 0:
+            jump_points = []
+            for jump in saltos:
+                jump_array = np.asarray(jump)
+                if jump_array.shape == (2, 2):
+                    jump_points.append(jump_array[1].tolist())
+                else:
+                    jump_points.append(jump_array.tolist())
             segmentos = np.array_split(
-                sequence, np.where([(x in saltos) for x in sequence])[0]
+                sequence, np.where([(x in jump_points) for x in sequence])[0]
             )
         else:
             segmentos = [sequence]
@@ -2176,7 +2190,7 @@ def points_from_region(
     if zigzags:
         from components.large_areas import ZigZag
 
-        folders.load_zigzags_hdf5(layer_name, island)
+        folders.load_bulky_hdf5(layer_name, island)
         if hasattr(island, "zigzags"):
             region_list = island.zigzags.regions
             if hasattr(island.zigzags, "macro_areas_weaved"):

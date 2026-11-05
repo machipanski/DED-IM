@@ -1942,12 +1942,16 @@ def diferential_superposition(
     exclusion_areas=None,
 ):
     _, out_contours = mt.detect_contours(internal_channel_regions, return_img=True)
-    in_superposition = it.image_subtract(
-        mt.detect_contours(internal_pol, return_img=True, only_external=True)[1],
-        out_contours,
-    )
+    # in_superposition = it.image_subtract(
+    #     mt.detect_contours(internal_pol, return_img=True, only_external=True)[1],
+    #     out_contours,
+    # )
     out_superposition = (
         np.add(internal_pol, mt.dilation(out_contours, kernel_size=1)) == 2
+    )
+    in_superposition = it.image_subtract(
+        mt.detect_contours(internal_pol, return_img=True, only_external=True)[1],
+        out_superposition,
     )
     # differentiate the superposition of the internal and external channels based on their sob values
     # if sob_in >= sob_out:
@@ -2016,6 +2020,7 @@ def chamfer_corners_channels(
     )
     # total_sobreposition = mt.closing(total_sobreposition, kernel_size=path_radius)
     eroded = mt.erosion(total_sobreposition, kernel_size=path_radius)
+    # eroded = mt.opening(eroded, kernel_size=path_radius)
     # dilata para garantir sobreposicao depois erode para fazer as rotas do limite do offset
     # Evitando apagar as divisoes dentro da area
     internal_divisory = mt.blackhat(
@@ -2883,7 +2888,7 @@ def internal_cut(
             elif not cn and (ci or cj) and cg and counter % 2 == 1:
                 indexpoint = [x[0] for x in tranv_points_ci1].index([y, x])
                 transversal_options_ci1[indexpoint + 1] = 1
-                repeated_points.remove(tranv_points_ci2[intex_thispoint_in_ci1 + 1][0])
+                repeated_points.remove(tranv_points_ci1[intex_thispoint_in_ci1 + 1][0])
                 counter += 1
                 ck = True
             elif not cn and (ci or cj) and ch and counter % 2 == 1:

@@ -32,6 +32,15 @@ def find_saved_file(folders: System_Paths) -> List[str]:
     return file_name
 
 
+def open_file(folders: System_Paths) -> List[str]:
+    """Opens a box to explore files and captures the path"""
+    os.chdir(folders.output)
+    path_input = fileopenbox(msg="Select an HDF5 file", filetypes=["*.hdf5"])
+    os.chdir(folders.home)
+    file_name = re.sub(folders.input, "", path_input)
+    return file_name
+
+
 def ask_parameters_constructor(msg, title, fieldNames, fieldDefs):
     """Basic model to create the box to ask for parameters"""
     fieldValues = multenterbox(msg, title, fieldNames, fieldDefs)
@@ -184,6 +193,15 @@ def ask_parameters_weaving():
     title = "Internal Weaving parameters"
     fieldNames = ["Internal Weaving? (1yes/0no)", "new weavings sobrep"]
     fieldDefs = [1, 50]
+    return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
+
+
+def ask_parameters_rotation():
+    """Asks for the rotation angle of the Gcode"""
+    msg = "Gcode rotation parameters"
+    title = "Gcode rotation parameters"
+    fieldNames = ["Rotation angle (degrees)"]
+    fieldDefs = [0]
     return ask_parameters_constructor(msg, title, fieldNames, fieldDefs)
 
 

@@ -763,6 +763,7 @@ class BridgeRegions:
         with Timer("   Making Crossover bridges routes"):
             processed_regions_cob = []
             with concurrent.futures.ThreadPoolExecutor() as executor:
+                offset_areas = it.sum_imgs([x.img for x in offsets_regions])
                 results = [
                     executor.submit(
                         make_zz_or_co_bridge_route,
@@ -772,7 +773,7 @@ class BridgeRegions:
                         1,
                         sob_out,
                         sob_weaving,
-                        rest_of_picture,
+                        offset_areas,
                     )
                     for region in self.cross_over_bridges
                 ]
@@ -1483,7 +1484,7 @@ def make_zz_or_co_bridge_route(
     sob_in,
     sob_out,
     sob_weaving,
-    rest_of_picture,
+    reference_in_out,
 ):
     origin = region.origin.astype(bool)
     _, _, n = it.divide_by_connected(origin)
@@ -1511,8 +1512,8 @@ def make_zz_or_co_bridge_route(
             sob_out,
             original_border,
             origin,
-            rest_of_picture,
-            rest_of_picture,
+            reference_in_out,
+            reference_in_out * (-1),
         )
         limitadores_de_ponta = it.sum_imgs([closing_tip_1, closing_tip_2])
         nova_origin = np.logical_and(origin, internal_pol)

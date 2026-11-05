@@ -431,3 +431,21 @@ def repeated_in_list(points):
             seen.add(t)
             out.append([t[0], t[1]])
     return out
+
+
+def is_point_sequence(points):
+    from numbers import Real
+
+    return (
+        isinstance(points, (list, tuple))
+        and len(points) > 0
+        and all(
+            isinstance(point, (list, tuple))
+            and len(point) == 2
+            and all(
+                isinstance(coord, Real) and not isinstance(coord, bool)
+                for coord in point
+            )
+            for point in points
+        )
+    )

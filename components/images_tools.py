@@ -541,16 +541,14 @@ def individual_routes(layer: Layer, folders: System_Paths):
         folders.load_offsets_hdf5(layer.name, isl)
         if hasattr(isl, "offsets"):
             if hasattr(isl.offsets, "regions") and len(isl.offsets.regions) > 0:
-                if (
-                    hasattr(isl.offsets.regions[0], "route")
-                    and len(isl.offsets.regions[0].route) > 0
-                ):
-                    regions_imgs.append(
-                        sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
-                            np.uint16
+                if hasattr(isl.offsets.regions[0], "route"):
+                    if len(isl.offsets.regions[0].route) > 0:
+                        regions_imgs.append(
+                            sum_imgs([reg.route for reg in isl.offsets.regions]).astype(
+                                np.uint16
+                            )
+                            * 6
                         )
-                        * 6
-                    )
         folders.load_bridges_hdf5(layer.name, isl)
         if hasattr(isl, "bridges"):
             if hasattr(isl.bridges, "zigzag_bridges"):
@@ -571,11 +569,8 @@ def individual_routes(layer: Layer, folders: System_Paths):
                         if np.sum(bridg.route) > 0:
                             regions_imgs.append(bridg.route.astype(np.uint16) * 8)
             if hasattr(isl.bridges, "cross_over_bridges"):
-                if (
-                    hasattr(isl.bridges.cross_over_bridges[0], "route")
-                    and len(isl.bridges.cross_over_bridges[0].route) > 0
-                ):
-                    if len(isl.bridges.cross_over_bridges) > 0:
+                if len(isl.bridges.cross_over_bridges) > 0:
+                    if len(isl.bridges.cross_over_bridges[0].route) > 0:
                         regions_imgs.append(
                             sum_imgs(
                                 [reg.route for reg in isl.bridges.cross_over_bridges]
@@ -671,11 +666,8 @@ def individual_routes_b(layer: Layer, folders: System_Paths):
                         if np.sum(bridg.route) > 0:
                             regions_imgs.append(bridg.route.astype(np.uint16) * 8)
             if hasattr(isl.bridges, "cross_over_bridges"):
-                if (
-                    hasattr(isl.bridges.cross_over_bridges[0], "route_b")
-                    and len(isl.bridges.cross_over_bridges[0].route_b) > 0
-                ):
-                    if len(isl.bridges.cross_over_bridges) > 0:
+                if len(isl.bridges.cross_over_bridges) > 0:
+                    if hasattr(isl.bridges.cross_over_bridges[0], "route_b"):
                         regions_imgs.append(
                             sum_imgs(
                                 [reg.route_b for reg in isl.bridges.cross_over_bridges]

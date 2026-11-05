@@ -39,7 +39,7 @@ def turn_on_UFSC(output, flag_on, on_pause):
     if flag_on == 0:
         output += ";-------Turn ON Welding------\n"
         output += (
-            f"M200 P{on_pause/1000}; Liga a tocha e aguarda {on_pause/1000} segundos\n"
+            # f"M200 P{on_pause/1000}; Liga a tocha e aguarda {on_pause/1000} segundos\n"
         )
         output += ";------------------------\n"
     return output, 1
@@ -60,7 +60,7 @@ def turn_off(output, flag_on, off_pause=3000):
 def turn_off_UFSC(output, flag_on, off_pause=3000):
     if flag_on == 1:
         output += ";-------Turn OFF Welding------\n"
-        output += f"M200 P{off_pause/1000}; Desliga a tocha e aguarda {off_pause/1000} segundos\n"
+        # output += f"M200 P{off_pause/1000}; Desliga a tocha e aguarda {off_pause/1000} segundos\n"
         output += ";-------------------------\n"
     return output, 0
 
@@ -128,10 +128,10 @@ def program_change(
     if diferenca < 0:
         diferenca = 4 + diferenca
     if now == 1:
-        output += "M400\n"
+        # output += "M400\n"
         output += f"G4 P{p_entre_int_ext}\n"
     for toque in range(diferenca):
-        output += "M400\n"
+        # output += "M400\n"
         output += "M42 P4 S0\n"
         output += f"G4 P{p_trigger_curta}\n"
         output += "M42 P4 S255\n"
@@ -258,7 +258,7 @@ def initial_position(output, coords, height, vel_vazio, n_layer):
     # output += f";LAYER:{i}\n"
     output += f"G1 Z{height} ; Layer + 10mm\n"
     output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
-    output += f"M400\n"
+    # output += f"M400\n"
     output += f"G91\n"
     output += ";------------------------\n"
     return output
@@ -352,16 +352,16 @@ def layers_to_Gcode(
         # output += f"G1 F360; speed g1\n"
         return output
 
-    diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+    diam_cont, sobrep_cont, vel_cont, wfs_cont, on_pause_cont, off_pause_cont = (
         get_program_params(layers[0].program_cont, configuracoes.lista_programas)
     )
-    diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
+    diam_bridg, sobrep_bridg, vel_bridg, wfs_bridg, on_pause_bridg, off_pause_bridg = (
         get_program_params(layers[0].program_bridg, configuracoes.lista_programas)
     )
-    diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+    diam_larg, sobrep_larg, vel_larg, wfs_larg, on_pause_larg, off_pause_larg = (
         get_program_params(layers[0].program_larg, configuracoes.lista_programas)
     )
-    diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
+    diam_tw, sobrep_tw, vel_tw, wfs_tw, on_pause_tw, off_pause_tw = get_program_params(
         layers[0].program_tw, configuracoes.lista_programas
     )
     p_trigger_longa = 800
@@ -377,23 +377,28 @@ def layers_to_Gcode(
     output = code_start(output, flag_on)
     mm_per_pixel = layers[0].mm_per_pxl
     for n_layer, layer in enumerate(layers):
-        diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont = (
+        diam_cont, sobrep_cont, vel_cont, wfs_cont, on_pause_cont, off_pause_cont = (
             get_program_params(layer.program_cont, configuracoes.lista_programas)
         )
-        diam_bridg, sobrep_bridg, vel_bridg, on_pause_bridg, off_pause_bridg = (
-            get_program_params(layer.program_bridg, configuracoes.lista_programas)
-        )
-        diam_larg, sobrep_larg, vel_larg, on_pause_larg, off_pause_larg = (
+        (
+            diam_bridg,
+            sobrep_bridg,
+            vel_bridg,
+            wfs_bridg,
+            on_pause_bridg,
+            off_pause_bridg,
+        ) = get_program_params(layer.program_bridg, configuracoes.lista_programas)
+        diam_larg, sobrep_larg, vel_larg, wfs_larg, on_pause_larg, off_pause_larg = (
             get_program_params(layer.program_larg, configuracoes.lista_programas)
         )
-        diam_tw, sobrep_tw, vel_tw, on_pause_tw, off_pause_tw = get_program_params(
-            layer.program_tw, configuracoes.lista_programas
+        diam_tw, sobrep_tw, vel_tw, wfs_tw, on_pause_tw, off_pause_tw = (
+            get_program_params(layer.program_tw, configuracoes.lista_programas)
         )
         layer_tot_lenght = 0
         bfr = base_coords
         layer_height = layer.layer_height
         output = initial_position(output, base_coords, layer_height, vel_vazio, n_layer)
-        if layer.islands == []:
+        if not hasattr(layer, "islands") or layer.islands == []:
             folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
             counter = 0
@@ -465,7 +470,7 @@ def layers_to_Gcode(
                     output += (
                         f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
                     )
-                    output += "M400\n"
+                    # output += "M400\n"
                     bfr = coords
                     counter += 1
                     if flag_salto == 1:
@@ -516,7 +521,7 @@ def layers_to_Gcode_UFSC(
         output += f"G92.1 ; Reseta deslocamento coordenadas\n"
         output += f"G94 ; Avanço em mm/min\n"
         output += f"G97 ; Velocidade fuso em RPM\n"
-        output += f"M200 P5.0 ; Comando personalizado - Configura solda\n"
+        # output += f"M200 P5.0 ; Comando personalizado - Configura solda\n"
         return output
 
     diam_cont, sobrep_cont, vel_cont, on_pause_cont, off_pause_cont, wfs_cont = (
@@ -669,3 +674,144 @@ def layers_to_Gcode_UFSC(
     f.close()
     os.chdir(folders.home)
     return
+
+
+def rotate_gcode(codigoG, angulo=None):
+    import math
+    import re
+
+    """Rotate G0-G3 XY coordinates around the origin; `angulo` is in degrees."""
+    input_file = codigoG if hasattr(codigoG, "read") else None
+    if input_file is not None:
+        if input_file.seekable():
+            input_file.seek(0)
+        codigoG = input_file.read()
+
+    if angulo is None or angulo == 0:
+        return codigoG
+
+    angle = math.radians(angulo)
+    cosine = math.cos(angle)
+    sine = math.sin(angle)
+    word_pattern = re.compile(r"([A-Za-z])\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
+    absolute = True
+    current_position = [0.0, 0.0]
+    rotated_lines = []
+
+    def rotate_vector(x_value, y_value):
+        rotated_x = x_value * cosine - y_value * sine
+        rotated_y = x_value * sine + y_value * cosine
+        return rotated_x, rotated_y
+
+    def format_number(value):
+        if math.isclose(value, 0.0, abs_tol=1e-12):
+            value = 0.0
+        return f"{value:.12g}"
+
+    for line in codigoG.splitlines(keepends=True):
+        code, separator, comment = line.partition(";")
+        words = list(word_pattern.finditer(code))
+        g_codes = [
+            float(word.group(2)) for word in words if word.group(1).upper() == "G"
+        ]
+        if 90 in g_codes:
+            absolute = True
+        elif 91 in g_codes:
+            absolute = False
+
+        if 28 in g_codes:
+            axes = {
+                word.group(1).upper()
+                for word in words
+                if word.group(1).upper() in ("X", "Y")
+            }
+            if not axes or "X" in axes:
+                current_position[0] = 0.0
+            if not axes or "Y" in axes:
+                current_position[1] = 0.0
+            rotated_lines.append(line)
+            continue
+
+        motion_codes = [code for code in g_codes if code in (0, 1, 2, 3)]
+        if not motion_codes:
+            rotated_lines.append(line)
+            continue
+
+        axis_words = {
+            word.group(1).upper(): word
+            for word in words
+            if word.group(1).upper() in ("X", "Y")
+        }
+        if not axis_words:
+            rotated_lines.append(line)
+            continue
+
+        x_value = float(axis_words["X"].group(2)) if "X" in axis_words else 0.0
+        y_value = float(axis_words["Y"].group(2)) if "Y" in axis_words else 0.0
+        if absolute:
+            source_x = x_value if "X" in axis_words else current_position[0]
+            source_y = y_value if "Y" in axis_words else current_position[1]
+            rotated_x, rotated_y = rotate_vector(source_x, source_y)
+            current_position = [source_x, source_y]
+        else:
+            rotated_x, rotated_y = rotate_vector(x_value, y_value)
+            current_position[0] += x_value
+            current_position[1] += y_value
+
+        replacements = {"X": rotated_x, "Y": rotated_y}
+        if motion_codes[0] in (2, 3):
+            ij_words = {
+                word.group(1).upper(): word
+                for word in words
+                if word.group(1).upper() in ("I", "J")
+            }
+            if ij_words:
+                i_value = float(ij_words["I"].group(2)) if "I" in ij_words else 0.0
+                j_value = float(ij_words["J"].group(2)) if "J" in ij_words else 0.0
+                rotated_i, rotated_j = rotate_vector(i_value, j_value)
+                replacements["I"] = rotated_i
+                replacements["J"] = rotated_j
+
+        output = []
+        last_end = 0
+        replaced_axes = set()
+        for word in words:
+            letter = word.group(1).upper()
+            if letter in replacements:
+                output.append(code[last_end : word.start()])
+                output.append(f"{word.group(1)}{format_number(replacements[letter])}")
+                last_end = word.end()
+                replaced_axes.add(letter)
+        output.append(code[last_end:])
+        missing_axes = [axis for axis in ("X", "Y") if axis not in replaced_axes]
+        if motion_codes[0] in (2, 3):
+            missing_axes.extend(
+                axis
+                for axis in ("I", "J")
+                if axis in replacements and axis not in replaced_axes
+            )
+        output_code = "".join(output)
+        if missing_axes:
+            trailing_space = len(output_code) - len(output_code.rstrip())
+            insertion_point = len(output_code) - trailing_space
+            output_code = (
+                output_code[:insertion_point]
+                + "".join(
+                    f" {axis}{format_number(replacements[axis])}"
+                    for axis in missing_axes
+                )
+                + output_code[insertion_point:]
+            )
+        rotated_lines.append(output_code + separator + comment)
+
+    rotated_gcode = "".join(rotated_lines)
+    if input_file is not None:
+        with open(
+            input_file.name.removesuffix(".gcode")
+            + " ROTATED"
+            + str(int(angulo))
+            + ".gcode",
+            "w",
+        ) as output_file:
+            output_file.write(rotated_gcode)
+    return rotated_gcode

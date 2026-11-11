@@ -35,12 +35,10 @@ def turn_on(output, flag_on, on_pause):
     return output, 1
 
 
-def turn_on_UFSC(output, flag_on, on_pause):
+def turn_on_UFSC(output, flag_on, on_pause=5):
     if flag_on == 0:
         output += ";-------Turn ON Welding------\n"
-        output += (
-            # f"M200 P{on_pause/1000}; Liga a tocha e aguarda {on_pause/1000} segundos\n"
-        )
+        output += f"M200 P{on_pause}; Liga a tocha e aguarda {on_pause} segundos\n"
         output += ";------------------------\n"
     return output, 1
 
@@ -57,10 +55,10 @@ def turn_off(output, flag_on, off_pause=3000):
     return output, 0
 
 
-def turn_off_UFSC(output, flag_on, off_pause=3000):
+def turn_off_UFSC(output, flag_on, off_pause=3):
     if flag_on == 1:
         output += ";-------Turn OFF Welding------\n"
-        # output += f"M200 P{off_pause/1000}; Desliga a tocha e aguarda {off_pause/1000} segundos\n"
+        output += f"M201 P{off_pause}; Desliga a tocha e aguarda {off_pause} segundos\n"
         output += ";-------------------------\n"
     return output, 0
 
@@ -213,7 +211,8 @@ def program_change_UFSC(
     print(f"Switched to {flag_path_type}")
     output += texto_mudanca
     # output += "M400\n"
-    output += f"M202 P{next_program}\n"
+    # output += f"M202 P{next_program}\n"
+    output += f"M0\n"
     output += f"G1 F{vel}; speed g1\n"
     output += f";wire feed speed {wfs}\n"
     output += ";-------------------------\n"
@@ -239,13 +238,14 @@ def cleanning_position(output, coords, vel_vazio, p_entre_layers):
 def cleanning_position_UFSC(output, coords, vel_vazio, p_entre_layers):
     output += ";-------CLEANNING POSITION------\n"
     # output += f";POS de Corte\n"
-    output += f"G90\n"
-    output += f"G0 Y{coords[0]} F{vel_vazio}\n"
+    # output += f"G90\n"
+    # output += f"G0 Y{coords[0]} F{vel_vazio}\n"
     # output += f"M400\n"
-    output += f"G0 x{coords[1]} F{vel_vazio}\n"
+    # output += f"G0 x{coords[1]} F{vel_vazio}\n"
     # output += f"M400\n"
-    output += f"G4 P{p_entre_layers}\n"
-    output += f"G91\n"
+    # output += f"G4 P{p_entre_layers}\n"
+    # output += f"G91\n"
+    output += f"G0 Z20\n"
     output += ";------------------------\n"
     return output
 
@@ -270,8 +270,8 @@ def initial_position_UFSC(output, coords, height, vel_vazio, n_layer):
     output += ";-------INITIAL POSITION------\n"
     output += f"G90\n"
     # output += f";LAYER:{i}\n"
-    output += f"G1 Z{height} ; Layer + 10mm\n"
-    output += f"G1 X{coords[1]} Y{coords[0]} F{vel_vazio}\n"
+    # output += f"G1 Z{height} ; Layer + 10mm\n"
+    output += f"G0 X0 Y0 Z0\n"
     # output += f"M400\n"
     output += f"G91\n"
     output += ";------------------------\n"
@@ -510,9 +510,10 @@ def layers_to_Gcode_UFSC(
 ):
 
     def code_start(output, flag_ligado):
-        output, flag_ligado = turn_off_UFSC(output, flag_ligado)
+        # output, flag_ligado = turn_off_UFSC(output, flag_ligado)
+        output += f"#<tube-cut>=1\n"
         output += f"G91 ; Modo incremental\n"
-        output += f"G28 X0 Y0 Z0 ; Vai à origem da máquina\n"
+        # output += f"G28 X0 Y0 Z0 ; Vai à origem da máquina\n"
         output += f"G21 ; Unidades em milímetros\n"
         output += f"G64P0.25 ; Modo contínuo com tolerância 0.25mm\n"
         output += f"G40 ; Cancela compensação raio\n"
@@ -572,6 +573,8 @@ def layers_to_Gcode_UFSC(
         output = initial_position_UFSC(
             output, base_coords, layer_height, vel_vazio, n_layer
         )
+        if not hasattr(layer, "islands") or layer.islands == []:
+            folders.load_islands_hdf5(layer)
         if layer.islands == []:
             folders.load_islands_hdf5(layer)
         for n_island, island in enumerate(layer.islands):
@@ -645,29 +648,31 @@ def layers_to_Gcode_UFSC(
                     desloc = np.subtract(coords, bfr)
                     dist = distance.euclidean(coords, bfr)
                     layer_tot_lenght += dist
-                    output += (
-                        f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
-                    )
+                    if flag_salto == 1:
+                        output += f"G0 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
+                    else:
+                        output += f"G1 X{desloc[1] * mm_per_pixel} Y{desloc[0] * mm_per_pixel}\n"
                     # output += "M400\n"
                     bfr = coords
                     counter += 1
                     if flag_salto == 1:
-                        output, flag_on = turn_on_UFSC(output, flag_on, on_pause)
+                        output, flag_on = turn_on_UFSC(output, flag_on, 5)
                         flag_salto = 0
         output, flag_on = turn_off_UFSC(output, flag_on, off_pause)
         output = cleanning_position_UFSC(
             output, coords_corte, vel_vazio, p_entre_layers
         )
         output += ";____________________________________\n"
-        output += f"G28 X0 Y0\n"
+        # output += f"G28 X0 Y0\n"
         print(f"Total travel distance {n_layer} = {layer_tot_lenght*mm_per_pixel}mm")
         print(
             f"Estimated time with speed {vel_cont}mm/min = {layer_tot_lenght*mm_per_pixel/vel_cont}min\n"
         )
-    output += f"G1 Z20\n"
-    output += f"G28 X0\n"
-    output += f"G28 Y0\n"
-    output += f"M104 S0; End of Gcode\n"
+    # output += f"G1 Z20\n"
+    # output += f"G28 X0\n"
+    # output += f"G28 Y0\n"
+    # output += f"M104 S0; End of Gcode\n"
+    output += f"M2; End of Gcode\n"
     os.chdir(folders.output)
     f = open(outFile, "w")
     f.write(output)
@@ -815,3 +820,72 @@ def rotate_gcode(codigoG, angulo=None):
         ) as output_file:
             output_file.write(rotated_gcode)
     return rotated_gcode
+
+
+def mirror_gcode(codigoG, axis="x"):
+    import re
+
+    """Reflect G0-G3 XY coordinates across the X or Y axis."""
+    axis = axis.lower()
+    if axis not in ("x", "y"):
+        raise ValueError("axis must be 'x' or 'y'")
+
+    input_file = codigoG if hasattr(codigoG, "read") else None
+    if input_file is not None:
+        if input_file.seekable():
+            input_file.seek(0)
+        codigoG = input_file.read()
+
+    reflected_axis = "Y" if axis == "x" else "X"
+    reflected_offset = "J" if axis == "x" else "I"
+    word_pattern = re.compile(r"([A-Za-z])\s*([-+]?(?:\d+(?:\.\d*)?|\.\d+))")
+    mirrored_lines = []
+
+    def format_number(value):
+        if value == 0:
+            value = 0.0
+        return f"{value:.12g}"
+
+    for line in codigoG.splitlines(keepends=True):
+        code, separator, comment = line.partition(";")
+        words = list(word_pattern.finditer(code))
+        g_codes = [
+            float(word.group(2)) for word in words if word.group(1).upper() == "G"
+        ]
+        if 28 in g_codes or not any(code in (0, 1, 2, 3) for code in g_codes):
+            mirrored_lines.append(line)
+            continue
+
+        replacements = []
+        for word in words:
+            letter = word.group(1).upper()
+            value = float(word.group(2))
+            if letter in (reflected_axis, reflected_offset):
+                replacements.append(
+                    (
+                        word.start(),
+                        word.end(),
+                        f"{word.group(1)}{format_number(-value)}",
+                    )
+                )
+            elif letter == "G" and value in (2, 3):
+                replacements.append(
+                    (word.start(), word.end(), f"{word.group(1)}{5 - int(value)}")
+                )
+
+        output_code = code
+        for start, end, replacement in reversed(replacements):
+            output_code = output_code[:start] + replacement + output_code[end:]
+        mirrored_lines.append(output_code + separator + comment)
+
+    mirrored_gcode = "".join(mirrored_lines)
+    if input_file is not None:
+        with open(
+            input_file.name.removesuffix(".gcode")
+            + " MIRRORED "
+            + axis.upper()
+            + ".gcode",
+            "w",
+        ) as output_file:
+            output_file.write(mirrored_gcode)
+    return mirrored_gcode

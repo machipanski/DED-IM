@@ -40,19 +40,19 @@ def chain_to_lines(final_chain, canvas, color=999):
         start_p = end_p
         if chain:
             end_p = chain.pop()
-            cv2.line(
-                canvas.astype(np.uint8),
-                tuple(np.int32(start_p)),
-                tuple(np.int32(end_p)),
+            canvas = cv2.line(
+                canvas.astype(np.uint16),
+                tuple(np.uint16(start_p)),
+                tuple(np.uint16(end_p)),
                 color,
                 1,
             )
         else:
             end_p = last
-            cv2.line(
-                canvas.astype(np.uint8),
-                tuple(np.int32(start_p)),
-                tuple(np.int32(end_p)),
+            canvas = cv2.line(
+                canvas.astype(np.uint16),
+                tuple(np.uint16(start_p)),
+                tuple(np.uint16(end_p)),
                 color,
                 1,
             )

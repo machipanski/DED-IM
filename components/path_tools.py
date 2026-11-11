@@ -925,12 +925,30 @@ def colorbyevent(seq, eventlist, img):
     return result
 
 
+def simplify_seq(seq, tolerance):
+    this_chain = img_to_chain(seq)
+    if len(this_chain) > 1:
+        if len(this_chain[0]) == 2:
+            this_chain = this_chain[0]
+        elif len(this_chain[0]) > 3:
+            this_chain = [point for point_list in this_chain for point in point_list]
+    else:
+        this_chain = this_chain[0]
+    extreme = pt.img_to_points(mt.hitmiss_ends_v2(seq))
+    if len(extreme) < 1:
+        extreme = [this_chain[0]]
+    this_chain = set_first_pt_in_seq(this_chain, extreme[0])
+    this_chain = cut_repetition(this_chain)
+    simplified_chain = simplifica_retas_masterV2(this_chain, tolerance, [])
+    return simplified_chain
+
+
 def cut_repetition(seq):
     new_seq = []
     last = seq[0]
     for point in seq:
-        dist = pt.distance_pts(point, last)
-        if (point in new_seq) or (dist > 1.5):
+        # dist = pt.distance_pts(point, last)
+        if point in new_seq:  # or (dist > 1.5):
             pass
         else:
             new_seq.append(point)
@@ -1248,10 +1266,17 @@ def generate_guide_line(region, base_frame, prohibited_areas):
 def img_to_chain(img: np.ndarray, init_area=None, minimal_seq: int = 0):
     if init_area is None:
         init_area = []
-    contours = mt.detect_contours(img.astype(np.uint8))
+    this_img = copy.deepcopy(img)
+    this_img = sk.medial_axis(this_img, 1)
+    degenerations = mt.find_crosses(this_img, np.zeros_like(this_img))
+    if np.sum(degenerations) > 0:
+        this_img = it.sum_imgs([this_img, degenerations])
+        this_img = mt.thinning(this_img)
+    contours = mt.detect_contours(this_img.astype(np.uint8))
     multiple_lines = pt.multiple_contours_to_list(contours, minimal_seq)
     if len(multiple_lines) > 1:
-        multiple_lines = remove_repeated_contours(multiple_lines, img.shape)
+        multiple_lines = remove_repeated_contours(multiple_lines, this_img.shape)
+        multiple_lines = list(filter(lambda x: len(x) > 8, multiple_lines))
     if len(init_area) > 0:
         for idx, contour in enumerate(contours):
             init_area_pts = pt.img_to_points(init_area)
